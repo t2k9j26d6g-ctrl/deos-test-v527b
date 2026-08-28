@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.28Q";
+const DEOS_VERSION = "V5.28R";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -10542,6 +10542,30 @@ function duplicatePerformancePrevious() {
 // V5.28Q : la vue historique et la synthèse Direction utilisent la même résolution
 // de source que le tableau de pilotage supérieur. Cela évite qu'une ancienne valeur
 // locale masque un Budget/Historique GPO pourtant disponible.
+function performanceLatestImportedMetricRow(metricKey, period, preferredSource = "GPO") {
+  const wantedKey = String(metricKey || "").trim().toLowerCase();
+  const wantedPeriod = String(period || "").trim();
+  const candidates = [];
+  ensureArray(state.performance_imports).forEach(item => {
+    ensureArray(item.indicators).forEach(row => {
+      if (String(row.period || "").trim() !== wantedPeriod) return;
+      if (String(row.metricKey || "").trim().toLowerCase() !== wantedKey) return;
+      candidates.push({ row, importDate: String(item.importDate || ""), source: performanceSourceKey(row.source || item.sourceType || item.source || "") });
+    });
+  });
+  candidates.sort((a, b) => b.importDate.localeCompare(a.importDate));
+  return (candidates.find(item => item.source === preferredSource) || candidates[0] || {}).row || null;
+}
+
+function performanceApplyImportedTriplet(metric, row) {
+  if (!metric || typeof metric !== "object" || !row) return;
+  const actual = row.actual ?? row.value;
+  if (perfHas(actual)) metric.actual = actual;
+  if (perfHas(row.budget)) metric.budget = row.budget;
+  if (perfHas(row.historical)) metric.historical = row.historical;
+  if (perfHas(row.objective)) metric.objective = row.objective;
+}
+
 function performanceResolvedRecordForView(p) {
   const resolved = normalizePerformance(JSON.parse(JSON.stringify(p || {})));
   const period = performancePeriodKey(resolved);
@@ -10572,6 +10596,18 @@ function performanceResolvedRecordForView(p) {
     if (perfHas(preferred.budget)) metric.budget = preferred.budget;
     if (perfHas(preferred.historical)) metric.historical = preferred.historical;
   });
+
+  // V5.28R : G&P et hauteur palette sont des KPI GPO de pilotage mais ne font
+  // pas partie du tableau de synthèse multi-sources. On relit donc explicitement
+  // leur dernier triplet GPO afin que la fiche mensuelle ne perde ni Budget ni Histo.
+  performanceApplyImportedTriplet(
+    perfPath(resolved, "quality.indicators.Total Gains & Pertes"),
+    performanceLatestImportedMetricRow("quality.total_gains_pertes", period, "GPO")
+  );
+  performanceApplyImportedTriplet(
+    perfPath(resolved, "palletHeight"),
+    performanceLatestImportedMetricRow("pallet.height", period, "GPO")
+  );
   return resolved;
 }
 
@@ -10618,9 +10654,13 @@ function performanceImportSummaryCard(item, p) {
   const detected = ensureArray(item.indicators).length;
   const conflicts = Number(item.conflictCount ?? ensureArray(item.conflicts).length);
   const expanded = expandedPerformanceImportId === item.id;
+  const updatedLabels = ensureArray(item.updatedMetricLabels).filter(Boolean);
+  const unchangedCount = Math.max(0, detected - imported);
   const importStatusText = imported === 0 && detected > 0 && conflicts === 0
     ? `${detected} indicateur(s) déjà à jour · aucune modification`
-    : `${imported} indicateur(s) importé(s) · ${detected} détecté(s) · ${conflicts} conflit(s)`;
+    : imported > 0 && conflicts === 0
+      ? `${imported} indicateur(s) mis à jour · ${unchangedCount} déjà à jour${updatedLabels.length ? ` · ${updatedLabels.join(", ")}` : ""}`
+      : `${imported} indicateur(s) importé(s) · ${detected} détecté(s) · ${conflicts} conflit(s)`;
   return `<div class="item import-summary">
     <div>
       <strong>Source : ${esc(performanceImportSourceLabel(item))} — ${esc(performanceImportPeriodTitle(item, p))}</strong>
@@ -10688,8 +10728,10 @@ function perfQualitySummary(p) {
 }
 
 function perfPalletSummary(p) {
-  const gap = perfGap(p.palletHeight.actual, p.palletHeight.objective);
-  return `<div class="performance-metric"><strong>Hauteur palette</strong><span>Historique ${perfFmt(p.palletHeight.historical)} ? Objectif ${perfFmt(p.palletHeight.objective)} ? Budget ${perfFmt(p.palletHeight.budget)} ? Réalisé ${perfFmt(p.palletHeight.actual)}</span><small>Écart objectif ${perfFmt(gap.value)} ? Tendance ${esc(p.palletHeight.trend || "À compléter")}</small></div>`;
+  const gapObjective = perfGap(p.palletHeight.actual, p.palletHeight.objective);
+  const gapBudget = perfGap(p.palletHeight.actual, p.palletHeight.budget);
+  const gapHistorical = perfGap(p.palletHeight.actual, p.palletHeight.historical);
+  return `<div class="performance-metric"><strong>Hauteur palette</strong><span>Historique ${perfFmt(p.palletHeight.historical)} · Budget ${perfFmt(p.palletHeight.budget)} · Réalisé ${perfFmt(p.palletHeight.actual)} · Objectif annuel ${perfFmt(p.palletHeight.objective)}</span><small>Écart budget ${perfFmt(gapBudget.value)} (${perfFmt(gapBudget.pct)}%) · Écart historique ${perfFmt(gapHistorical.value)} (${perfFmt(gapHistorical.pct)}%) · Écart objectif ${perfFmt(gapObjective.value)}</small></div>`;
 }
 
 function performanceForm(p) {
@@ -11462,6 +11504,7 @@ function compactPerformanceImportPayload(item = {}) {
     ignoredCount: Number(item.ignoredCount || 0),
     conflictCount: Number(item.conflictCount ?? ensureArray(item.conflicts).length),
     periods: ensureArray(item.periods),
+    updatedMetricLabels: ensureArray(item.updatedMetricLabels).filter(Boolean),
     privacyAudit: item.privacyAudit || undefined
   });
 }
@@ -11514,7 +11557,8 @@ function validatePerformanceImport() {
       importedCount: imported.importedCount,
       ignoredCount: performanceImportWizard.preview.length - imported.importedCount,
       conflictCount: conflictRows.length,
-      periods: imported.periods
+      periods: imported.periods,
+      updatedMetricLabels: imported.updatedMetricLabels
     });
     const containsCgtab = performanceImportWizard.preview.some(row => /CGTAB/i.test(String(row.source || row.sourceType || "")));
     if (containsCgtab) payload.privacyAudit = performancePrivacyAuditForSensitiveData();
@@ -14261,6 +14305,7 @@ function setImportPreviewTarget(id, targetId) {
 function applyPerformanceImportRows(rows, file, importDate) {
   state.performance = ensureArray(state.performance).map(performanceEnsurePeriodIdentity);
   const periods = new Set();
+  const updatedMetricLabels = [];
   let importedCount = 0;
   rows.forEach(row => {
     const parsedPeriod = parsePerformancePeriod(row.period || "");
@@ -14289,9 +14334,10 @@ function applyPerformanceImportRows(rows, file, importDate) {
     perf.importSources.unshift({ source: sourceLabel, file: file.name || "", importDate, period: row.period, periodType: row.periodType || "monthly", metricKey: row.metricKey || "", importedCount: 1, comment: `${row.indicator} -> ${row.destinationLabel}` });
     periods.add(normalizedPeriod);
     importedCount++;
+    updatedMetricLabels.push(row.indicator || row.label || row.metricKey || row.destinationLabel || "KPI");
   });
   state.performance = state.performance.slice().sort((a, b) => performancePeriodSortStamp(b) - performancePeriodSortStamp(a));
-  return { importedCount, periods: [...periods] };
+  return { importedCount, periods: [...periods], updatedMetricLabels: [...new Set(updatedMetricLabels)] };
 }
 
 function applyImportedValueToPerformance(perf, row) {
