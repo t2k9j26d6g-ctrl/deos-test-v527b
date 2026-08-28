@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.28O";
+const DEOS_VERSION = "V5.28P";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -9557,9 +9557,19 @@ function performanceMatchesMetricDef(row = {}, metricDef = {}) {
   const rowMetricKey = String(row.metricKey || "").trim().toLowerCase();
   const rowLabel = normalizePerformanceLabel(row.indicator || row.label || row.destinationLabel || "");
   const aliases = [metricDef.label, ...(metricDef.aliases || [])].map(normalizePerformanceLabel).filter(Boolean);
-  if (metricDef.targetPath && rowPath && rowPath === metricDef.targetPath) return true;
+  if (metricDef.targetPath && rowPath && (rowPath === metricDef.targetPath || `${rowPath}.actual` === metricDef.targetPath)) return true;
   if (metricDef.metricKey && rowMetricKey && rowMetricKey === String(metricDef.metricKey).toLowerCase()) return true;
-  return aliases.some(alias => alias && (rowLabel === alias || rowLabel.includes(alias)));
+  // V5.28P : les alias très courts (ex. « AT ») ne doivent jamais matcher
+  // par simple sous-chaîne (« préparation » contient les lettres « at »).
+  return aliases.some(alias => {
+    if (!alias) return false;
+    if (rowLabel === alias) return true;
+    if (alias.length <= 3) {
+      const tokens = rowLabel.split(/[^a-z0-9à-ÿ]+/i).filter(Boolean);
+      return tokens.includes(alias);
+    }
+    return rowLabel.includes(alias);
+  });
 }
 
 function performancePrimaryValueForMetric(periodRecord, metricDef) {
@@ -11356,15 +11366,24 @@ function performanceImportStepValidate() {
 }
 
 function compactPerformanceImportIndicator(row = {}) {
+  // V5.28P : l'historique d'import reste compact, mais conserve les champs
+  // indispensables à l'analyse Réel / Budget / Historique et au matching KPI.
   return {
     period: row.period || "",
     periodType: row.periodType || "monthly",
     source: row.source || row.sourceType || "",
     indicator: row.indicator || row.label || "",
+    metricKey: row.metricKey || "",
+    actual: row.actual ?? row.value ?? "",
     value: row.value ?? row.actual ?? "",
+    budget: row.budget ?? null,
+    historical: row.historical ?? null,
+    objective: row.objective ?? null,
     unit: row.unit || "",
     destinationLabel: row.destinationLabel || "",
     destinationPath: row.destinationPath || "",
+    targetId: row.targetId || row.destinationId || "",
+    targetType: row.targetType || "",
     status: row.status || "",
     confidence: row.confidence || row.confidenceText || "",
     action: row.action || ""
@@ -14305,13 +14324,18 @@ function applyImportedValueToPerformance(perf, row) {
   const target = perfPath(perf, row.destinationPath);
   if (!target) return false;
   const field = row.destinationField || "actual";
+  const importsMetricTriplet = field === "actual" && (row.budget !== undefined || row.historical !== undefined);
+  const nextBudget = row.budget !== null && row.budget !== undefined && row.budget !== "" ? row.budget : target.budget;
+  const nextHistorical = row.historical !== null && row.historical !== undefined && row.historical !== "" ? row.historical : target.historical;
   const unchanged = String(target[field] ?? "") === String(row.value ?? "")
-    && (row.destinationField || (String(target.budget ?? "") === String(row.budget ?? "") && String(target.historical ?? "") === String(row.historical ?? "")));
+    && (!importsMetricTriplet || (String(target.budget ?? "") === String(nextBudget ?? "") && String(target.historical ?? "") === String(nextHistorical ?? "")));
   if (unchanged) return false;
   target[field] = row.value;
-  if (!row.destinationField) {
-    target.budget = row.budget ?? target.budget;
-    target.historical = row.historical ?? target.historical;
+  // V5.28P : un mapping explicite vers le champ « actual » représente malgré tout
+  // un KPI complet. Le triplet GPO Réel / Budget / Historique doit donc être stocké.
+  if (importsMetricTriplet) {
+    target.budget = nextBudget;
+    target.historical = nextHistorical;
   }
   if (row.destinationPath === "palletHeight" && row.objective !== undefined && row.objective !== "") target.objective = row.objective;
   const sourceComment = `Source : ${row.source || "Import"} · ${row.sourceRef || ""}`.trim();
