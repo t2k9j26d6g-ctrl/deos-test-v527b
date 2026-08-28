@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.28L";
+const DEOS_VERSION = "V5.28M";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -9276,6 +9276,7 @@ function performanceImportStatusLabel(status) {
 function performanceImportConfidenceScore(row) {
   const indicator = normalizePerformanceLabel(row.indicator);
   if (!indicator || row.action === "ignore") return 0;
+  if (Number.isFinite(Number(row.sourceConfidenceScore))) return Number(row.sourceConfidenceScore);
   if (row.targetType === "existing") return 92;
   if (row.targetType === "complementary") return row.targetId === "complementary.generic" ? 62 : 74;
   if (row.unit && /colis|heure|%|pourcentage|€|euro|kg/i.test(row.unit)) return 58;
@@ -11213,7 +11214,8 @@ function normalizePerformanceImportIndicators(rows, file) {
     const mappedPathRaw = destinationPath || (hasExplicitTargetType ? "" : (target ? target.path : ""));
     const normalizedDestination = normalizeImportDestination(mappedPathRaw, raw.destinationField || "");
     const mappedLabel = firstImportValue(raw, ["destinationLabel", "destination", "target", "deosIndicator"]) || (target ? target.label : "KPI complémentaire");
-    const confidenceMeta = performanceImportConfidenceMeta(targetType === "existing" ? 92 : targetType === "complementary" ? (targetId === "complementary.generic" ? 62 : 74) : 40);
+    const sourceConfidenceScore = Number.isFinite(Number(raw.sourceConfidenceScore)) ? Number(raw.sourceConfidenceScore) : null;
+    const confidenceMeta = performanceImportConfidenceMeta(sourceConfidenceScore ?? (targetType === "existing" ? 92 : targetType === "complementary" ? (targetId === "complementary.generic" ? 62 : 74) : 40));
     const selected = raw.selected !== undefined ? Boolean(raw.selected) : targetType !== "ignore";
     const period = normalizeImportPeriod(raw.period || raw.date || file.period || ensureArray(file.periods)[0]) || IMPORT_PERIOD_PENDING;
     const source = /gpo/i.test(sourceType) ? "GPO" : (isZGemedSourceLabel(raw.source || file.source || file.sourceType || "") ? "Z_GEMED" : (raw.source || file.source || file.sourceType || "Import"));
@@ -11269,6 +11271,8 @@ function normalizePerformanceImportIndicators(rows, file) {
       targetId,
       targetType,
       confidence: raw.confidence || confidenceMeta.label,
+      sourceConfidenceScore: sourceConfidenceScore ?? undefined,
+      validationWarning: raw.validationWarning || "",
       confidenceScore: confidenceMeta.score,
       confidenceLabel: confidenceMeta.label,
       confidenceText: confidenceMeta.text,
@@ -11676,7 +11680,14 @@ async function readPdfPages(file) {
     const content = await page.getTextContent();
     const rawText = content.items.map(item => item.str || "").join(" ");
     const layoutText = pdfLayoutTextFromItems(content.items);
-    pages.push({ page: pageNo, text: `${rawText}\n${layoutText}`.trim() || rawText, rawText, layoutText });
+    const viewport = page.getViewport({ scale: 1 });
+    const layoutItems = ensureArray(content.items).map((item, index) => ({
+      text: String(item?.str || "").trim(),
+      x: Number(item?.transform?.[4] || 0),
+      yTop: Number(viewport.height || 0) - Number(item?.transform?.[5] || 0),
+      index
+    })).filter(item => item.text);
+    pages.push({ page: pageNo, text: `${rawText}\n${layoutText}`.trim() || rawText, rawText, layoutText, layoutItems, width: viewport.width, height: viewport.height });
   }
   return pages;
 }
@@ -11735,6 +11746,108 @@ function gpoIndicatorRow(period, metric, values, sourcePage, confidence = "moyen
   };
 }
 
+
+function gpoLayoutNumbers(page, { xMin = -Infinity, xMax = Infinity, yMin = -Infinity, yMax = Infinity } = {}) {
+  return ensureArray(page?.layoutItems).map(item => ({
+    ...item,
+    value: parseZGemedNumber(item.text)
+  })).filter(item => item.value !== "" && Number.isFinite(Number(item.value)) && item.x >= xMin && item.x <= xMax && item.yTop >= yMin && item.yTop <= yMax);
+}
+
+function gpoLayoutNearestNumber(page, x, y, { xTolerance = 28, yTolerance = 18, min = -Infinity, max = Infinity } = {}) {
+  const candidates = gpoLayoutNumbers(page, { xMin: x - xTolerance, xMax: x + xTolerance, yMin: y - yTolerance, yMax: y + yTolerance })
+    .filter(item => Number(item.value) >= min && Number(item.value) <= max)
+    .sort((a, b) => (Math.abs(a.x - x) + Math.abs(a.yTop - y) * 1.8) - (Math.abs(b.x - x) + Math.abs(b.yTop - y) * 1.8));
+  return candidates[0]?.value ?? "";
+}
+
+function gpoLayoutTriple(page, coords, range = {}) {
+  return {
+    historical: gpoLayoutNearestNumber(page, coords[0][0], coords[0][1], range),
+    budget: gpoLayoutNearestNumber(page, coords[1][0], coords[1][1], range),
+    actual: gpoLayoutNearestNumber(page, coords[2][0], coords[2][1], range)
+  };
+}
+
+function gpoPlausibility(metricKey, values) {
+  const rules = {
+    "productivity.preparation": [50, 200],
+    "productivity.reception": [5, 50],
+    "productivity.manutention": [5, 50],
+    "productivity.chargement": [5, 60],
+    "productivity.transit": [0, 100],
+    "hours.total": [10000, 1000000],
+    "hours.direct": [10000, 1000000],
+    "hours.indirect": [1000, 500000],
+    "hours.indirect.share": [0, 100],
+    "absenteeism.total": [0, 100],
+    "absenteeism.maladie": [0, 100],
+    "absenteeism.accident_travail": [0, 100],
+    "absenteeism.formation": [0, 100],
+    "absenteeism.conges": [0, 100],
+    "absenteeism.autres": [0, 100],
+    "quality.total_gains_pertes": [-10000, 10000],
+    "pallet.height": [70, 130]
+  };
+  const rule = rules[metricKey];
+  if (!rule) return { ok: true, score: 82 };
+  const present = [values?.historical, values?.budget, values?.actual].filter(value => value !== "" && value !== null && value !== undefined).map(Number).filter(Number.isFinite);
+  if (!present.length) return { ok: false, score: 25 };
+  const ok = present.every(value => value >= rule[0] && value <= rule[1]);
+  return { ok, score: ok ? 94 : 25 };
+}
+
+function gpoMetricConfidence(metricKey, values, layoutBased = false) {
+  const check = gpoPlausibility(metricKey, values);
+  if (!check.ok) return { label: "faible", score: 25, selected: false, action: "ignore", warning: "Valeur incohérente avec la plage métier" };
+  const score = layoutBased ? 96 : Math.min(88, check.score);
+  return { label: performanceImportConfidenceMeta(score).label, score, selected: true, action: "" };
+}
+
+function extractGpoSaintGillesLayout(page) {
+  const text = String(page?.layoutText || page?.text || "");
+  if (!ensureArray(page?.layoutItems).length) return null;
+  const out = {};
+  if (/Performance mensuelle/i.test(text)) {
+    out.productivity_preparation = gpoLayoutTriple(page, [[179, 187], [202, 176], [225, 229]], { xTolerance: 24, yTolerance: 15, min: 50, max: 200 });
+    out.productivity_reception = gpoLayoutTriple(page, [[270, 217], [293, 236], [316, 204]], { xTolerance: 24, yTolerance: 15, min: 5, max: 50 });
+    out.productivity_manutention = gpoLayoutTriple(page, [[359, 224], [382, 219], [405, 209]], { xTolerance: 24, yTolerance: 15, min: 5, max: 50 });
+    out.productivity_chargement = gpoLayoutTriple(page, [[449, 224], [472, 239], [495, 209]], { xTolerance: 24, yTolerance: 15, min: 5, max: 60 });
+  }
+  if (/Evolution HEURES/i.test(text)) {
+    out.hours_total = gpoLayoutTriple(page, [[660, 166], [676, 181], [692, 147]], { xTolerance: 28, yTolerance: 16, min: 10000, max: 1000000 });
+    out.hours_indirect = gpoLayoutTriple(page, [[660, 257], [676, 287], [692, 271]], { xTolerance: 28, yTolerance: 16, min: 1000, max: 500000 });
+    if ([out.hours_total.historical, out.hours_total.budget, out.hours_total.actual, out.hours_indirect.historical, out.hours_indirect.budget, out.hours_indirect.actual].every(v => v !== "")) {
+      out.hours_direct = {
+        historical: Number(out.hours_total.historical) - Number(out.hours_indirect.historical),
+        budget: Number(out.hours_total.budget) - Number(out.hours_indirect.budget),
+        actual: Number(out.hours_total.actual) - Number(out.hours_indirect.actual)
+      };
+      out.hours_indirect_share = {
+        historical: +(Number(out.hours_indirect.historical) / Number(out.hours_total.historical) * 100).toFixed(1),
+        budget: +(Number(out.hours_indirect.budget) / Number(out.hours_total.budget) * 100).toFixed(1),
+        actual: +(Number(out.hours_indirect.actual) / Number(out.hours_total.actual) * 100).toFixed(1)
+      };
+    }
+  }
+  if (/TAUX\s+D.?ABSENCE|Absentéisme|Absenteisme/i.test(text)) {
+    out.absenteeism_total = gpoLayoutTriple(page, [[672, 127], [673, 173], [672, 224]], { xTolerance: 24, yTolerance: 14, min: 0, max: 100 });
+    out.absenteeism_conges = gpoLayoutTriple(page, [[108, 173], [136, 173], [163, 173]], { xTolerance: 22, yTolerance: 12, min: 0, max: 100 });
+    out.absenteeism_maladie = gpoLayoutTriple(page, [[214, 233], [241, 240], [269, 230]], { xTolerance: 22, yTolerance: 14, min: 0, max: 100 });
+    out.absenteeism_accident_travail = gpoLayoutTriple(page, [[318, 239], [345, 242], [373, 231]], { xTolerance: 22, yTolerance: 14, min: 0, max: 100 });
+    out.absenteeism_formation = gpoLayoutTriple(page, [[422, 253], [449, 253], [477, 252]], { xTolerance: 24, yTolerance: 12, min: 0, max: 100 });
+    out.absenteeism_autres = gpoLayoutTriple(page, [[526, 248], [553, 243], [581, 244]], { xTolerance: 22, yTolerance: 14, min: 0, max: 100 });
+  }
+  if (/Gains\s*&\s*Pertes|G&P/i.test(text)) {
+    out.gains_pertes = gpoLayoutTriple(page, [[66, 201], [96, 243], [331, 169]], { xTolerance: 32, yTolerance: 20, min: -10000, max: 10000 });
+  }
+  if (/HAUTEUR PALETTE|Hauteur Palette/i.test(text)) {
+    out.pallet_height = gpoLayoutTriple(page, [[651, 353], [664, 340], [683, 333]], { xTolerance: 28, yTolerance: 16, min: 70, max: 130 });
+    out.pallet_height.objective = gpoLayoutNearestNumber(page, 40, 337, { xTolerance: 24, yTolerance: 18, min: 70, max: 130 });
+  }
+  return Object.keys(out).length ? out : null;
+}
+
 function extractGpoIndicators(pages, period) {
   const rows = [];
   const gpoMetrics = {
@@ -11758,38 +11871,51 @@ function extractGpoIndicators(pages, period) {
     hours_gap_budget: { metricKey: "hours.total.budget_gap", label: "Écart heures vs Budget", targetId: "complementary.generic", category: "Heures", unit: "heures" },
     hours_gap_historical: { metricKey: "hours.total.historical_gap", label: "Écart heures vs Historique", targetId: "complementary.generic", category: "Heures", unit: "heures" }
   };
-  const pushMetric = (page, metricId, values, confidence = "moyenne") => {
-    const row = gpoIndicatorRow(period, gpoMetrics[metricId], values, `page ${page.page}`, confidence);
-    if (row) rows.push(row);
+  const pushMetric = (page, metricId, values, confidence = "moyenne", layoutBased = false) => {
+    const metric = gpoMetrics[metricId];
+    const check = gpoMetricConfidence(metric?.metricKey || metricId, values, layoutBased);
+    const row = gpoIndicatorRow(period, metric, values, `page ${page.page}`, check.label || confidence);
+    if (row) {
+      row.sourceConfidenceScore = check.score;
+      row.validationWarning = check.warning || "";
+      row.selected = check.selected;
+      row.action = check.action;
+      rows.push(row);
+    }
   };
   pages.forEach(page => {
     const text = page.text;
+    const layout = extractGpoSaintGillesLayout(page) || {};
     if (/Passage IPO total/i.test(text)) pushMetric(page, "ipo_total", extractGpoIpoValues(extractGpoSection(text, "Passage\\s+IPO\\s+total", 240)), "élevée");
     if (/Passage IPO Variable/i.test(text)) pushMetric(page, "ipo_variable", extractGpoIpoValues(extractGpoSection(text, "Passage\\s+IPO\\s+Variable", 240)), "élevée");
     if (/Performance mensuelle/i.test(text)) {
-      pushMetric(page, "productivity_preparation", extractGpoTripleAround(extractGpoSection(text, "PRÉPARATION|PREPARATION", 180), "PRÉPARATION|PREPARATION", { preferDecimal: true }), "moyenne");
-      pushMetric(page, "productivity_reception", extractGpoTripleAround(extractGpoSection(text, "RÉCEPTION|RECEPTION", 180), "RÉCEPTION|RECEPTION", { preferDecimal: true }), "moyenne");
-      pushMetric(page, "productivity_manutention", extractGpoTripleAround(extractGpoSection(text, "MANUTENTION", 180), "MANUTENTION", { preferDecimal: true }), "moyenne");
-      pushMetric(page, "productivity_chargement", extractGpoTripleAround(extractGpoSection(text, "CHARGEMENT", 180), "CHARGEMENT", { preferDecimal: true }), "moyenne");
+      pushMetric(page, "productivity_preparation", layout.productivity_preparation || extractGpoTripleAround(extractGpoSection(text, "PRÉPARATION|PREPARATION", 180), "PRÉPARATION|PREPARATION", { preferDecimal: true }), "moyenne", Boolean(layout.productivity_preparation));
+      pushMetric(page, "productivity_reception", layout.productivity_reception || extractGpoTripleAround(extractGpoSection(text, "RÉCEPTION|RECEPTION", 180), "RÉCEPTION|RECEPTION", { preferDecimal: true }), "moyenne", Boolean(layout.productivity_reception));
+      pushMetric(page, "productivity_manutention", layout.productivity_manutention || extractGpoTripleAround(extractGpoSection(text, "MANUTENTION", 180), "MANUTENTION", { preferDecimal: true }), "moyenne", Boolean(layout.productivity_manutention));
+      pushMetric(page, "productivity_chargement", layout.productivity_chargement || extractGpoTripleAround(extractGpoSection(text, "CHARGEMENT", 180), "CHARGEMENT", { preferDecimal: true }), "moyenne", Boolean(layout.productivity_chargement));
       if (/TRANSIT|TRANSPORT/i.test(text)) pushMetric(page, "productivity_transit", extractGpoTripleAround(extractGpoSection(text, "TRANSIT|TRANSPORT", 180), "TRANSIT|TRANSPORT", { preferDecimal: true }), "faible");
     }
     if (/Evolution HEURES/i.test(text)) {
       const hoursValues = extractGpoHoursValues(text);
-      pushMetric(page, "hours_total", hoursValues.total, "moyenne");
-      pushMetric(page, "hours_direct", hoursValues.direct, "moyenne");
-      pushMetric(page, "hours_indirect", hoursValues.indirect, "moyenne");
-      if (hoursValues.total.actual !== "" && hoursValues.total.budget !== "") pushMetric(page, "hours_gap_budget", { actual: Number(hoursValues.total.actual) - Number(hoursValues.total.budget), budget: null, historical: null }, "faible");
-      if (hoursValues.total.actual !== "" && hoursValues.total.historical !== "") pushMetric(page, "hours_gap_historical", { actual: Number(hoursValues.total.actual) - Number(hoursValues.total.historical), budget: null, historical: null }, "faible");
-      const pct = extractGpoIndirectPercent(text);
-      if (pct !== "") pushMetric(page, "hours_indirect_share", { actual: pct, budget: null, historical: null }, "faible");
+      const totalValues = layout.hours_total || hoursValues.total;
+      const directValues = layout.hours_direct || hoursValues.direct;
+      const indirectValues = layout.hours_indirect || hoursValues.indirect;
+      pushMetric(page, "hours_total", totalValues, "moyenne", Boolean(layout.hours_total));
+      pushMetric(page, "hours_direct", directValues, "moyenne", Boolean(layout.hours_direct));
+      pushMetric(page, "hours_indirect", indirectValues, "moyenne", Boolean(layout.hours_indirect));
+      if (totalValues.actual !== "" && totalValues.budget !== "") pushMetric(page, "hours_gap_budget", { actual: Number(totalValues.actual) - Number(totalValues.budget), budget: null, historical: null }, "faible");
+      if (totalValues.actual !== "" && totalValues.historical !== "") pushMetric(page, "hours_gap_historical", { actual: Number(totalValues.actual) - Number(totalValues.historical), budget: null, historical: null }, "faible");
+      const pctValues = layout.hours_indirect_share || null;
+      if (pctValues) pushMetric(page, "hours_indirect_share", pctValues, "moyenne", true);
+      else { const pct = extractGpoIndirectPercent(text); if (pct !== "") pushMetric(page, "hours_indirect_share", { actual: pct, budget: null, historical: null }, "faible"); }
     }
     if (/TAUX\s+D.?ABSENCE|Absentéisme|Absenteisme/i.test(text)) {
-      pushMetric(page, "absenteeism_total", extractGpoAbsTotal(text), "moyenne");
-      pushMetric(page, "absenteeism_maladie", extractGpoAbsDetail(text, "MALADIE"), "faible");
-      pushMetric(page, "absenteeism_accident_travail", extractGpoAbsDetail(text, "ACCIDENT(?:S)?\s+DU\s+TRAVAIL|AT"), "faible");
-      pushMetric(page, "absenteeism_formation", extractGpoAbsDetail(text, "FORMATION"), "faible");
-      pushMetric(page, "absenteeism_conges", extractGpoAbsDetail(text, "CONGE|CONGÉ"), "faible");
-      pushMetric(page, "absenteeism_autres", extractGpoAbsDetail(text, "AUTRES?"), "faible");
+      pushMetric(page, "absenteeism_total", layout.absenteeism_total || extractGpoAbsTotal(text), "moyenne", Boolean(layout.absenteeism_total));
+      pushMetric(page, "absenteeism_maladie", layout.absenteeism_maladie || extractGpoAbsDetail(text, "MALADIE"), "faible", Boolean(layout.absenteeism_maladie));
+      pushMetric(page, "absenteeism_accident_travail", layout.absenteeism_accident_travail || extractGpoAbsDetail(text, "ACCIDENT(?:S)?\s+DU\s+TRAVAIL|AT"), "faible", Boolean(layout.absenteeism_accident_travail));
+      pushMetric(page, "absenteeism_formation", layout.absenteeism_formation || extractGpoAbsDetail(text, "FORMATION"), "faible", Boolean(layout.absenteeism_formation));
+      pushMetric(page, "absenteeism_conges", layout.absenteeism_conges || extractGpoAbsDetail(text, "CONGE|CONGÉ"), "faible", Boolean(layout.absenteeism_conges));
+      pushMetric(page, "absenteeism_autres", layout.absenteeism_autres || extractGpoAbsDetail(text, "AUTRES?"), "faible", Boolean(layout.absenteeism_autres));
     }
     if (/Heures majorées|Heures majorees/i.test(text)) {
       const major = extractGpoMajorHours(text);
@@ -11797,10 +11923,15 @@ function extractGpoIndicators(pages, period) {
         if (major[key] !== "") rows.push({ id: newId("preview"), period, indicator: ({ night: "Heures de nuit cumul", overtime: "Heures supplémentaires cumul", sundays: "Dimanches / fériés cumul" })[key], value: major[key], unit: "h", source: "GPO PDF", sourceType: "GPO PDF", pageSource: `page ${page.page}`, sourceRef: `PDF page ${page.page}`, destinationPath: "hours", destinationLabel: ({ night: "Heures de nuit", overtime: "Heures supplémentaires", sundays: "Dimanches / fériés" })[key], destinationField: key, confidence: "moyenne", selected: true, action: "" });
       });
     }
-    if (/Gains\s*&\s*Pertes|G&P/i.test(text)) rows.push({ id: newId("preview"), period, indicator: "Total Gains & Pertes", label: "Total Gains & Pertes", metricKey: "quality.total_gains_pertes", category: "Qualité", actual: extractGpoGpValues(text).actual, value: extractGpoGpValues(text).actual, budget: extractGpoGpValues(text).budget ?? null, historical: extractGpoGpValues(text).historical ?? null, unit: "k€", scope: "global", source: "GPO", sourceType: "GPO PDF", sourcePage: `page ${page.page}`, pageSource: `page ${page.page}`, sourceRef: `PDF page ${page.page}`, destinationPath: "quality.indicators.Total Gains & Pertes.actual", destinationLabel: "Total Gains & Pertes", confidence: "moyenne", selected: true, action: "" });
+    if (/Gains\s*&\s*Pertes|G&P/i.test(text)) {
+      const gp = layout.gains_pertes || extractGpoGpValues(text);
+      const check = gpoMetricConfidence("quality.total_gains_pertes", gp, Boolean(layout.gains_pertes));
+      rows.push({ id: newId("preview"), period, indicator: "Total Gains & Pertes", label: "Total Gains & Pertes", metricKey: "quality.total_gains_pertes", category: "Qualité", actual: gp.actual, value: gp.actual, budget: gp.budget ?? null, historical: gp.historical ?? null, unit: "k€", scope: "global", source: "GPO", sourceType: "GPO PDF", sourcePage: `page ${page.page}`, pageSource: `page ${page.page}`, sourceRef: `PDF page ${page.page}`, destinationPath: "quality.indicators.Total Gains & Pertes.actual", destinationLabel: "Total Gains & Pertes", confidence: check.label, sourceConfidenceScore: check.score, validationWarning: check.warning || "", selected: check.selected, action: check.action });
+    }
     if (/HAUTEUR PALETTE|Hauteur Palette/i.test(text)) {
-      const values = extractGpoPalletValues(text);
-      if (values.actual !== "") rows.push({ id: newId("preview"), period, indicator: "Hauteur Palette", label: "Hauteur palette", metricKey: "pallet.height", category: "Hauteur palette", actual: values.actual, value: values.actual, budget: values.budget ?? null, historical: values.historical ?? null, objective: values.objective ?? null, unit: "", scope: "global", source: "GPO", sourceType: "GPO PDF", sourcePage: `page ${page.page}`, pageSource: `page ${page.page}`, sourceRef: `PDF page ${page.page}`, destinationPath: "palletHeight.actual", destinationLabel: "Hauteur palette", confidence: "faible", selected: true, action: "" });
+      const values = layout.pallet_height || extractGpoPalletValues(text);
+      const check = gpoMetricConfidence("pallet.height", values, Boolean(layout.pallet_height));
+      if (values.actual !== "") rows.push({ id: newId("preview"), period, indicator: "Hauteur Palette", label: "Hauteur palette", metricKey: "pallet.height", category: "Hauteur palette", actual: values.actual, value: values.actual, budget: values.budget ?? null, historical: values.historical ?? null, objective: values.objective ?? null, unit: "", scope: "global", source: "GPO", sourceType: "GPO PDF", sourcePage: `page ${page.page}`, pageSource: `page ${page.page}`, sourceRef: `PDF page ${page.page}`, destinationPath: "palletHeight.actual", destinationLabel: "Hauteur palette", confidence: check.label, sourceConfidenceScore: check.score, validationWarning: check.warning || "", selected: check.selected, action: check.action });
     }
   });
   return dedupeImportRows(rows);
