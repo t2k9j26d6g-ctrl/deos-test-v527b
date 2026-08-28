@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.28P";
+const DEOS_VERSION = "V5.28Q";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -9173,7 +9173,7 @@ const performanceSummaryMetricDefinitions = [
   { metricKey: "cgtab.premium_hours.overtime_25", label: "Heures majorées HS25", family: "heures", unit: "h", targetPath: "complementary.cgtab.premium_hours_overtime_25", metricPath: "", aliases: ["hs25"] },
   { metricKey: "absenteeism.maladie", label: "Absentéisme maladie", family: "absenteisme", unit: "%", targetPath: "absenteeism.details.Maladie.actual", metricPath: "absenteeism.details.Maladie", aliases: ["maladie"] },
   { metricKey: "absenteeism.accident_travail", label: "Absentéisme AT", family: "absenteisme", unit: "%", targetPath: "absenteeism.details.Accidents du travail.actual", metricPath: "absenteeism.details.Accidents du travail", aliases: ["accidents du travail", "at"] },
-  { metricKey: "cgtab.absence.sickness_hours", label: "Heures maladie (CGTAB)", family: "absenteisme", unit: "h", targetPath: "complementary.cgtab.absence_sickness_hours", metricPath: "", aliases: ["maladie"] },
+  { metricKey: "cgtab.absence.sickness_hours", label: "Heures maladie (CGTAB)", family: "absenteisme", unit: "h", targetPath: "complementary.cgtab.absence_sickness_hours", metricPath: "", aliases: ["heures maladie", "heures maladie cgtab", "sickness hours"] },
   { metricKey: "tbag.preparation.productivity.total", label: "Préparation - Productivité globale", family: "preparation_detaillee", unit: "colis/h", targetPath: "complementary.tbag.preparation_productivity_total.pop_total.banner_total_banniere", metricPath: "", aliases: ["préparation - productivité globale"] },
   { metricKey: "tbag.preparation.volume.total", label: "Préparation - Volume total", family: "preparation_detaillee", unit: "colis", targetPath: "complementary.tbag.preparation_volume_total.pop_total.banner_total_banniere", metricPath: "", aliases: ["préparation - volume total"] },
   { metricKey: "tbag.preparation.hours.total", label: "Préparation - Heures directes", family: "preparation_detaillee", unit: "h", targetPath: "complementary.tbag.preparation_hours_total.pop_total.banner_total_banniere", metricPath: "", aliases: ["préparation - heures directes"] },
@@ -9738,6 +9738,19 @@ function performanceSummaryFormatValue(value, unit, metricKey = "") {
   return unit ? `${formatted} ${unit}` : formatted;
 }
 
+// V5.28Q : un écart entre deux pourcentages est exprimé en points de pourcentage.
+// Il ne faut pas retransformer 0,8 point en 80 %.
+function performanceSummaryFormatDelta(value, unit, metricKey = "") {
+  if (!perfHas(value)) return "Donnée non disponible";
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return String(value);
+  const normalizedUnit = String(unit || "").toLowerCase();
+  if (normalizedUnit === "%" || normalizedUnit === "pourcentage") {
+    return `${numeric.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} pt`;
+  }
+  return performanceSummaryFormatValue(value, unit, metricKey);
+}
+
 function performanceSummaryBuildRows(period) {
   return performanceSummaryMetricDefinitions.map(def => {
     const preferred = getPreferredPerformanceValue(def.metricKey, period);
@@ -10161,8 +10174,8 @@ function performanceDirectionCards(period) {
       <div class="performance-summary-direction-meta">Source : ${esc(row.sourceLabel || performanceSourceLabel(row.source))}</div>
       <div class="performance-summary-direction-lines">
         <div>Objectif/Budget : ${esc(performanceSummaryFormatValue(row.budget, row.unit, row.metricKey))}</div>
-        <div>Écart : ${esc(performanceSummaryFormatValue(row.gap, row.unit, row.metricKey))}</div>
-        <div>Tendance : ${esc(performanceSummaryFormatValue(row.trend, row.unit, row.metricKey))}</div>
+        <div>Écart : ${esc(performanceSummaryFormatDelta(row.gap, row.unit, row.metricKey))}</div>
+        <div>Tendance : ${esc(performanceSummaryFormatDelta(row.trend, row.unit, row.metricKey))}</div>
       </div>
       <div class="performance-summary-direction-badges">${performanceWarningsBadgesV519(row)}</div>
       <button class="secondary" onclick="openPerformanceSummaryDetail('${esc(row.metricKey)}')">Voir le détail</button>
@@ -10312,8 +10325,8 @@ function performanceSummarySectionTable(period, familyKey, rows) {
         <td>${esc(performanceSummaryFormatValue(row.value, row.unit, row.metricKey))}</td>
         <td>${esc(performanceSummaryFormatValue(row.budget, row.unit, row.metricKey))}</td>
         <td>${esc(performanceSummaryFormatValue(row.historical, row.unit, row.metricKey))}</td>
-        <td>${esc(performanceSummaryFormatValue(row.gap, row.unit, row.metricKey))}</td>
-        <td>${esc(performanceSummaryFormatValue(row.trend, row.unit, row.metricKey))}</td>
+        <td>${esc(performanceSummaryFormatDelta(row.gap, row.unit, row.metricKey))}</td>
+        <td>${esc(performanceSummaryFormatDelta(row.trend, row.unit, row.metricKey))}</td>
         <td>${esc(row.sourceLabel || performanceSourceLabel(row.source))}</td>
         <td>${performanceStatusBadgeV519(row)}</td>
         <td>${performanceWarningsBadgesV519(row)}</td>
@@ -10361,8 +10374,8 @@ function performanceSummaryDetailPanel(period, rows) {
           <div><strong>Source officielle</strong><p>${esc(row.sourceLabel || performanceSourceLabel(row.source))}</p></div>
           <div><strong>Budget</strong><p>${esc(performanceSummaryFormatValue(row.budget, row.unit, row.metricKey))}</p></div>
           <div><strong>Historique</strong><p>${esc(performanceSummaryFormatValue(row.historical, row.unit, row.metricKey))}</p></div>
-          <div><strong>Écart</strong><p>${esc(performanceSummaryFormatValue(row.gap, row.unit, row.metricKey))}</p></div>
-          <div><strong>Tendance</strong><p>${esc(performanceSummaryFormatValue(row.trend, row.unit, row.metricKey))}</p></div>
+          <div><strong>Écart</strong><p>${esc(performanceSummaryFormatDelta(row.gap, row.unit, row.metricKey))}</p></div>
+          <div><strong>Tendance</strong><p>${esc(performanceSummaryFormatDelta(row.trend, row.unit, row.metricKey))}</p></div>
           <div><strong>Période</strong><p>${esc(performancePeriodTitle(period))}</p></div>
           <div><strong>Qualité</strong><p>${esc(row.confidence || "moyenne")}</p></div>
         </div>
@@ -10526,12 +10539,49 @@ function duplicatePerformancePrevious() {
   renderPerformance();
 }
 
+// V5.28Q : la vue historique et la synthèse Direction utilisent la même résolution
+// de source que le tableau de pilotage supérieur. Cela évite qu'une ancienne valeur
+// locale masque un Budget/Historique GPO pourtant disponible.
+function performanceResolvedRecordForView(p) {
+  const resolved = normalizePerformance(JSON.parse(JSON.stringify(p || {})));
+  const period = performancePeriodKey(resolved);
+  const mappings = [
+    ["activity.colis_total", "activity"],
+    ["ipo.total", "ipo.total"],
+    ["ipo.variable", "ipo.variable"],
+    ["productivity.preparation", "productivity.Préparation"],
+    ["productivity.reception", "productivity.Réception"],
+    ["productivity.manutention", "productivity.Manutention"],
+    ["productivity.chargement", "productivity.Chargement"],
+    ["productivity.transit", "productivity.Transit"],
+    ["hours.total", "hours.total"],
+    ["hours.direct", "hours.direct"],
+    ["hours.indirect", "hours.indirect"],
+    ["absenteeism.total", "absenteeism.total"],
+    ["absenteeism.maladie", "absenteeism.details.Maladie"],
+    ["absenteeism.accident_travail", "absenteeism.details.Accidents du travail"],
+    ["quality.total_gains_pertes", "quality.indicators.Total Gains & Pertes"],
+    ["pallet.height", "palletHeight"]
+  ];
+  mappings.forEach(([metricKey, path]) => {
+    const preferred = getPreferredPerformanceValue(metricKey, period);
+    if (!preferred || !perfHas(preferred.value)) return;
+    const metric = perfPath(resolved, path);
+    if (!metric || typeof metric !== "object") return;
+    metric.actual = preferred.value;
+    if (perfHas(preferred.budget)) metric.budget = preferred.budget;
+    if (perfHas(preferred.historical)) metric.historical = preferred.historical;
+  });
+  return resolved;
+}
+
 function performanceView(p) {
+  const viewP = performanceResolvedRecordForView(p);
   const actions = state.actions.filter(a => (a.linkedPerformance || []).includes(p.id) || (p.link || "").includes(perfPeriodLabel(p)));
   const decisions = state.decisions.filter(d => (d.linkedPerformance || []).includes(p.id));
   const documents = state.documents.filter(d => (d.linkedPerformance || []).includes(p.id));
-  return `<div class="card"><div class="row"><div><h2>${esc(perfPeriodLabel(p))}</h2><span class="muted">Statut : ${esc(p.status)} · Dernière mise à jour : ${esc(p.updatedAt || "")}</span></div><div class="row-actions"><button class="action" onclick="performanceEdit=true;renderPerformance()">Modifier</button><button class="secondary" onclick="startPerformanceRdp('${p.id}')">Générer une synthèse RDP</button></div></div></div><div class="grid two">${performanceOverviewSection()}<div class="card"><h2>Activité</h2>${perfMetricBlock("Colis", p.activity)}</div><div class="card"><h2>IPO</h2>${perfMetricBlock("IPO total", p.ipo.total)}${perfMetricBlock("IPO variable", p.ipo.variable)}</div><div class="card full-span"><h2>Productivité par métier</h2>${perfProductivityTable(p)}</div><div class="card"><h2>Heures</h2>${perfMetricBlock("Heures totales", p.hours.total)}${perfMetricBlock("Heures indirectes", p.hours.indirect)}</div><div class="card"><h2>Absentéisme</h2>${perfMetricBlock("Absentéisme total", p.absenteeism.total)}</div><div class="card"><h2>Qualité et Gains & Pertes</h2>${perfQualitySummary(p)}</div><div class="card"><h2>Hauteur palette</h2>${perfPalletSummary(p)}</div><div class="card"><h2>Synthèse DE</h2><p>${esc(p.synthesis || buildPerformanceSynthesis(p))}</p></div>${performanceSourceBlock(p)}<div class="card"><h2>Actions liées</h2>${actions.map(a => `<div class="item"><strong>${esc(a.title)}</strong><span class="muted">${esc(a.owner || "")} · ${esc(a.due || "")}</span></div>`).join("") || `<div class="empty">Aucune action liée.</div>`}</div><div class="card"><h2>Décisions liées</h2>${decisions.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(decisionStatusLabel(d.status))}</span></div>`).join("") || `<div class="empty">Aucune décision liée.</div>`}</div><div class="card full-span"><h2>Documents et comptes rendus liés</h2>${documents.map(d => `<div class="item clickable" onclick="openDocument('${d.id}')"><strong>${esc(d.title || d.name || "Document")}</strong><span class="muted">${esc(d.type || d.category || "")}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`}</div></div>`;
-  return `<div class="card"><div class="row"><div><h2>${esc(perfPeriodLabel(p))}</h2><span class="muted">Statut : ${esc(p.status)} ? Dernière mise à jour : ${esc(p.updatedAt || "")}</span></div><div class="row-actions"><button class="action" onclick="performanceEdit=true;renderPerformance()">Modifier</button><button class="secondary" onclick="startPerformanceRdp('${p.id}')">Générer une synthèse RDP</button></div></div></div><div class="grid two"><div class="card"><h2>Activité</h2>${perfMetricBlock("Colis", p.activity)}</div><div class="card"><h2>IPO</h2>${perfMetricBlock("IPO total", p.ipo.total)}${perfMetricBlock("IPO variable", p.ipo.variable)}</div><div class="card full-span"><h2>Productivité par métier</h2>${perfProductivityTable(p)}</div><div class="card"><h2>Heures</h2>${perfMetricBlock("Heures totales", p.hours.total)}${perfMetricBlock("Heures indirectes", p.hours.indirect)}</div><div class="card"><h2>Absentéisme</h2>${perfMetricBlock("Absentéisme total", p.absenteeism.total)}</div><div class="card"><h2>Qualité et Gains & Pertes</h2>${perfQualitySummary(p)}</div><div class="card"><h2>Hauteur palette</h2>${perfPalletSummary(p)}</div><div class="card"><h2>Synthèse DE</h2><p>${esc(p.synthesis || buildPerformanceSynthesis(p))}</p></div><div class="card full-span"><h2>Historique et tendances</h2>${perfCharts()}</div><div class="card"><h2>Actions liées</h2>${actions.map(a => `<div class="item"><strong>${esc(a.title)}</strong><span class="muted">${esc(a.owner || "")} · ${esc(a.due || "")}</span></div>`).join("") || `<div class="empty">Aucune action liée.</div>`}</div><div class="card"><h2>Décisions liées</h2>${decisions.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(decisionStatusLabel(d.status))}</span></div>`).join("") || `<div class="empty">Aucune décision liée.</div>`}</div><div class="card full-span"><h2>Documents et comptes rendus liés</h2>${documents.map(d => `<div class="item clickable" onclick="editDocument('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(d.type || "")} · ${esc(d.category || "")} · ${esc(d.status || "")}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`}</div>${performanceSourceBlock(p)}<div class="card full-span">${performanceImportHistory()}</div></div>`;
+  return `<div class="card"><div class="row"><div><h2>${esc(perfPeriodLabel(p))}</h2><span class="muted">Statut : ${esc(p.status)} · Dernière mise à jour : ${esc(p.updatedAt || "")}</span></div><div class="row-actions"><button class="action" onclick="performanceEdit=true;renderPerformance()">Modifier</button><button class="secondary" onclick="startPerformanceRdp('${p.id}')">Générer une synthèse RDP</button></div></div></div><div class="grid two">${performanceOverviewSection()}<div class="card"><h2>Activité</h2>${perfMetricBlock("Colis", viewP.activity)}</div><div class="card"><h2>IPO</h2>${perfMetricBlock("IPO total", viewP.ipo.total)}${perfMetricBlock("IPO variable", viewP.ipo.variable)}</div><div class="card full-span"><h2>Productivité par métier</h2>${perfProductivityTable(viewP)}</div><div class="card"><h2>Heures</h2>${perfMetricBlock("Heures totales", viewP.hours.total)}${perfMetricBlock("Heures indirectes", viewP.hours.indirect)}</div><div class="card"><h2>Absentéisme</h2>${perfMetricBlock("Absentéisme total", viewP.absenteeism.total)}</div><div class="card"><h2>Qualité et Gains & Pertes</h2>${perfQualitySummary(viewP)}</div><div class="card"><h2>Hauteur palette</h2>${perfPalletSummary(viewP)}</div><div class="card"><h2>Synthèse DE</h2><p>${esc(p.synthesis || buildPerformanceSynthesis(viewP))}</p></div>${performanceSourceBlock(p)}<div class="card"><h2>Actions liées</h2>${actions.map(a => `<div class="item"><strong>${esc(a.title)}</strong><span class="muted">${esc(a.owner || "")} · ${esc(a.due || "")}</span></div>`).join("") || `<div class="empty">Aucune action liée.</div>`}</div><div class="card"><h2>Décisions liées</h2>${decisions.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(decisionStatusLabel(d.status))}</span></div>`).join("") || `<div class="empty">Aucune décision liée.</div>`}</div><div class="card full-span"><h2>Documents et comptes rendus liés</h2>${documents.map(d => `<div class="item clickable" onclick="openDocument('${d.id}')"><strong>${esc(d.title || d.name || "Document")}</strong><span class="muted">${esc(d.type || d.category || "")}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`}</div></div>`;
+  return `<div class="card"><div class="row"><div><h2>${esc(perfPeriodLabel(p))}</h2><span class="muted">Statut : ${esc(p.status)} ? Dernière mise à jour : ${esc(p.updatedAt || "")}</span></div><div class="row-actions"><button class="action" onclick="performanceEdit=true;renderPerformance()">Modifier</button><button class="secondary" onclick="startPerformanceRdp('${p.id}')">Générer une synthèse RDP</button></div></div></div><div class="grid two"><div class="card"><h2>Activité</h2>${perfMetricBlock("Colis", viewP.activity)}</div><div class="card"><h2>IPO</h2>${perfMetricBlock("IPO total", viewP.ipo.total)}${perfMetricBlock("IPO variable", viewP.ipo.variable)}</div><div class="card full-span"><h2>Productivité par métier</h2>${perfProductivityTable(viewP)}</div><div class="card"><h2>Heures</h2>${perfMetricBlock("Heures totales", viewP.hours.total)}${perfMetricBlock("Heures indirectes", viewP.hours.indirect)}</div><div class="card"><h2>Absentéisme</h2>${perfMetricBlock("Absentéisme total", viewP.absenteeism.total)}</div><div class="card"><h2>Qualité et Gains & Pertes</h2>${perfQualitySummary(viewP)}</div><div class="card"><h2>Hauteur palette</h2>${perfPalletSummary(viewP)}</div><div class="card"><h2>Synthèse DE</h2><p>${esc(p.synthesis || buildPerformanceSynthesis(viewP))}</p></div><div class="card full-span"><h2>Historique et tendances</h2>${perfCharts()}</div><div class="card"><h2>Actions liées</h2>${actions.map(a => `<div class="item"><strong>${esc(a.title)}</strong><span class="muted">${esc(a.owner || "")} · ${esc(a.due || "")}</span></div>`).join("") || `<div class="empty">Aucune action liée.</div>`}</div><div class="card"><h2>Décisions liées</h2>${decisions.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(decisionStatusLabel(d.status))}</span></div>`).join("") || `<div class="empty">Aucune décision liée.</div>`}</div><div class="card full-span"><h2>Documents et comptes rendus liés</h2>${documents.map(d => `<div class="item clickable" onclick="editDocument('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(d.type || "")} · ${esc(d.category || "")} · ${esc(d.status || "")}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`}</div>${performanceSourceBlock(p)}<div class="card full-span">${performanceImportHistory()}</div></div>`;
 }
 
 function performanceSourceBlock(p) {
@@ -10568,10 +10618,13 @@ function performanceImportSummaryCard(item, p) {
   const detected = ensureArray(item.indicators).length;
   const conflicts = Number(item.conflictCount ?? ensureArray(item.conflicts).length);
   const expanded = expandedPerformanceImportId === item.id;
+  const importStatusText = imported === 0 && detected > 0 && conflicts === 0
+    ? `${detected} indicateur(s) déjà à jour · aucune modification`
+    : `${imported} indicateur(s) importé(s) · ${detected} détecté(s) · ${conflicts} conflit(s)`;
   return `<div class="item import-summary">
     <div>
       <strong>Source : ${esc(performanceImportSourceLabel(item))} — ${esc(performanceImportPeriodTitle(item, p))}</strong>
-      <span class="muted">${imported} indicateur(s) importé(s) · ${detected} détecté(s) · ${conflicts} conflit(s)</span>
+      <span class="muted">${esc(importStatusText)}</span>
       <span class="meta">${esc(item.sourceFile || "")}${item.site ? " · Site " + esc(item.site) : ""}${item.importDate ? " · " + esc(item.importDate) : ""}</span>
     </div>
     <div class="row-actions"><button class="secondary" onclick="togglePerformanceImportDetail('${esc(item.id)}')">${expanded ? "Masquer le détail" : "Voir le détail"}</button></div>
@@ -10640,7 +10693,7 @@ function perfPalletSummary(p) {
 }
 
 function performanceForm(p) {
-  return `<div class="card"><h2>Modifier ${esc(perfPeriodLabel(p))}</h2><div class="form-grid"><input id="pfYear" type="number" value="${p.year}"><select id="pfMonth">${perfMonths.map((m, i) => `<option value="${i + 1}" ${Number(p.month) === i + 1 ? "selected" : ""}>${m}</option>`).join("")}</select><select id="pfStatus"><option ${p.status === "Brouillon" ? "selected" : ""}>Brouillon</option><option ${p.status === "En cours d'analyse" ? "selected" : ""}>En cours d'analyse</option><option ${p.status === "Validé" ? "selected" : ""}>Validé</option><option ${p.status === "Archivé" ? "selected" : ""}>Archivé</option></select></div>${perfMetricForm("Activité colis", "activity", p.activity, ["comment", "highlights", "causes", "projection"])}${perfIpoForm(p)}${perfJobsForm(p)}${perfHoursForm(p)}${perfAbsForm(p)}${perfQualityForm(p)}${perfPalletForm(p)}<div class="card"><h2>Synthèse DE</h2><textarea id="pfSynthesis">${esc(p.synthesis || buildPerformanceSynthesis(p))}</textarea></div><div class="grid three manager-links"><div><label>Managers liés</label>${checkboxList("pfManagers", state.managers, p.linkedManagers, m => m.name)}</div><div><label>Projets liés</label>${checkboxList("pfProjects", state.projects, p.linkedProjects, pr => pr.name)}</div><div><label>Dossiers liés</label>${folderSelect("pfFolders", p.linkedFolders)}</div></div><button class="action" onclick="savePerformance('${p.id}')">Enregistrer</button><button class="secondary" onclick="performanceEdit=false;renderPerformance()">Annuler</button></div>`;
+  return `<div class="card"><h2>Modifier ${esc(perfPeriodLabel(p))}</h2><div class="form-grid"><input id="pfYear" type="number" value="${p.year}"><select id="pfMonth">${perfMonths.map((m, i) => `<option value="${i + 1}" ${Number(p.month) === i + 1 ? "selected" : ""}>${m}</option>`).join("")}</select><select id="pfStatus"><option ${p.status === "Brouillon" ? "selected" : ""}>Brouillon</option><option ${p.status === "En cours d'analyse" ? "selected" : ""}>En cours d'analyse</option><option ${p.status === "Validé" ? "selected" : ""}>Validé</option><option ${p.status === "Archivé" ? "selected" : ""}>Archivé</option></select></div>${perfMetricForm("Activité colis", "activity", p.activity, ["comment", "highlights", "causes", "projection"])}${perfIpoForm(p)}${perfJobsForm(p)}${perfHoursForm(p)}${perfAbsForm(p)}${perfQualityForm(p)}${perfPalletForm(p)}<div class="card"><h2>Synthèse DE</h2><textarea id="pfSynthesis">${esc(p.synthesis || buildPerformanceSynthesis(viewP))}</textarea></div><div class="grid three manager-links"><div><label>Managers liés</label>${checkboxList("pfManagers", state.managers, p.linkedManagers, m => m.name)}</div><div><label>Projets liés</label>${checkboxList("pfProjects", state.projects, p.linkedProjects, pr => pr.name)}</div><div><label>Dossiers liés</label>${folderSelect("pfFolders", p.linkedFolders)}</div></div><button class="action" onclick="savePerformance('${p.id}')">Enregistrer</button><button class="secondary" onclick="performanceEdit=false;renderPerformance()">Annuler</button></div>`;
 }
 
 function perfMetricForm(title, path, m, textFields = []) {
@@ -10710,7 +10763,7 @@ function savePerformance(id) {
 
 function buildPerformanceSynthesis(p) {
   const metrics = [
-    ["Activité", p.activity], ["IPO total", p.ipo.total], ["IPO variable", p.ipo.variable], ["Heures totales", p.hours.total], ["Absentéisme", p.absenteeism.total], ["Hauteur palette", { historical: p.palletHeight.historical, budget: p.palletHeight.objective, actual: p.palletHeight.actual }]
+    ["Activité", p.activity], ["IPO total", p.ipo.total], ["IPO variable", p.ipo.variable], ["Heures totales", p.hours.total], ["Absentéisme", p.absenteeism.total], ["Hauteur palette", { historical: p.palletHeight.historical, budget: p.palletHeight.budget, actual: p.palletHeight.actual }]
   ];
   const gaps = metrics.map(([label, m]) => ({ label, pct: perfGap(m.actual, m.budget).pct, comment: m.comment || m.causes || "" })).filter(x => x.pct !== "");
   const positives = gaps.filter(x => x.pct >= 0).slice(0, 3).map(x => `- ${x.label} : ${perfFmt(x.pct, "%")}`).join("\n") || "À compléter";
@@ -14321,9 +14374,17 @@ function applyImportedValueToPerformance(perf, row) {
     perf.complementaryKpis.push(nextValue);
     return true;
   }
-  const target = perfPath(perf, row.destinationPath);
-  if (!target) return false;
-  const field = row.destinationField || "actual";
+  // V5.28Q : les cibles existantes sont historiquement décrites sous la forme
+  // « productivity.Préparation.actual ». Pour stocker Réel/Budget/Historique,
+  // on doit travailler sur l'objet métrique parent et non sur la valeur scalaire actual.
+  let destinationPath = String(row.destinationPath || "");
+  let field = row.destinationField || "actual";
+  let target = perfPath(perf, destinationPath);
+  if ((target === null || target === undefined || typeof target !== "object") && destinationPath.endsWith(`.${field}`)) {
+    destinationPath = destinationPath.slice(0, -(field.length + 1));
+    target = perfPath(perf, destinationPath);
+  }
+  if (!target || typeof target !== "object") return false;
   const importsMetricTriplet = field === "actual" && (row.budget !== undefined || row.historical !== undefined);
   const nextBudget = row.budget !== null && row.budget !== undefined && row.budget !== "" ? row.budget : target.budget;
   const nextHistorical = row.historical !== null && row.historical !== undefined && row.historical !== "" ? row.historical : target.historical;
@@ -14337,10 +14398,10 @@ function applyImportedValueToPerformance(perf, row) {
     target.budget = nextBudget;
     target.historical = nextHistorical;
   }
-  if (row.destinationPath === "palletHeight" && row.objective !== undefined && row.objective !== "") target.objective = row.objective;
+  if (destinationPath === "palletHeight" && row.objective !== undefined && row.objective !== "") target.objective = row.objective;
   const sourceComment = `Source : ${row.source || "Import"} · ${row.sourceRef || ""}`.trim();
   if (!String(target.comment || "").includes(sourceComment)) target.comment = `${target.comment ? target.comment + "\n" : ""}${sourceComment}`.trim();
-  if (row.destinationPath.startsWith("productivity.")) target.status = perfStatus(target);
+  if (destinationPath.startsWith("productivity.")) target.status = perfStatus(target);
   return true;
 }
 
