@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.28M";
+const DEOS_VERSION = "V5.28N";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -9486,9 +9486,11 @@ function performancePriorityKeyForImportRow(row = {}) {
 function performanceSourceAuthority(row = {}) {
   const source = performanceSourceKey(row.source || row.sourceType || "Import");
   const priorityKey = performancePriorityKeyForImportRow(row);
-  const officialSource = performanceOfficialSourceForFamily(priorityKey);
+  const metricKey = String(row.metricKey || row.targetId || "").toLowerCase();
+  const gpoCorePilotage = source === "GPO" && (metricKey === "quality.total_gains_pertes" || metricKey === "pallet.height");
+  const officialSource = gpoCorePilotage ? "GPO" : performanceOfficialSourceForFamily(priorityKey);
   const isExistingTarget = row.targetType === "existing" && row.destinationPath && !String(row.destinationPath).startsWith("complementary.");
-  const sourceIsOfficial = !officialSource || source === officialSource;
+  const sourceIsOfficial = gpoCorePilotage || !officialSource || source === officialSource;
   return { source, priorityKey, officialSource, isExistingTarget, sourceIsOfficial };
 }
 
@@ -9510,12 +9512,12 @@ function enforcePerformanceSourceAuthority(row = {}) {
   return {
     ...row,
     destinationPath: analyticalPath,
-    destinationLabel: `${row.destinationLabel || row.indicator} â€” analytique ${performanceSourceLabel(authority.source)}`,
+    destinationLabel: `${row.destinationLabel || row.indicator} — analytique ${performanceSourceLabel(authority.source)}`,
     destinationId: analyticalPath,
     targetId: analyticalPath,
     targetType: "complementary",
     scope: row.scope || "analysisOnly",
-    confidence: row.confidence === "Ã©levÃ©e" ? "moyenne" : (row.confidence || "moyenne"),
+    confidence: row.confidence === "élevée" ? "moyenne" : (row.confidence || "moyenne"),
     sourceAuthority: "secondary",
     officialSource: authority.officialSource,
     authorityReason: `Source secondaire : ${performanceSourceLabel(authority.source)}. Source officielle : ${performanceSourceLabel(authority.officialSource)}.`
@@ -11118,6 +11120,7 @@ function performanceImportStepPreview() {
     if (row.status === "Identique") return "Identique";
     if (!currentValueExists && row.action !== "ignore") return "Ajouter";
     if (row.action === "keep" || row.action === "ignore") return "Conserver";
+    if ((row.status === "Conflit" || row.status === "Différente") && row.recommendedSourceReplacement) return "Remplacer (GPO recommandé)";
     if (row.status === "Conflit" || row.status === "Différente") return "Remplacer";
     return row.action === "use" ? "Ajouter" : "Conserver";
   };
@@ -11137,7 +11140,7 @@ function performanceImportStepPreview() {
   const unmappedTable = unmappedRows.length ? `<div class="card"><h3>Indicateurs détectés mais non mappés</h3><table class="perf-table import-preview-table"><thead><tr><th>Période</th><th>Type</th><th>Catégorie</th><th>Population</th><th>Bannière</th><th>Centre de coûts</th><th>Direct.</th><th>Indicateur source</th><th>Réel</th><th>Budget</th><th>Historique</th><th>Écart Budget</th><th>Écart Historique</th><th>Unité</th><th>Agrégation</th><th>Contributeurs</th><th>Règle confidentialité</th><th>Colonnes source</th><th>Niveau privacy</th><th>Feuille</th><th>Cellule</th><th>Confiance</th><th>Destination</th></tr></thead><tbody>${unmappedRows.map(row => `<tr class="import-orange"><td>${esc(row.period || "à confirmer")}</td><td>${esc(typeLabel(row))}</td><td>${esc(row.category || "")}</td><td>${esc(row.population || "")}</td><td>${esc(row.banner || "")}</td><td>${esc(row.costCenter || "")}</td><td>${esc(row.directness || "")}</td><td>${esc(row.label || row.indicator)}</td><td>${esc(formatImportActualDisplay(row))}</td><td>${esc(row.budget ?? "")}</td><td>${esc(row.historical ?? "")}</td><td>${esc(deltaLabel(row.deltaBudget, row.deltaBudgetPercent))}</td><td>${esc(deltaLabel(row.deltaHistorical, row.deltaHistoricalPercent))}</td><td>${esc(row.unit || "")}</td><td>${esc(row.aggregationType || "")}</td><td>${esc(row.employeeCount ?? "")}</td><td>${esc(row.privacyRule || "")}</td><td>${esc(row.sourceColumns || "")}</td><td>${esc(row.privacyLevel || "")}</td><td>${esc(row.sourceSheet || row.sourcePage || "")}</td><td>${esc(row.sourceCell || row.pageSource || row.sourceRef || "")}</td><td>${esc(row.confidenceText || "")}</td><td><select onchange="setImportPreviewTarget('${row.id}', this.value)">${targetOptions.map(target => `<option value="${esc(target.id)}" ${(row.targetId || row.destinationId || "ignore") === target.id ? "selected" : ""}>${esc(target.label)}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table></div>` : "";
   const maskedGroupsTable = maskedGroups.length ? `<div class="card"><h3>Groupes masqués pour confidentialité</h3><table class="perf-table import-preview-table"><thead><tr><th>Période</th><th>Type</th><th>Valeur</th><th>Contributeurs</th><th>Règle</th><th>Feuille</th></tr></thead><tbody>${maskedGroups.map(row => `<tr class="import-gray"><td>${esc(row.period || "")}</td><td>${esc(row.groupType || "")}</td><td>${esc(row.label || row.value || "")}</td><td>${esc(row.employeeCount || "")}</td><td>${esc(row.rule || "")}</td><td>${esc(row.sourceSheet || "")}</td></tr>`).join("")}</tbody></table></div>` : "";
   const emptyDiagnostic = performanceImportEmptyDiagnostic();
-  return `<div class="card"><h2>Aperçu avant import</h2><p class="muted">Aucune donnée Performance existante ne sera écrasée silencieusement. Les correspondances sont proposées, révisables et mémorisées uniquement si vous les validez.</p>${privacyBanner}${tbagPrivacyBanner}${gaDetailPrivacyBanner}${gaDetailComparisonCards}${periodSelector}<table class="perf-table import-preview-table"><thead><tr><th></th><th>Période</th><th>Type</th><th>Catégorie</th><th>Population</th><th>Bannière</th><th>Centre de coûts</th><th>Direct.</th><th>KPI</th><th>Réel</th><th>Budget</th><th>Historique</th><th>Écart Budget</th><th>Écart Historique</th><th>Unité</th><th>Agrégation</th><th>Contributeurs</th><th>Règle confidentialité</th><th>Colonnes source</th><th>Niveau privacy</th><th>Feuille</th><th>Cellule</th><th>Destination DEOS</th><th>Valeur DEOS</th><th>Confiance</th><th>Action prévue</th></tr></thead><tbody>${rows || `<tr><td colspan="26">${emptyDiagnostic}</td></tr>`}</tbody></table>${maskedGroupsTable}${unmappedTable}<div class="row-actions"><button class="secondary" onclick="setPerformanceImportStep(2)">Retour</button><button class="secondary" onclick="cancelPerformanceImport()">Annuler</button><button class="action" onclick="setPerformanceImportStep(4)">Valider l'aperçu</button></div></div>`;
+  return `<div class="card"><h2>Aperçu avant import</h2><p class="muted">Aucune donnée Performance existante ne sera écrasée silencieusement. Les correspondances sont proposées, révisables et mémorisées uniquement si vous les validez.</p><div class="item alert-blue"><strong>Règle V5.28N</strong><span class="muted">Pour un KPI GPO reconnu avec une confiance ≥ 85 %, DEOS pré-sélectionne la source GPO lorsqu’elle diffère d’une ancienne valeur DEOS. Vous gardez la validation finale.</span></div>${privacyBanner}${tbagPrivacyBanner}${gaDetailPrivacyBanner}${gaDetailComparisonCards}${periodSelector}<table class="perf-table import-preview-table"><thead><tr><th></th><th>Période</th><th>Type</th><th>Catégorie</th><th>Population</th><th>Bannière</th><th>Centre de coûts</th><th>Direct.</th><th>KPI</th><th>Réel</th><th>Budget</th><th>Historique</th><th>Écart Budget</th><th>Écart Historique</th><th>Unité</th><th>Agrégation</th><th>Contributeurs</th><th>Règle confidentialité</th><th>Colonnes source</th><th>Niveau privacy</th><th>Feuille</th><th>Cellule</th><th>Destination DEOS</th><th>Valeur DEOS</th><th>Confiance</th><th>Action prévue</th></tr></thead><tbody>${rows || `<tr><td colspan="26">${emptyDiagnostic}</td></tr>`}</tbody></table>${maskedGroupsTable}${unmappedTable}<div class="row-actions"><button class="secondary" onclick="setPerformanceImportStep(2)">Retour</button><button class="secondary" onclick="cancelPerformanceImport()">Annuler</button><button class="action" onclick="setPerformanceImportStep(4)">Valider l'aperçu</button></div></div>`;
 }
 
 function performanceImportRawIndicators(file) {
@@ -11584,7 +11587,7 @@ function gpoScopeSaintGillesPages(pages = []) {
 
 async function analyzeGpoPdfFile(file, detected) {
   if ((detected.extension || "").toLowerCase() !== "pdf") {
-    return { ...detected, status: "non reconnu", confidence: "faible", message: "Format non supportÃ© pour GPO PDF." };
+    return { ...detected, status: "non reconnu", confidence: "faible", message: "Format non supporté pour GPO PDF." };
   }
 
   const pages = await readPdfPages(file);
@@ -11606,21 +11609,21 @@ async function analyzeGpoPdfFile(file, detected) {
       selectedPeriods: [period],
       sheets: [],
       detectedIndicators: [],
-      message: "Import bloquÃ© : section Saint-Gilles non dÃ©tectÃ©e de maniÃ¨re fiable dans le GPO."
+      message: "Import bloqué : section Saint-Gilles non détectée de manière fiable dans le GPO."
     };
   }
 
   const scopedText = scoped.pages.map(p => p.text).join("\n");
-  const markers = ["Passage IPO total","Passage IPO Variable","Mensu IPO","Performance mensuelle","Evolution HEURES","AbsentÃ©isme","Gains & Pertes","HAUTEUR PALETTE"];
+  const markers = ["Passage IPO total","Passage IPO Variable","Mensu IPO","Performance mensuelle","Evolution HEURES","Absentéisme","Gains & Pertes","HAUTEUR PALETTE"];
   const hitCount = markers.filter(marker => normalizeText(scopedText).includes(normalizeText(marker))).length;
   const indicators = extractGpoIndicators(scoped.pages, period);
 
   return {
     ...detected,
     source: "GPO PDF",
-    sourceType: "GPO PDF rÃ©gional",
+    sourceType: "GPO PDF régional",
     status: hitCount >= 4 && indicators.length ? "reconnu" : indicators.length ? "probablement reconnu" : "non reconnu",
-    confidence: hitCount >= 4 && indicators.length ? "Ã©levÃ©e" : indicators.length ? "moyenne" : "faible",
+    confidence: hitCount >= 4 && indicators.length ? "élevée" : indicators.length ? "moyenne" : "faible",
     site: "Saint-Gilles",
     scope: "FRY8MC",
     period,
@@ -11628,7 +11631,7 @@ async function analyzeGpoPdfFile(file, detected) {
     selectedPeriods: [period],
     sheets: scoped.pages.map(p => `page ${p.page}`).slice(0, 6),
     detectedIndicators: indicators,
-    message: `${indicators.length} KPI GPO extrait(s) aprÃ¨s isolement strict Saint-Gilles / FRY8MC Â· pages ${scoped.startPage} Ã  ${scoped.endPage} sur ${pages.length} page(s).`
+    message: `${indicators.length} KPI GPO extrait(s) après isolement strict Saint-Gilles / FRY8MC · pages ${scoped.startPage} à ${scoped.endPage} sur ${pages.length} page(s).`
   };
 }
 
@@ -12150,17 +12153,17 @@ function tbagIdentityKey(population = "", banner = "") {
   return `${pop}|${ban}`;
 }
 
-function tbagBuildRow({ period, metricKey, label, value, unit, population = "", banner = "", aggregationType = "sum", confidence = "Ã©levÃ©e", sourceSheet, sourceCell, sourceColumns, sourceFormula = "" }) {
+function tbagBuildRow({ period, metricKey, label, value, unit, population = "", banner = "", aggregationType = "sum", confidence = "élevée", sourceSheet, sourceCell, sourceColumns, sourceFormula = "" }) {
   const isTotalScope = String(population || "").trim().toUpperCase() === "TOTAL"
     && String(banner || "").trim().toUpperCase() === "TOTAL BANNIERE";
   const isNativeProductivityTotal = metricKey === "preparation.productivity.total" && isTotalScope;
   const isBannerHoursDetail = metricKey === "preparation.banner.hours";
   const destinationPath = isNativeProductivityTotal
-    ? "productivity.PrÃ©paration.actual"
+    ? "productivity.Préparation.actual"
     : tbagDestinationPath(metricKey, population, banner);
   const destinationLabel = isNativeProductivityTotal
-    ? "ProductivitÃ© PrÃ©paration"
-    : `${label} Â· PrÃ©paration`;
+    ? "Productivité Préparation"
+    : `${label} · Préparation`;
   const targetId = isNativeProductivityTotal
     ? "productivity.preparation"
     : destinationPath;
@@ -12181,7 +12184,7 @@ function tbagBuildRow({ period, metricKey, label, value, unit, population = "", 
     budget: null,
     historical: null,
     unit,
-    scope: "PrÃ©paration",
+    scope: "Préparation",
     population,
     banner,
     directness: banner || "",
@@ -12194,7 +12197,7 @@ function tbagBuildRow({ period, metricKey, label, value, unit, population = "", 
     confidence,
     sourceSheet,
     sourceCell,
-    sourceRef: `${sourceSheet} Â· ${sourceCell}`,
+    sourceRef: `${sourceSheet} · ${sourceCell}`,
     destinationPath,
     destinationLabel,
     destinationId: targetId,
@@ -13625,7 +13628,7 @@ function zGemedSelectSaintGillesSheets(workbook = {}) {
   const bestScore = scored[0].score;
   const best = scored.filter(item => item.score === bestScore);
 
-  // Une feuille explicitement nommÃ©e St Gilles / Saint Gilles est prioritaire.
+  // Une feuille explicitement nommée St Gilles / Saint Gilles est prioritaire.
   const explicit = best.filter(item => /^(st|saint) gilles$/.test(normalizeText(item.sheet?.name || "")));
   if (explicit.length === 1) {
     return { status: "ok", sheets: [explicit[0].sheet], candidates: scored.map(item => item.sheet?.name || "") };
@@ -13646,7 +13649,7 @@ async function analyzeZGemedFile(file, detected) {
 
   if (ext === "xlsb" || String(file.name || "").toLowerCase().endsWith(".xlsb")) {
     if (!window.XLSX?.read || !window.XLSX?.utils?.sheet_to_json) {
-      throw new Error("BibliothÃ¨que XLSX indisponible pour lire le classeur Z GEMED .xlsb.");
+      throw new Error("Bibliothèque XLSX indisponible pour lire le classeur Z GEMED .xlsb.");
     }
 
     const buffer = await readFileArrayBuffer(file);
@@ -13670,7 +13673,7 @@ async function analyzeZGemedFile(file, detected) {
         site: "",
         sheets: ensureArray(parsedWorkbook.sheets).map(sheet => sheet.name || ""),
         detectedIndicators: [],
-        message: "Import bloquÃ© : aucune feuille/zone Saint-Gilles ou FRY8MC dÃ©tectÃ©e dans le Z GEMED multi-sites."
+        message: "Import bloqué : aucune feuille/zone Saint-Gilles ou FRY8MC détectée dans le Z GEMED multi-sites."
       };
     }
 
@@ -13680,12 +13683,12 @@ async function analyzeZGemedFile(file, detected) {
         typeDetected: "Z GEMED Excel binaire",
         source: "Z_GEMED",
         sourceType: "Z GEMED XLSB",
-        status: "Ã  confirmer",
+        status: "à confirmer",
         confidence: "faible",
         site: "",
         sheets: scoped.candidates,
         detectedIndicators: [],
-        message: `Import bloquÃ© : plusieurs feuilles candidates Saint-Gilles dÃ©tectÃ©es (${scoped.candidates.join(", ")}).`
+        message: `Import bloqué : plusieurs feuilles candidates Saint-Gilles détectées (${scoped.candidates.join(", ")}).`
       };
     }
 
@@ -13703,13 +13706,13 @@ async function analyzeZGemedFile(file, detected) {
       site: "Saint-Gilles",
       scope: "FRY8MC",
       sheets: scoped.sheets.map(sheet => sheet.name || ""),
-      message: `${result.detectedIndicators?.length || 0} indicateur(s) extrait(s) du Z GEMED multi-sites aprÃ¨s isolement strict Saint-Gilles / FRY8MC. Feuille retenue : ${scoped.sheets.map(sheet => sheet.name || "").join(", ")}.`
+      message: `${result.detectedIndicators?.length || 0} indicateur(s) extrait(s) du Z GEMED multi-sites après isolement strict Saint-Gilles / FRY8MC. Feuille retenue : ${scoped.sheets.map(sheet => sheet.name || "").join(", ")}.`
     };
   }
 
   if (ext === "csv") return analyzeZGemedWorkbook({ sheets: [{ name: "CSV", rows: parseCsvText(await readFileText(file)) }] }, detected, "CSV");
   if (ext === "xlsx" || ext === "xlsm") return analyzeZGemedWorkbook(await readXlsxRows(file), detected, "Excel");
-  return { ...detected, status: "non reconnu", confidence: "faible", message: "Format non supportÃ© pour l'extraction locale. Utiliser .xlsb, .xlsx ou .csv." };
+  return { ...detected, status: "non reconnu", confidence: "faible", message: "Format non supporté pour l'extraction locale. Utiliser .xlsb, .xlsx ou .csv." };
 }
 
 function readFileText(file) {
@@ -14083,7 +14086,13 @@ function decoratePerformancePreviewRow(row) {
           ? "Identique"
           : (targetType === "complementary" ? "Conflit" : (confidenceMeta.label === "faible" ? "Conflit" : "Différente"));
   const tone = status === "Ne pas importer" ? "gray" : status === "Conflit" ? "red" : status === "Différente" || confidenceMeta.label === "moyenne" ? "orange" : "green";
-  return { ...row, currentValue: current, status, tone, targetId: row.targetId || row.destinationId || "", targetType, confidenceScore: confidenceMeta.score, confidenceLabel: confidenceMeta.label, confidenceText: confidenceMeta.text, selected: row.selected !== undefined ? Boolean(row.selected) : (targetType !== "ignore" && !same), action: row.action || (same ? "ignore" : (hasCurrent ? "keep" : "use")) };
+  const reliableGpoReplacement = performanceSourceKey(row.source || row.sourceType || "") === "GPO"
+    && targetType === "existing"
+    && confidenceMeta.score >= 85
+    && hasCurrent
+    && !same;
+  const defaultAction = same ? "ignore" : (hasCurrent ? (reliableGpoReplacement ? "use" : "keep") : "use");
+  return { ...row, currentValue: current, status, tone, targetId: row.targetId || row.destinationId || "", targetType, confidenceScore: confidenceMeta.score, confidenceLabel: confidenceMeta.label, confidenceText: confidenceMeta.text, selected: row.selected !== undefined ? Boolean(row.selected) : (targetType !== "ignore" && !same), action: row.action || defaultAction, recommendedSourceReplacement: reliableGpoReplacement };
 }
 
 function getPerformanceByPeriod(period) {
@@ -23943,12 +23952,12 @@ init();
 
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// V5.7 â€” ENRICHISSEMENT LOCAL DES Ã‰VÃ‰NEMENTS GOOGLE CALENDAR
+// V5.7 — ENRICHISSEMENT LOCAL DES ÉVÉNEMENTS GOOGLE CALENDAR
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 /**
  * Initialise la structure d'enrichissements si elle n'existe pas
- * S'exÃ©cute au dÃ©marrage pour garantir une structure cohÃ©rente
+ * S'exécute au démarrage pour garantir une structure cohérente
  */
 function ensureExternalEventEnrichments() {
   if (!state.externalEventEnrichments) {
@@ -23964,9 +23973,9 @@ function ensureExternalEventEnrichments() {
 }
 
 /**
- * Obtient ou crÃ©e un enrichissement pour un Ã©vÃ©nement externe
- * @param {string} eventKey - ClÃ© stable de l'Ã©vÃ©nement (google_<externalId>)
- * @returns {object} Enrichissement (existant ou nouvellement crÃ©Ã©)
+ * Obtient ou crée un enrichissement pour un événement externe
+ * @param {string} eventKey - Clé stable de l'événement (google_<externalId>)
+ * @returns {object} Enrichissement (existant ou nouvellement créé)
  */
 function getExternalEventEnrichment(eventKey) {
   if (!state.externalEventEnrichments[eventKey] && String(eventKey || "").startsWith("google_")) {
@@ -24005,9 +24014,9 @@ function getExternalEventEnrichment(eventKey) {
 }
 
 /**
- * Sauvegarde un enrichissement dans l'Ã©tat global
- * @param {string} eventKey - ClÃ© stable de l'Ã©vÃ©nement
- * @param {object} enrichment - DonnÃ©es d'enrichissement
+ * Sauvegarde un enrichissement dans l'état global
+ * @param {string} eventKey - Clé stable de l'événement
+ * @param {object} enrichment - Données d'enrichissement
  */
 function saveExternalEventEnrichment(eventKey, enrichment) {
   const normalized = normalizeMeetingEnrichment({ eventKey, ...enrichment }, { external: true });
@@ -24018,8 +24027,8 @@ function saveExternalEventEnrichment(eventKey, enrichment) {
 }
 
 /**
- * Sauvegarde les donnÃ©es de la modale d'enrichissement
- * AppelÃ©e par le bouton "Enregistrer" de la modale
+ * Sauvegarde les données de la modale d'enrichissement
+ * Appelée par le bouton "Enregistrer" de la modale
  */
 function saveExternalEventEnrichmentFromModal(eventKey) {
   if (!eventKey) return false;
@@ -24051,11 +24060,11 @@ function saveExternalEventEnrichmentFromModal(eventKey) {
 }
 
 /**
- * Ajoute un sujet Ã  traiter pour un Ã©vÃ©nement externe
+ * Ajoute un sujet à traiter pour un événement externe
  */
 function addExternalEventSubject(eventKey) {
   const enrichment = getExternalEventEnrichment(eventKey);
-  const subjectText = prompt("Ajouter un sujet Ã  traiter:");
+  const subjectText = prompt("Ajouter un sujet à traiter:");
   
   if (subjectText && subjectText.trim()) {
     const newSubject = {
@@ -24074,7 +24083,7 @@ function addExternalEventSubject(eventKey) {
 }
 
 /**
- * Met Ã  jour un sujet existant
+ * Met à jour un sujet existant
  */
 function updateExternalEventSubject(eventKey, subjectId, title, notes, completed) {
   const enrichment = getExternalEventEnrichment(eventKey);
@@ -24144,7 +24153,7 @@ function deleteExternalEventLink(eventKey, linkId) {
 }
 
 /**
- * Lie une action existante Ã  un Ã©vÃ©nement externe
+ * Lie une action existante à un événement externe
  */
 function linkActionToExternalEvent(eventKey, actionId) {
   const enrichment = getExternalEventEnrichment(eventKey);
@@ -24153,7 +24162,7 @@ function linkActionToExternalEvent(eventKey, actionId) {
   if (!action) return;
   if (!enrichment.linkedActionIds) enrichment.linkedActionIds = [];
   
-  // Ã‰viter les doublons
+  // Éviter les doublons
   if (enrichment.linkedActionIds.includes(actionId)) return;
   
   enrichment.linkedActionIds.push(actionId);
@@ -24162,7 +24171,7 @@ function linkActionToExternalEvent(eventKey, actionId) {
 }
 
 /**
- * DÃ©tache une action d'un Ã©vÃ©nement externe (sans supprimer l'action)
+ * Détache une action d'un événement externe (sans supprimer l'action)
  */
 function unlinkActionFromExternalEvent(eventKey, actionId) {
   const enrichment = getExternalEventEnrichment(eventKey);
@@ -24177,13 +24186,13 @@ function unlinkActionFromExternalEvent(eventKey, actionId) {
 }
 
 /**
- * CrÃ©e une nouvelle action DEOS liÃ©e Ã  un Ã©vÃ©nement externe
+ * Crée une nouvelle action DEOS liée à un événement externe
  */
 function createActionFromExternalEvent(eventKey, eventTitle) {
   const ev = (state.externalCalendarEvents || []).find(e => e._key === eventKey);
   if (!ev) return;
   
-  const actionTitle = prompt("Titre de la nouvelle action:", `Ã€ propos de: ${eventTitle}`);
+  const actionTitle = prompt("Titre de la nouvelle action:", `À propos de: ${eventTitle}`);
   if (!actionTitle || !actionTitle.trim()) return;
 
   try {
@@ -24206,7 +24215,7 @@ function createActionFromExternalEvent(eventKey, eventTitle) {
 }
 
 /**
- * Lie une dÃ©cision existante Ã  un Ã©vÃ©nement externe
+ * Lie une décision existante à un événement externe
  */
 function linkDecisionToExternalEvent(eventKey, decisionId) {
   const enrichment = getExternalEventEnrichment(eventKey);
@@ -24215,7 +24224,7 @@ function linkDecisionToExternalEvent(eventKey, decisionId) {
   if (!decision) return;
   if (!enrichment.linkedDecisionIds) enrichment.linkedDecisionIds = [];
   
-  // Ã‰viter les doublons
+  // Éviter les doublons
   if (enrichment.linkedDecisionIds.includes(decisionId)) return;
   
   enrichment.linkedDecisionIds.push(decisionId);
@@ -24224,7 +24233,7 @@ function linkDecisionToExternalEvent(eventKey, decisionId) {
 }
 
 /**
- * DÃ©tache une dÃ©cision d'un Ã©vÃ©nement externe (sans supprimer la dÃ©cision)
+ * Détache une décision d'un événement externe (sans supprimer la décision)
  */
 function unlinkDecisionFromExternalEvent(eventKey, decisionId) {
   const enrichment = getExternalEventEnrichment(eventKey);
@@ -24239,7 +24248,7 @@ function unlinkDecisionFromExternalEvent(eventKey, decisionId) {
 }
 
 /**
- * CrÃ©e une nouvelle dÃ©cision DEOS liÃ©e Ã  un Ã©vÃ©nement externe
+ * Crée une nouvelle décision DEOS liée à un événement externe
  */
 
 /**
@@ -24353,7 +24362,7 @@ function createDecisionFromExternalEvent(eventKey, eventTitle) {
   const ev = (state.externalCalendarEvents || []).find(e => e._key === eventKey);
   if (!ev) return;
   
-  const decisionTitle = prompt("Titre de la nouvelle dÃ©cision:", `Ã€ propos de: ${eventTitle}`);
+  const decisionTitle = prompt("Titre de la nouvelle décision:", `À propos de: ${eventTitle}`);
   if (!decisionTitle || !decisionTitle.trim()) return;
 
   try {
@@ -24377,8 +24386,8 @@ function createDecisionFromExternalEvent(eventKey, eventTitle) {
 }
 
 /**
- * Marque un Ã©vÃ©nement comme source indisponible
- * AppelÃ©e automatiquement lors d'une sync si l'Ã©vÃ©nement Google est supprimÃ©
+ * Marque un événement comme source indisponible
+ * Appelée automatiquement lors d'une sync si l'événement Google est supprimé
  */
 function markExternalEventSourceMissing(eventKey, missing = true) {
   const enrichment = getExternalEventEnrichment(eventKey);
