@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.28R";
+const DEOS_VERSION = "V5.29A";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -1645,8 +1645,8 @@ function normalizeEntity(name, item) {
   const base = { ...item, id: item.id || newId(name) };
   if (name === "managers") {
     const template = defaults.managers.find(m => m.id === base.id) || {};
-    const merged = { priority: "", lastInterview: "", nextMeeting: "", objectives: [], strengths: [], watchPoints: [], actions: [], linkedActions: [], linkedProjects: [], linkedDecisions: [], linkedFolders: [], events: [], directorNotes: [], ...template, ...base };
-    return { ...merged, objectives: ensureArray(merged.objectives), strengths: ensureArray(merged.strengths), watchPoints: ensureArray(merged.watchPoints), actions: ensureArray(merged.actions), linkedActions: ensureArray(merged.linkedActions), linkedProjects: ensureArray(merged.linkedProjects), linkedDecisions: ensureArray(merged.linkedDecisions), linkedFolders: ensureArray(merged.linkedFolders), events: ensureTimeline(merged.events), directorNotes: ensureNotes(merged.directorNotes) };
+    const merged = { priority: "", lastInterview: "", nextMeeting: "", objectives: [], strengths: [], watchPoints: [], actions: [], linkedActions: [], linkedProjects: [], linkedDecisions: [], linkedFolders: [], events: [], directorNotes: [], managementRequests: [], ...template, ...base };
+    return { ...merged, objectives: ensureArray(merged.objectives), strengths: ensureArray(merged.strengths), watchPoints: ensureArray(merged.watchPoints), actions: ensureArray(merged.actions), linkedActions: ensureArray(merged.linkedActions), linkedProjects: ensureArray(merged.linkedProjects), linkedDecisions: ensureArray(merged.linkedDecisions), linkedFolders: ensureArray(merged.linkedFolders), events: ensureTimeline(merged.events), directorNotes: ensureNotes(merged.directorNotes), managementRequests: ensureArray(merged.managementRequests) };
   }
   if (name === "projects") {
     const template = defaults.projects.find(p => p.id === base.id) || {};
@@ -7577,6 +7577,101 @@ function managerDocumentsList(m) {
   return `<div class="manager-doc-sections"><h3>Comptes-rendus d'entretien</h3>${interviewRows}<h3>Documents liés</h3>${classicRows}</div>`;
 }
 
+
+function managementRequestTypeLabel(value) {
+  const labels = {
+    objective: "Objectif",
+    request: "Demande particulière",
+    expectation: "Attente managériale",
+    watch: "Point de vigilance",
+    reframing: "Recadrage",
+    praise: "Félicitation"
+  };
+  return labels[String(value || "request")] || "Demande particulière";
+}
+
+function managementRequestStatusLabel(value) {
+  const labels = { open: "À suivre", progress: "En cours", achieved: "Atteint", partial: "Partiellement atteint", missed: "Non atteint", abandoned: "Abandonné" };
+  return labels[String(value || "open")] || "À suivre";
+}
+
+function managementRequestStatusBadge(value) {
+  const v = String(value || "open");
+  const cls = v === "achieved" ? "green" : (v === "missed" ? "red" : (v === "abandoned" ? "orange" : "orange"));
+  return `<span class="badge ${cls}">${esc(managementRequestStatusLabel(v))}</span>`;
+}
+
+function managerManagementRequestsSummary(m) {
+  const rows = ensureArray(m.managementRequests);
+  const open = rows.filter(r => ["open", "progress", "partial"].includes(String(r.status || "open"))).length;
+  const overdue = rows.filter(r => {
+    if (!["open", "progress", "partial"].includes(String(r.status || "open")) || !r.dueDate) return false;
+    const d = new Date(String(r.dueDate) + "T23:59:59");
+    return !Number.isNaN(d.getTime()) && d.getTime() < Date.now();
+  }).length;
+  const achieved = rows.filter(r => String(r.status || "") === "achieved").length;
+  return `<div class="row-actions"><span class="badge orange">${open} ouverte(s)</span><span class="badge green">${achieved} atteinte(s)</span>${overdue ? `<span class="badge red">${overdue} en retard</span>` : ""}</div>`;
+}
+
+function managerManagementRequestsList(m) {
+  const rows = [...ensureArray(m.managementRequests)].sort((a,b) => String(b.date || "").localeCompare(String(a.date || "")));
+  if (!rows.length) return `<div class="empty">Aucune demande ou objectif managérial tracé.</div>`;
+  return rows.map(r => {
+    const proof = [r.channel ? `Canal : ${r.channel}` : "", r.emailRef ? `Mail : ${r.emailRef}` : "", r.documentRef ? `Preuve : ${r.documentRef}` : ""].filter(Boolean).join(" · ");
+    return `<details class="item"><summary><strong>${esc(r.date || "Sans date")} · ${esc(managementRequestTypeLabel(r.type))} · ${esc(r.subject || "Sans objet")}</strong> ${managementRequestStatusBadge(r.status)}</summary><div style="padding-top:10px"><p><strong>Demande / objectif formulé</strong><br>${esc(r.requestText || "À compléter")}</p><p><strong>Résultat attendu</strong><br>${esc(r.expectedResult || "À compléter")}</p><p><strong>Échéance :</strong> ${esc(r.dueDate || "Non définie")}</p>${proof ? `<p class="muted">${esc(proof)}</p>` : ""}${r.closureComment ? `<p><strong>Suivi / clôture</strong><br>${esc(r.closureComment)}</p>` : ""}${r.actionId ? `<p><button class="secondary" onclick="openAction('${esc(r.actionId)}')">Ouvrir l’action liée</button></p>` : ""}<div class="row-actions"><button class="secondary" onclick="openManager('${esc(m.id)}','request:${esc(r.id)}')">Modifier / suivre</button></div></div></details>`;
+  }).join("");
+}
+
+function managerManagementRequestForm(m, requestId = "") {
+  const existing = ensureArray(m.managementRequests).find(r => sameId(r.id, requestId)) || {};
+  const editing = Boolean(existing.id);
+  const todayValue = existing.date || isoToday();
+  return `<div class="card full-span"><h2>${editing ? "Mettre à jour l’échange managérial" : "Tracer un échange / une demande"}</h2><p class="muted">Conservez ici la demande formulée, son contexte, l’échéance et la preuve associée. Ce suivi reste distinct d’une action opérationnelle.</p><div class="form-grid"><input id="mrDate" type="date" value="${esc(todayValue)}"><select id="mrType"><option value="objective" ${existing.type === "objective" ? "selected" : ""}>Objectif</option><option value="request" ${!editing || existing.type === "request" ? "selected" : ""}>Demande particulière</option><option value="expectation" ${existing.type === "expectation" ? "selected" : ""}>Attente managériale</option><option value="watch" ${existing.type === "watch" ? "selected" : ""}>Point de vigilance</option><option value="reframing" ${existing.type === "reframing" ? "selected" : ""}>Recadrage</option><option value="praise" ${existing.type === "praise" ? "selected" : ""}>Félicitation</option></select><input id="mrSubject" value="${esc(existing.subject || "")}" placeholder="Objet / titre court"><input id="mrDue" type="date" value="${esc(existing.dueDate || "")}"><select id="mrChannel"><option ${existing.channel === "Oral" ? "selected" : ""}>Oral</option><option ${existing.channel === "Entretien" ? "selected" : ""}>Entretien</option><option ${existing.channel === "Réunion" ? "selected" : ""}>Réunion</option><option ${existing.channel === "Mail" ? "selected" : ""}>Mail</option><option ${existing.channel === "Teams" ? "selected" : ""}>Teams</option><option ${existing.channel === "Autre" ? "selected" : ""}>Autre</option></select><select id="mrStatus"><option value="open" ${!editing || existing.status === "open" ? "selected" : ""}>À suivre</option><option value="progress" ${existing.status === "progress" ? "selected" : ""}>En cours</option><option value="achieved" ${existing.status === "achieved" ? "selected" : ""}>Atteint</option><option value="partial" ${existing.status === "partial" ? "selected" : ""}>Partiellement atteint</option><option value="missed" ${existing.status === "missed" ? "selected" : ""}>Non atteint</option><option value="abandoned" ${existing.status === "abandoned" ? "selected" : ""}>Abandonné</option></select></div><textarea id="mrRequest" placeholder="Demande / objectif formulé">${esc(existing.requestText || "")}</textarea><textarea id="mrExpected" placeholder="Résultat attendu / critères de réussite">${esc(existing.expectedResult || "")}</textarea><div class="form-grid"><input id="mrEmailRef" value="${esc(existing.emailRef || "")}" placeholder="Référence mail / objet du mail"><input id="mrDocumentRef" value="${esc(existing.documentRef || "")}" placeholder="Document / preuve associée"></div><textarea id="mrClosure" placeholder="Commentaire de suivi ou de clôture">${esc(existing.closureComment || "")}</textarea>${!editing ? `<label><input id="mrCreateAction" type="checkbox"> Créer également une action DEOS liée à cette demande</label>` : (existing.actionId ? `<p class="muted">Action DEOS liée : ${esc(existing.actionId)}</p>` : "")}<div class="row-actions"><button class="action" onclick="saveManagerManagementRequest('${esc(m.id)}','${esc(existing.id || "")}')">${editing ? "Enregistrer le suivi" : "Tracer l’échange"}</button><button class="secondary" onclick="openManager('${esc(m.id)}')">Annuler</button></div></div>`;
+}
+
+function saveManagerManagementRequest(managerId, requestId = "") {
+  const m = byId("managers", managerId);
+  if (!m) return;
+  const subject = document.getElementById("mrSubject")?.value.trim() || "";
+  const requestText = document.getElementById("mrRequest")?.value.trim() || "";
+  if (!subject || !requestText) { alert("L’objet et la demande / objectif formulé sont obligatoires."); return; }
+  const payload = {
+    id: requestId || newId("mgr-request"),
+    date: document.getElementById("mrDate")?.value || isoToday(),
+    type: document.getElementById("mrType")?.value || "request",
+    subject,
+    requestText,
+    expectedResult: document.getElementById("mrExpected")?.value.trim() || "",
+    dueDate: document.getElementById("mrDue")?.value || "",
+    channel: document.getElementById("mrChannel")?.value || "Oral",
+    emailRef: document.getElementById("mrEmailRef")?.value.trim() || "",
+    documentRef: document.getElementById("mrDocumentRef")?.value.trim() || "",
+    status: document.getElementById("mrStatus")?.value || "open",
+    closureComment: document.getElementById("mrClosure")?.value.trim() || "",
+    updatedAt: new Date().toISOString()
+  };
+  m.managementRequests = ensureArray(m.managementRequests);
+  const idx = m.managementRequests.findIndex(r => sameId(r.id, requestId));
+  if (idx >= 0) {
+    payload.actionId = m.managementRequests[idx].actionId || "";
+    payload.createdAt = m.managementRequests[idx].createdAt || payload.updatedAt;
+    m.managementRequests[idx] = { ...m.managementRequests[idx], ...payload };
+  } else {
+    payload.createdAt = payload.updatedAt;
+    if (document.getElementById("mrCreateAction")?.checked) {
+      const action = normalizeEntity("actions", { id: newId("action"), title: subject, link: `Demande managériale · ${m.name}`, owner: m.name, due: payload.dueDate, done: false, linkedManagers: [m.id] });
+      state.actions.unshift(action);
+      payload.actionId = action.id;
+      persist("actions");
+      addActivity("Action créée depuis échange manager", action.title, m.name, action.id);
+    }
+    m.managementRequests.unshift(payload);
+  }
+  persist("managers");
+  addActivity("🎯 Échange managérial", m.name, `${managementRequestTypeLabel(payload.type)} · ${payload.subject}`, m.id);
+  openManager(m.id);
+}
+
 function renderManagers() {
   document.getElementById("viewTitle").textContent = "Managers V5";
   document.querySelectorAll(".nav").forEach(btn => btn.classList.toggle("active", btn.dataset.view === "managers"));
@@ -7590,7 +7685,7 @@ function managerCard(m) {
 function addManager() {
   const name = document.getElementById("mName").value.trim();
   if (!name) return;
-  const m = { id: newId("manager"), name, role: document.getElementById("mRole").value.trim(), status: document.getElementById("mStatus").value, note: document.getElementById("mNote").value.trim(), priority: document.getElementById("mPriority").value.trim(), lastInterview: "", nextMeeting: document.getElementById("mNext").value.trim(), objectives: [], strengths: [], watchPoints: [], actions: [], linkedActions: [], linkedDecisions: [], events: [], directorNotes: [] };
+  const m = { id: newId("manager"), name, role: document.getElementById("mRole").value.trim(), status: document.getElementById("mStatus").value, note: document.getElementById("mNote").value.trim(), priority: document.getElementById("mPriority").value.trim(), lastInterview: "", nextMeeting: document.getElementById("mNext").value.trim(), objectives: [], strengths: [], watchPoints: [], actions: [], linkedActions: [], linkedDecisions: [], events: [], directorNotes: [], managementRequests: [] };
   state.managers.push(m);
   persist("managers");
   addActivity("👥 Manager", m.name, m.role, m.id);
@@ -7600,6 +7695,8 @@ function addManager() {
 function managerQuickForm(m, mode = "") {
   if (mode === "note") return `<div class="card full-span"><h2>Ajouter une note du directeur</h2><textarea id="mnContent" placeholder="Note du directeur"></textarea><button class="action" onclick="saveManagerNote('${m.id}')">Enregistrer</button><button class="secondary" onclick="openManager('${m.id}')">Annuler</button></div>`;
   if (mode === "event") return `<div class="card full-span"><h2>Ajouter un événement</h2><div class="form-grid"><input id="meTitle" placeholder="Titre de l'événement"><input id="meDate" value="${esc(new Date().toLocaleString("fr-FR"))}" placeholder="Date"></div><textarea id="meDetail" placeholder="Détail de l'événement"></textarea><button class="action" onclick="saveManagerEvent('${m.id}')">Enregistrer</button><button class="secondary" onclick="openManager('${m.id}')">Annuler</button></div>`;
+  if (mode === "request") return managerManagementRequestForm(m);
+  if (String(mode || "").startsWith("request:")) return managerManagementRequestForm(m, String(mode).slice(8));
   return "";
 }
 
@@ -7608,7 +7705,7 @@ function openManager(id, mode = "") {
   if (!m) return renderManagers();
   const responsibleCount = managerResponsibleProjects(m).length;
   document.getElementById("viewTitle").textContent = m.name;
-  appHtml(`<div class="card hero manager-hero"><button class="secondary" onclick="renderManagers()">Retour Managers</button><h2>${esc(m.name)}</h2><p>${esc(m.role || "")}</p>${badge(m.status)}<p class="muted">${esc(m.note || "")}</p><span class="meta">ID ${esc(m.id)} ? ${responsibleCount} projet(s) sous responsabilité</span><div class="row-actions"><button class="action" onclick="editManager('${m.id}')">Modifier</button><button class="secondary" onclick="startReport('managers','${m.id}')">Générer un compte rendu</button><button class="secondary" onclick="openManager('${m.id}','note')">Ajouter une note</button><button class="secondary" onclick="openManager('${m.id}','event')">Ajouter un événement</button><button class="danger" onclick="deleteManager('${m.id}')">Supprimer</button></div></div><div class="grid two">${managerQuickForm(m, mode)}<div class="card"><h2>Priorité managériale</h2><p>${esc(m.priority || "À compléter")}</p></div><div class="card"><h2>Entretiens</h2><p><strong>Dernier :</strong> ${esc(m.lastInterview || "À compléter")}</p><p><strong>Prochaine rencontre :</strong> ${esc(m.nextMeeting || "À planifier")}</p></div><div class="card full-span"><h2>Rendez-vous liés</h2>${managerAgendaList(m)}</div><div class="card full-span"><h2>Préparations de réunion liées</h2>${managerMeetingPreparationsList(m)}</div><div class="card full-span"><h2>Projets sous ma responsabilité</h2>${managerResponsibleProjectsList(m)}</div><div class="card full-span"><h2>Autres projets associés</h2>${managerAssociatedProjectsList(m)}</div><div class="card"><h2>Dossiers liés</h2>${linkedFoldersList(m)}</div><div class="card"><h2>Objectifs en cours</h2>${listItems(m.objectives)}</div><div class="card"><h2>Points forts</h2>${listItems(m.strengths)}</div><div class="card"><h2>Points de vigilance</h2>${listItems(m.watchPoints)}</div><div class="card"><h2>Actions internes</h2>${listItems(m.actions, "? ")}</div><div class="card"><h2>Actions liées</h2>${linkedActionsList(m)}</div><div class="card"><h2>Décisions liées</h2>${linkedDecisionsList(m)}</div><div class="card"><h2>Journal lié</h2>${managerJournalList(m)}</div><div class="card"><h2>Documents liés</h2>${managerDocumentsList(m)}</div><div class="card"><h2>Notes du directeur</h2>${directorNotesList(m)}</div><div class="card full-span"><h2>Historique chronologique</h2>${managerTimeline(m)}</div></div>`);
+  appHtml(`<div class="card hero manager-hero"><button class="secondary" onclick="renderManagers()">Retour Managers</button><h2>${esc(m.name)}</h2><p>${esc(m.role || "")}</p>${badge(m.status)}<p class="muted">${esc(m.note || "")}</p><span class="meta">ID ${esc(m.id)} ? ${responsibleCount} projet(s) sous responsabilité</span><div class="row-actions"><button class="action" onclick="editManager('${m.id}')">Modifier</button><button class="secondary" onclick="startReport('managers','${m.id}')">Générer un compte rendu</button><button class="secondary" onclick="openManager('${m.id}','note')">Ajouter une note</button><button class="secondary" onclick="openManager('${m.id}','event')">Ajouter un événement</button><button class="secondary" onclick="openManager('${m.id}','request')">Tracer un échange</button><button class="danger" onclick="deleteManager('${m.id}')">Supprimer</button></div></div><div class="grid two">${managerQuickForm(m, mode)}<div class="card"><h2>Priorité managériale</h2><p>${esc(m.priority || "À compléter")}</p></div><div class="card"><h2>Entretiens</h2><p><strong>Dernier :</strong> ${esc(m.lastInterview || "À compléter")}</p><p><strong>Prochaine rencontre :</strong> ${esc(m.nextMeeting || "À planifier")}</p></div><div class="card full-span"><h2>Rendez-vous liés</h2>${managerAgendaList(m)}</div><div class="card full-span"><h2>Préparations de réunion liées</h2>${managerMeetingPreparationsList(m)}</div><div class="card full-span"><h2>Projets sous ma responsabilité</h2>${managerResponsibleProjectsList(m)}</div><div class="card full-span"><h2>Autres projets associés</h2>${managerAssociatedProjectsList(m)}</div><div class="card"><h2>Dossiers liés</h2>${linkedFoldersList(m)}</div><div class="card full-span"><h2>Demandes & objectifs managériaux</h2>${managerManagementRequestsSummary(m)}<div style="margin-top:12px">${managerManagementRequestsList(m)}</div><div class="row-actions" style="margin-top:12px"><button class="action" onclick="openManager('${m.id}','request')">+ Tracer un échange</button></div></div><div class="card"><h2>Objectifs en cours</h2>${listItems(m.objectives)}</div><div class="card"><h2>Points forts</h2>${listItems(m.strengths)}</div><div class="card"><h2>Points de vigilance</h2>${listItems(m.watchPoints)}</div><div class="card"><h2>Actions internes</h2>${listItems(m.actions, "? ")}</div><div class="card"><h2>Actions liées</h2>${linkedActionsList(m)}</div><div class="card"><h2>Décisions liées</h2>${linkedDecisionsList(m)}</div><div class="card"><h2>Journal lié</h2>${managerJournalList(m)}</div><div class="card"><h2>Documents liés</h2>${managerDocumentsList(m)}</div><div class="card"><h2>Notes du directeur</h2>${directorNotesList(m)}</div><div class="card full-span"><h2>Historique chronologique</h2>${managerTimeline(m)}</div></div>`);
 }
 
 function editManager(id) {
