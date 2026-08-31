@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.29B";
+const DEOS_VERSION = "V5.29C";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -24667,5 +24667,127 @@ function deleteDecision(id) {
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
+// -- V5.29C : navigation cohérente -------------------------------------------------
+// Règle ergonomique : toute ouverture d'une fiche positionne le début de la fiche
+// sous le bandeau. Toute ouverture d'un sous-formulaire positionne le début du
+// formulaire. Les modales repartent également de leur première ligne utile.
+(function installDeosConsistentOpeningNavigation(){
+  if (window.__deosConsistentOpeningNavigationInstalled) return;
+  window.__deosConsistentOpeningNavigationInstalled = true;
 
+  function scrollElementToOpeningTop(element, behavior = "smooth") {
+    if (!element) return;
+    try {
+      element.style.scrollMarginTop = "18px";
+      element.scrollIntoView({ behavior, block: "start", inline: "nearest" });
+    } catch (_) {
+      try { window.scrollTo({ top: Math.max(0, element.getBoundingClientRect().top + window.scrollY - 18), behavior }); } catch (_) {}
+    }
+  }
+
+  function focusViewTop() {
+    window.setTimeout(() => {
+      const app = document.getElementById("app");
+      if (!app) return;
+      const firstUseful = app.querySelector(":scope > .card, :scope > .grid, .hero, .card");
+      scrollElementToOpeningTop(firstUseful || app);
+    }, 0);
+  }
+
+  function focusInlineForm(preferredSelector = "") {
+    window.setTimeout(() => {
+      const app = document.getElementById("app");
+      if (!app) return;
+      let target = preferredSelector ? app.querySelector(preferredSelector) : null;
+      if (!target) {
+        target = app.querySelector(".grid.two > .card.full-span:first-child, .grid.two > .card:first-child, form, .card.full-span");
+      }
+      scrollElementToOpeningTop(target || app.querySelector(".card") || app);
+      const field = target?.querySelector?.("input:not([type='hidden']), select, textarea, button");
+      if (field && !field.disabled) {
+        try { field.focus({ preventScroll: true }); } catch (_) {}
+      }
+    }, 0);
+  }
+
+  function focusModalTop() {
+    window.setTimeout(() => {
+      const panels = [...document.querySelectorAll(".modal-backdrop .modal-panel")].filter(panel => {
+        const style = window.getComputedStyle(panel.closest(".modal-backdrop"));
+        return style.display !== "none" && style.visibility !== "hidden";
+      });
+      const panel = panels[panels.length - 1];
+      if (!panel) return;
+      try { panel.scrollTop = 0; } catch (_) {}
+      const head = panel.querySelector(".modal-head") || panel.firstElementChild || panel;
+      scrollElementToOpeningTop(head, "auto");
+    }, 0);
+  }
+
+  function wrapGlobal(name, modeAware = false, selectorResolver = null) {
+    const original = window[name];
+    if (typeof original !== "function" || original.__deosOpeningWrapped) return;
+    const wrapped = function(...args) {
+      const result = original.apply(this, args);
+      const mode = modeAware ? String(args[1] || "") : "";
+      if (mode) {
+        const selector = typeof selectorResolver === "function" ? selectorResolver(args) : "";
+        focusInlineForm(selector);
+      } else {
+        focusViewTop();
+      }
+      return result;
+    };
+    wrapped.__deosOpeningWrapped = true;
+    wrapped.__deosOpeningOriginal = original;
+    window[name] = wrapped;
+    try { eval(`${name} = wrapped`); } catch (_) {}
+  }
+
+  function wrapModal(name) {
+    const original = window[name];
+    if (typeof original !== "function" || original.__deosOpeningWrapped) return;
+    const wrapped = function(...args) {
+      const result = original.apply(this, args);
+      focusModalTop();
+      return result;
+    };
+    wrapped.__deosOpeningWrapped = true;
+    wrapped.__deosOpeningOriginal = original;
+    window[name] = wrapped;
+    try { eval(`${name} = wrapped`); } catch (_) {}
+  }
+
+  // Fiches principales et sous-formulaires intégrés.
+  wrapGlobal("openAction");
+  wrapGlobal("openFolder", true);
+  wrapGlobal("openManager", true, args => String(args[1] || "").startsWith("request") ? "#manager-request-form" : "");
+  wrapGlobal("openProject", true);
+  wrapGlobal("openDecision", true);
+  wrapGlobal("openJournal", true);
+  wrapGlobal("openPerformance");
+  wrapGlobal("openPerformanceImportDetail");
+
+  // Éditeurs qui remplacent la vue principale.
+  wrapGlobal("editFolder");
+  wrapGlobal("editManager");
+  wrapGlobal("editJournal");
+
+  // Fenêtres/modales : toujours repartir de leur en-tête.
+  [
+    "openActionEditModal", "openActionDeleteModal",
+    "openManagerDeleteModal",
+    "openProjectEditModal", "openProjectDeleteModal",
+    "openDecisionEditModal", "openDecisionDeleteModal",
+    "openAgendaModal", "openExternalEventModal", "openMeetingSubjectModal",
+    "openDocumentTemplatePicker", "openDocumentEditModalCreate", "editDocument", "openDocumentDeleteModal",
+    "openManagersConflictResolutionDialog", "openRemoteAuthDialog", "openRemoteWorkspaceDialog",
+    "openLinksConflictsDialog", "openLinksConflictMergeDialog"
+  ].forEach(wrapModal);
+
+  // Expose les helpers pour les futurs modules : une seule règle à réutiliser.
+  window.deosFocusOpeningTop = focusViewTop;
+  window.deosFocusInlineFormTop = focusInlineForm;
+  window.deosFocusModalTop = focusModalTop;
+})();
 
