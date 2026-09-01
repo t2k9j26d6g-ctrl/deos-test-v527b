@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30A";
+const DEOS_VERSION = "V5.30B";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -21932,7 +21932,7 @@ function continueRemoteTemporarilyInLocalMode() {
 // V5.27C — garde-fou Safari/iPad : aucune opération Auth ne doit laisser
 // l'interface bloquée indéfiniment en état "busy".
 const DEOS_REMOTE_AUTH_TIMEOUT_MS = 12000;
-const DEOS_REMOTE_INIT_TIMEOUT_MS = 8000;
+const DEOS_REMOTE_INIT_TIMEOUT_MS = 20000;
 let deosRemoteBusyWatchdogId = null;
 
 function withRemoteTimeout(promise, timeoutMs, code, message) {
@@ -22209,7 +22209,7 @@ async function initializeRemoteServices(options = {}) {
       deosRemoteAuthService.initialize(),
       DEOS_REMOTE_INIT_TIMEOUT_MS,
       "REMOTE_INIT_TIMEOUT",
-      "Initialisation Supabase trop longue. DEOS reste utilisable et la connexion peut être relancée."
+      "Connexion Supabase lente. DEOS reste utilisable ; vous pouvez relancer la connexion si nécessaire."
     );
     deosRemoteAdapter = new window.DeosSupabaseRemote.SupabaseRemoteAdapter(deosRemoteAuthService, {
       debug: config.debug
