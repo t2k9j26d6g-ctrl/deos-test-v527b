@@ -265,7 +265,6 @@
         }
       });
 
-      await this.client.auth.getSession();
       const sessionResult = await this.client.auth.getSession();
       if (sessionResult.error) {
         this.connectionStatus = "error";
