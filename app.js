@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30E";
+const DEOS_VERSION = "V5.30F";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -18114,7 +18114,7 @@ function buildActionsRemotePreview(localActions, remoteRows) {
   const locals = ensureArray(localActions);
   const localMap = new Map(locals.map(action => [actionSyncClientId(action), action]).filter(([id]) => id));
   const remoteMap = new Map(activeRows.map(row => [String(row.clientId || "").trim(), row]).filter(([id]) => id));
-  const localOnly = [], remoteOnly = [], both = [], conflicts = [];
+  const localOnly = [], remoteOnly = [], both = [], conflicts = [], mergeCandidates = [];
   locals.forEach(action => {
     const clientId = actionSyncClientId(action);
     const row = remoteMap.get(clientId);
@@ -20698,6 +20698,51 @@ function deactivateManagersHybridSync() {
   return deosManagersSyncRuntime;
 }
 
+
+// V5.30F — les échanges managériaux se réconcilient même si d'autres champs de la
+// fiche Manager restent en conflit. Cela évite qu'un conflit ancien bloque la
+// propagation des demandes/objectifs nouvellement tracés entre PC et iPad.
+async function reconcileManagerRequestsBeforeConflictCheck(remoteRows = []) {
+  let localChanged = false;
+  let remoteChanged = false;
+  const activeRows = ensureArray(remoteRows).filter(row => !row.deletedAt);
+  const remoteById = new Map(activeRows.map(row => [String(row.clientId || '').trim(), row]).filter(([id]) => id));
+  const uniqueRemoteByName = buildUniqueManagerNaturalMap(activeRows, row => row.manager);
+
+  for (const local of ensureArray(state.managers)) {
+    const localId = managerSyncClientId(local);
+    let row = remoteById.get(localId);
+    if (!row) {
+      const key = managerNaturalIdentity(local);
+      row = key ? uniqueRemoteByName.get(key) : null;
+    }
+    if (!row) continue;
+
+    const combined = mergeManagerManagementRequests(local.managementRequests, row.manager?.managementRequests);
+    const localSame = managerCanonicalValuesEqual(canonicalManagerStructuredValue(ensureArray(local.managementRequests)), canonicalManagerStructuredValue(combined));
+    const remoteSame = managerCanonicalValuesEqual(canonicalManagerStructuredValue(ensureArray(row.manager?.managementRequests)), canonicalManagerStructuredValue(combined));
+
+    if (!localSame) {
+      local.managementRequests = combined;
+      localChanged = true;
+    }
+    if (!remoteSame) {
+      const remotePayload = normalizeEntity('managers', { ...(row.manager || {}), id: row.clientId, clientId: row.clientId, managementRequests: combined });
+      const updated = await withManagersRemoteTimeout(
+        deosRemoteAdapter.updateManager(String(row.clientId || ''), remotePayload, Number(row.version || 0)),
+        `Réconciliation des échanges managériaux de ${remotePayload.name || row.clientId}`
+      );
+      row.manager = remotePayload;
+      row.version = Number(updated.version || row.version || 0);
+      row.updatedAt = updated.updatedAt || row.updatedAt;
+      remoteChanged = true;
+    }
+  }
+
+  if (localChanged) persistManagersState({ updateShadow: false });
+  return { localChanged, remoteChanged };
+}
+
 async function syncManagersHybridNow(options = {}) {
   if (deosManagersSyncRuntime.syncing) return deosManagersSyncRuntime;
   if (!managersSyncIsEnabled()) { refreshManagersSyncRuntimeState({ state: DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY, lastError: "" }); return deosManagersSyncRuntime; }
@@ -20708,6 +20753,8 @@ async function syncManagersHybridNow(options = {}) {
   refreshManagersSyncRuntimeState({ syncing: true, state: DEOS_LINKS_SYNC_STATUS.SYNCING, lastError: "" });
   try {
     let remoteRows = await withManagersRemoteTimeout(deosRemoteAdapter.listManagers(), "Lecture des Managers distants");
+    await reconcileManagerRequestsBeforeConflictCheck(remoteRows);
+    remoteRows = await withManagersRemoteTimeout(deosRemoteAdapter.listManagers(), "Actualisation des échanges managériaux");
     let preflight = buildManagersRemotePreview(state.managers, remoteRows);
     if (preflight.duplicateCandidates.length) {
       throw new Error(`DUPLICATES_MANAGERS_DETECTED — ${preflight.duplicateCandidates.length} groupe(s) de doublons exacts détecté(s). Utilisez d’abord « Réparer les doublons exacts ».`);
