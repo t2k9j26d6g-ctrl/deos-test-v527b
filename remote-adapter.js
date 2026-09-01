@@ -643,7 +643,30 @@ class SupabaseRemoteAdapter {
         .single();
       if (response.error) {
         const code = String(response.error.code || "").trim();
-        if (code === "23505") throw createRemoteError("REMOTE_PROJECT_EXISTS", response.error.message || "Le Projet existe déjà à distance.", response.error);
+        if (code === "23505") {
+          // V5.30F — un ancien enregistrement (y compris soft-deleted) peut déjà porter
+          // le même client_id. On le réutilise au lieu de tenter une seconde insertion.
+          const existing = await context.client
+            .from("deos_projects")
+            .select("id, workspace_id, owner_id, client_id, data, created_at, updated_at, deleted_at, version")
+            .eq("workspace_id", context.workspaceId)
+            .eq("client_id", clientId)
+            .maybeSingle();
+          if (existing.error) throw createRemoteError("REMOTE_PROJECT_EXISTS_LOOKUP_FAILED", existing.error.message || "Le Projet existe déjà mais sa lecture a échoué.", existing.error);
+          if (existing.data && !existing.data.deleted_at) return normalizeProjectRow(existing.data);
+          if (existing.data && existing.data.deleted_at) {
+            const restored = await context.client
+              .from("deos_projects")
+              .update({ owner_id: context.userId, data: payload, deleted_at: null })
+              .eq("workspace_id", context.workspaceId)
+              .eq("client_id", clientId)
+              .select("id, workspace_id, owner_id, client_id, data, created_at, updated_at, deleted_at, version")
+              .single();
+            if (restored.error) throw createRemoteError("REMOTE_PROJECT_RESTORE_FAILED", restored.error.message || "Restauration du Projet distant impossible.", restored.error);
+            return normalizeProjectRow(restored.data);
+          }
+          throw createRemoteError("REMOTE_PROJECT_EXISTS", response.error.message || "Le Projet existe déjà à distance.", response.error);
+        }
         throw createRemoteError("REMOTE_PROJECT_CREATE_FAILED", response.error.message || "Création distante du Projet impossible.", response.error);
       }
       return normalizeProjectRow(response.data);
