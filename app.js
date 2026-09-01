@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30C";
+const DEOS_VERSION = "V5.30D";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -7698,6 +7698,10 @@ function renderManagers() {
   document.getElementById("viewTitle").textContent = "Managers";
   const addPanel = `<div class="card" id="manager-add-card"><div class="settings-card-heading"><div><h2>Ajouter un manager</h2><p class="muted">Créez une nouvelle fiche uniquement lorsque nécessaire.</p></div><button class="secondary" type="button" onclick="toggleManagerAddForm()" aria-expanded="${managerAddFormExpanded ? "true" : "false"}">${managerAddFormExpanded ? "Replier" : "+ Ajouter un manager"}</button></div>${managerAddFormExpanded ? `<div id="manager-add-form" style="scroll-margin-top:14px"><input id="mName" placeholder="Nom"><input id="mRole" placeholder="Poste"><select id="mStatus"><option value="green">Maîtrisé</option><option value="orange">À suivre</option><option value="red">Critique</option></select><input id="mPriority" placeholder="Priorité manager"><input id="mNext" placeholder="Prochain entretien"><textarea id="mNote" placeholder="Note"></textarea><div class="row-actions"><button class="action" onclick="addManager()">Ajouter</button><button class="secondary" onclick="toggleManagerAddForm(false)">Annuler</button></div></div>` : ""}</div>`;
   appHtml(`${addPanel}<div class="grid two">${state.managers.map(managerCard).join("")}</div>`);
+}
+
+function managerCard(m) {
+  return `<div class="card clickable" onclick="openManager('${m.id}')"><h2>${esc(m.name)}</h2><p>${esc(m.role || "")}</p>${badge(m.status)}<p class="muted">${esc(m.note || "")}</p><span class="meta">ID ${esc(m.id)}</span></div>`;
 }
 
 
@@ -20246,6 +20250,25 @@ function getManagersSyncShadowMap() {
   const shadow = managersSyncShadowRepository.load({ syncedAt: "", managers: [] });
   return new Map(ensureArray(shadow.managers).map(manager => [managerSyncClientId(manager), manager]).filter(([id]) => id));
 }
+// V5.30D — les demandes/objectifs managériaux sont une collection append-only métier.
+// Elles se fusionnent par id afin qu'un échange créé sur un appareil ne disparaisse pas
+// lorsqu'un autre appareil possède une version plus ancienne de la fiche Manager.
+function mergeManagerManagementRequests(localRows = [], remoteRows = []) {
+  const result = new Map();
+  const put = row => {
+    if (!row || typeof row !== "object") return;
+    const id = String(row.id || "").trim() || `legacy:${String(row.date || "")}:${String(row.subject || "")}`;
+    const previous = result.get(id);
+    if (!previous) { result.set(id, { ...row }); return; }
+    const prevStamp = Date.parse(previous.updatedAt || previous.createdAt || previous.date || "") || 0;
+    const nextStamp = Date.parse(row.updatedAt || row.createdAt || row.date || "") || 0;
+    result.set(id, nextStamp >= prevStamp ? { ...previous, ...row } : { ...row, ...previous });
+  };
+  ensureArray(remoteRows).forEach(put);
+  ensureArray(localRows).forEach(put);
+  return [...result.values()].sort((a,b) => String(b.date || b.updatedAt || "").localeCompare(String(a.date || a.updatedAt || "")));
+}
+
 function resolveManagerNonDestructive(localManager = {}, remoteManager = {}, baseManager = null) {
   const localNormalized = normalizeEntity("managers", { ...(localManager || {}) });
   const remoteNormalized = normalizeEntity("managers", { ...(remoteManager || {}) });
@@ -20264,6 +20287,14 @@ function resolveManagerNonDestructive(localManager = {}, remoteManager = {}, bas
     const r = remoteCanonical[key];
     const b = baseCanonical ? baseCanonical[key] : undefined;
     if (managerCanonicalValuesEqual(l, r)) continue;
+
+    if (key === "managementRequests") {
+      const combined = mergeManagerManagementRequests(localNormalized.managementRequests, remoteNormalized.managementRequests);
+      merged.managementRequests = combined;
+      if (!managerCanonicalValuesEqual(canonicalManagerStructuredValue(combined), l)) fromRemoteFields.push(key);
+      if (!managerCanonicalValuesEqual(canonicalManagerStructuredValue(combined), r)) fromLocalFields.push(key);
+      continue;
+    }
 
     const lEmpty = managerCanonicalValueIsEmpty(l);
     const rEmpty = managerCanonicalValueIsEmpty(r);
@@ -21478,7 +21509,15 @@ async function syncAllMultiDeviceNow(options = {}) {
     deosMultiDeviceSyncRuntime.syncing = false;
   }
   if (!silent && currentView === "settings") renderSettings(deosMultiDeviceSyncRuntime.lastError || "Synchronisation multi-appareils terminée.");
-  else if (!silent && !deosMultiDeviceSyncRuntime.lastError) showDeosToast?.("Synchronisation multi-appareils terminée.", "success");
+  else if (!silent && !deosMultiDeviceSyncRuntime.lastError) {
+    showDeosToast?.("Synchronisation multi-appareils terminée.", "success");
+    // Rafraîchit uniquement après une synchro demandée par l'utilisateur :
+    // les synchros automatiques ne doivent pas interrompre un formulaire en cours.
+    window.setTimeout(() => {
+      const renderer = { cockpit: renderCockpit, graph: renderGraph, folders: renderFolders, performance: renderPerformance, priorities: renderPriorities, actions: renderActions, managers: renderManagers, projects: renderProjects, decisions: renderDecisions, journal: renderJournal, documents: renderDocuments, links: renderLinks, activity: renderActivity }[currentView];
+      if (typeof renderer === "function") renderer();
+    }, 50);
+  }
   return deosMultiDeviceSyncRuntime;
 }
 window.syncAllMultiDeviceNow = syncAllMultiDeviceNow;
