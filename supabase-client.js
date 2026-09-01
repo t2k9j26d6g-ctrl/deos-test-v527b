@@ -260,7 +260,7 @@
         },
         global: {
           headers: {
-            "X-Client-Info": "deos-v5.30d"
+            "X-Client-Info": "deos-v5.30e"
           }
         }
       });
