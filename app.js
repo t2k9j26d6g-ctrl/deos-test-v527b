@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30H";
+const DEOS_VERSION = "V5.30I";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -556,7 +556,10 @@ const managersConflictChoicesRepository = createRepository(deosDataService, {
       const item = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
       const choices = {};
       Object.entries(item.choices || {}).forEach(([field, side]) => {
-        if (side === "local" || side === "remote") choices[String(field)] = side;
+        // V5.30I — conserver aussi le choix de fusion explicite.
+        // Avant cette correction, le repository normalisait "merge" en le supprimant
+        // immédiatement après sauvegarde : le bouton "Fusionner les deux" semblait donc inactif.
+        if (side === "local" || side === "remote" || side === "merge") choices[String(field)] = side;
       });
       out[String(key)] = {
         remoteClientId: String(item.remoteClientId || key),
