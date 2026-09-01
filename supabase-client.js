@@ -256,11 +256,11 @@
           autoRefreshToken: true,
           detectSessionInUrl: true,
           flowType: "pkce",
-          storageKey: this.options.storageKey || "sb-deos-test-auth"
+          storageKey: this.options.storageKey || ((global.location && String(global.location.pathname || "").includes("deos-test-v527b")) ? "sb-deos-test-auth" : "sb-deos-prod-auth")
         },
         global: {
           headers: {
-            "X-Client-Info": "deos-v5.30c-test"
+            "X-Client-Info": "deos-v5.30d"
           }
         }
       });
