@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.29C";
+const DEOS_VERSION = "V5.30A";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -714,6 +714,7 @@ let backupPreviewOpen = false;
 let backupSafetySnapshot = null;
 let agendaFormError = "";
 let currentView = "cockpit";
+let managerAddFormExpanded = false;
 let meetingOriginContext = null;
 let meetingCreateState = null;
 let pendingMeetingCreateReveal = null;
@@ -7680,25 +7681,25 @@ function saveManagerManagementRequest(managerId, requestId = "") {
   openManager(m.id);
 }
 
-function renderManagers() {
-  document.getElementById("viewTitle").textContent = "Managers V5";
-  document.querySelectorAll(".nav").forEach(btn => btn.classList.toggle("active", btn.dataset.view === "managers"));
-  appHtml(`<div class="card"><h2>Ajouter un manager</h2><input id="mName" placeholder="Nom"><input id="mRole" placeholder="Poste"><select id="mStatus"><option value="green">Maîtrisé</option><option value="orange">À suivre</option><option value="red">Critique</option></select><input id="mPriority" placeholder="Priorité manager"><input id="mNext" placeholder="Prochain entretien"><textarea id="mNote" placeholder="Note"></textarea><button class="action" onclick="addManager()">Ajouter</button></div><div class="grid two">${state.managers.map(managerCard).join("")}</div>`);
-}
-
-function managerCard(m) {
-  return `<div class="card clickable" onclick="openManager('${m.id}')"><h2>${esc(m.name)}</h2><p>${esc(m.role || "")}</p>${badge(m.status)}<p class="muted">${esc(m.note || "")}</p><span class="meta">ID ${esc(m.id)}</span></div>`;
-}
-
-function addManager() {
-  const name = document.getElementById("mName").value.trim();
-  if (!name) return;
-  const m = { id: newId("manager"), name, role: document.getElementById("mRole").value.trim(), status: document.getElementById("mStatus").value, note: document.getElementById("mNote").value.trim(), priority: document.getElementById("mPriority").value.trim(), lastInterview: "", nextMeeting: document.getElementById("mNext").value.trim(), objectives: [], strengths: [], watchPoints: [], actions: [], linkedActions: [], linkedDecisions: [], events: [], directorNotes: [], managementRequests: [] };
-  state.managers.push(m);
-  persist("managers");
-  addActivity("👥 Manager", m.name, m.role, m.id);
+function toggleManagerAddForm(force) {
+  managerAddFormExpanded = typeof force === "boolean" ? force : !managerAddFormExpanded;
   renderManagers();
+  if (managerAddFormExpanded) {
+    requestAnimationFrame(() => {
+      const form = document.getElementById("manager-add-form");
+      if (form) form.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById("mName")?.focus({ preventScroll: true });
+    });
+  }
 }
+window.toggleManagerAddForm = toggleManagerAddForm;
+
+function renderManagers() {
+  document.getElementById("viewTitle").textContent = "Managers";
+  const addPanel = `<div class="card" id="manager-add-card"><div class="settings-card-heading"><div><h2>Ajouter un manager</h2><p class="muted">Créez une nouvelle fiche uniquement lorsque nécessaire.</p></div><button class="secondary" type="button" onclick="toggleManagerAddForm()" aria-expanded="${managerAddFormExpanded ? "true" : "false"}">${managerAddFormExpanded ? "Replier" : "+ Ajouter un manager"}</button></div>${managerAddFormExpanded ? `<div id="manager-add-form" style="scroll-margin-top:14px"><input id="mName" placeholder="Nom"><input id="mRole" placeholder="Poste"><select id="mStatus"><option value="green">Maîtrisé</option><option value="orange">À suivre</option><option value="red">Critique</option></select><input id="mPriority" placeholder="Priorité manager"><input id="mNext" placeholder="Prochain entretien"><textarea id="mNote" placeholder="Note"></textarea><div class="row-actions"><button class="action" onclick="addManager()">Ajouter</button><button class="secondary" onclick="toggleManagerAddForm(false)">Annuler</button></div></div>` : ""}</div>`;
+  appHtml(`${addPanel}<div class="grid two">${state.managers.map(managerCard).join("")}</div>`);
+}
+
 
 function managerQuickForm(m, mode = "") {
   if (mode === "note") return `<div class="card full-span"><h2>Ajouter une note du directeur</h2><textarea id="mnContent" placeholder="Note du directeur"></textarea><button class="action" onclick="saveManagerNote('${m.id}')">Enregistrer</button><button class="secondary" onclick="openManager('${m.id}')">Annuler</button></div>`;
@@ -21377,6 +21378,165 @@ window.simpleSyncAnalyzeFromSettings=simpleSyncAnalyzeFromSettings; window.simpl
 let simpleEntityAutoSyncTimers={};
 function scheduleSimpleEntityAutoSync(entity){const c=simpleSyncControllerFor(entity);if(!c||!c.runtime().enabled)return;clearTimeout(simpleEntityAutoSyncTimers[entity]);simpleEntityAutoSyncTimers[entity]=window.setTimeout(()=>c.syncNow({silent:true,source:"local-change"}),900);}
 
+
+// -----------------------------------------------------------------------------
+// V5.30A — Synchronisation multi-appareils unifiée
+// Active les 7 pilotes métier existants et les orchestre sous une seule commande.
+// Les moteurs de conflit existants restent seuls responsables des arbitrages :
+// aucun écrasement silencieux n'est ajouté par cette couche.
+// -----------------------------------------------------------------------------
+const DEOS_MULTI_DEVICE_ENTITIES = Object.freeze(["links", "actions", "projects", "folders", "managers", "decisions", "documents"]);
+let deosMultiDeviceSyncRuntime = {
+  syncing: false,
+  lastSyncAt: "",
+  lastError: "",
+  lastResults: {},
+  listenersBound: false,
+  lastAutoAttemptAt: 0
+};
+
+function multiDeviceConnected() {
+  return Boolean(
+    navigator.onLine !== false
+    && !deosRemoteRuntime.temporaryLocal
+    && deosRemoteRuntime.connectionStatus === "authenticated"
+    && deosRemoteRuntime.workspace
+    && deosRemoteAuthService?.isAuthenticated?.()
+    && deosRemoteAdapter
+  );
+}
+
+function enableAllMultiDevicePilots() {
+  const remote = getRemoteSyncSettings();
+  const now = new Date().toISOString();
+  state.settings.remoteSync = normalizeRemoteSyncSettings({
+    ...remote,
+    linksPilotEnabled: true, linksPilotActivatedAt: remote.linksPilotActivatedAt || now, linksPilotLastMode: "multi-device",
+    actionsPilotEnabled: true, actionsPilotActivatedAt: remote.actionsPilotActivatedAt || now, actionsPilotLastMode: "multi-device",
+    projectsPilotEnabled: true, projectsPilotActivatedAt: remote.projectsPilotActivatedAt || now, projectsPilotLastMode: "multi-device",
+    foldersPilotEnabled: true, foldersPilotActivatedAt: remote.foldersPilotActivatedAt || now, foldersPilotLastMode: "multi-device",
+    managersPilotEnabled: true, managersPilotActivatedAt: remote.managersPilotActivatedAt || now, managersPilotLastMode: "multi-device",
+    decisionsPilotEnabled: true, decisionsPilotActivatedAt: remote.decisionsPilotActivatedAt || now, decisionsPilotLastMode: "multi-device",
+    documentsPilotEnabled: true, documentsPilotActivatedAt: remote.documentsPilotActivatedAt || now, documentsPilotLastMode: "multi-device"
+  });
+  persistSettings();
+  initializeLinksHybridSync({ skipAutoSync: true });
+  initializeActionsHybridSync({ skipAutoSync: true });
+  initializeProjectsHybridSync({ skipAutoSync: true });
+  initializeFoldersHybridSync({ skipAutoSync: true });
+  initializeManagersHybridSync({ skipAutoSync: true });
+  initializeDecisionDocumentHybridSync({ skipAutoSync: true });
+}
+
+function multiDeviceEntityRuntime(entity) {
+  if (entity === "links") return deosLinksSyncRuntime;
+  if (entity === "actions") return deosActionsSyncRuntime;
+  if (entity === "projects") return deosProjectsSyncRuntime;
+  if (entity === "folders") return deosFoldersSyncRuntime;
+  if (entity === "managers") return deosManagersSyncRuntime;
+  if (entity === "decisions") return deosDecisionsSyncController?.runtime?.() || {};
+  if (entity === "documents") return deosDocumentsSyncController?.runtime?.() || {};
+  return {};
+}
+
+async function syncAllMultiDeviceNow(options = {}) {
+  const silent = Boolean(options.silent);
+  if (deosMultiDeviceSyncRuntime.syncing) return deosMultiDeviceSyncRuntime;
+  if (!multiDeviceConnected()) {
+    deosMultiDeviceSyncRuntime.lastError = navigator.onLine === false ? "Hors ligne." : "Connexion au workspace requise.";
+    if (!silent && currentView === "settings") renderSettings(deosMultiDeviceSyncRuntime.lastError);
+    return deosMultiDeviceSyncRuntime;
+  }
+  enableAllMultiDevicePilots();
+  deosMultiDeviceSyncRuntime.syncing = true;
+  deosMultiDeviceSyncRuntime.lastError = "";
+  const results = {};
+  const tasks = [
+    ["links", () => linksHybridRepository.syncNow({ silent: true, source: options.source || "multi-device" })],
+    ["actions", () => actionsHybridRepository.syncNow({ silent: true, source: options.source || "multi-device" })],
+    ["projects", () => projectsHybridRepository.syncNow({ silent: true, source: options.source || "multi-device" })],
+    ["folders", () => foldersHybridRepository.syncNow({ silent: true, source: options.source || "multi-device" })],
+    ["managers", () => managersHybridRepository.syncNow({ silent: true, source: options.source || "multi-device" })],
+    ["decisions", () => deosDecisionsSyncController.syncNow({ silent: true, source: options.source || "multi-device" })],
+    ["documents", () => deosDocumentsSyncController.syncNow({ silent: true, source: options.source || "multi-device" })]
+  ];
+  try {
+    for (const [entity, fn] of tasks) {
+      try {
+        await fn();
+        const runtime = multiDeviceEntityRuntime(entity);
+        results[entity] = { ok: !runtime.lastError, error: runtime.lastError || "", conflicts: Number(runtime.conflictCount || 0) };
+      } catch (error) {
+        results[entity] = { ok: false, error: error?.message || String(error), conflicts: 0 };
+      }
+    }
+    deosMultiDeviceSyncRuntime.lastResults = results;
+    deosMultiDeviceSyncRuntime.lastSyncAt = new Date().toLocaleString("fr-FR");
+    const failures = Object.entries(results).filter(([, r]) => !r.ok);
+    deosMultiDeviceSyncRuntime.lastError = failures.length ? failures.map(([k, r]) => `${k}: ${r.error}`).join(" · ") : "";
+  } finally {
+    deosMultiDeviceSyncRuntime.syncing = false;
+  }
+  if (!silent && currentView === "settings") renderSettings(deosMultiDeviceSyncRuntime.lastError || "Synchronisation multi-appareils terminée.");
+  else if (!silent && !deosMultiDeviceSyncRuntime.lastError) showDeosToast?.("Synchronisation multi-appareils terminée.", "success");
+  return deosMultiDeviceSyncRuntime;
+}
+window.syncAllMultiDeviceNow = syncAllMultiDeviceNow;
+
+function scheduleMultiDeviceAutoSync(source = "auto") {
+  if (!multiDeviceConnected()) return;
+  const now = Date.now();
+  if (now - deosMultiDeviceSyncRuntime.lastAutoAttemptAt < 12000) return;
+  deosMultiDeviceSyncRuntime.lastAutoAttemptAt = now;
+  window.setTimeout(() => syncAllMultiDeviceNow({ silent: true, source }), 500);
+}
+
+function bindMultiDeviceSyncListeners() {
+  if (deosMultiDeviceSyncRuntime.listenersBound || typeof window === "undefined") return;
+  window.addEventListener("online", () => scheduleMultiDeviceAutoSync("online"));
+  window.addEventListener("focus", () => scheduleMultiDeviceAutoSync("focus"));
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") scheduleMultiDeviceAutoSync("visible"); });
+  deosMultiDeviceSyncRuntime.listenersBound = true;
+}
+
+function initializeMultiDeviceSyncForAuthenticatedSession(options = {}) {
+  bindMultiDeviceSyncListeners();
+  if (!multiDeviceConnected()) return;
+  enableAllMultiDevicePilots();
+  if (!options.skipSync) scheduleMultiDeviceAutoSync(options.source || "startup");
+}
+
+function multiDeviceSyncSummary() {
+  const rows = DEOS_MULTI_DEVICE_ENTITIES.map(entity => {
+    const runtime = multiDeviceEntityRuntime(entity);
+    return {
+      entity,
+      state: String(runtime.state || (runtime.enabled ? "SYNC_READY" : "LOCAL_ONLY")),
+      conflicts: Number(runtime.conflictCount || 0),
+      error: String(runtime.lastError || ""),
+      lastSyncAt: String(runtime.lastSyncAt || "")
+    };
+  });
+  return { rows, conflicts: rows.reduce((n, r) => n + r.conflicts, 0), errors: rows.filter(r => r.error).length };
+}
+
+function renderMultiDeviceSyncSettingsCardHtml() {
+  const connected = multiDeviceConnected();
+  const summary = multiDeviceSyncSummary();
+  const labelMap = { links:"Liens", actions:"Actions", projects:"Projets", folders:"Dossiers", managers:"Managers", decisions:"Décisions", documents:"Documents" };
+  return `<div id="multiDeviceSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation multi-appareils</h2><p class="muted">V5.30A · un seul workspace pour retrouver automatiquement les 7 objets métier principaux sur PC, iPad et autres navigateurs.</p></div><span class="remote-mode-badge ${connected ? (summary.conflicts ? "red" : "green") : "orange"}">${connected ? (summary.conflicts ? `${summary.conflicts} conflit(s)` : "Cloud connecté") : "Connexion requise"}</span></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Workspace</strong><span>${esc(deosRemoteRuntime.workspace?.name || "--")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchro globale</strong><span>${esc(deosMultiDeviceSyncRuntime.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Conflits</strong><span>${summary.conflicts}</span></div><div class="settings-calendar-summary-item"><strong>Erreurs</strong><span>${summary.errors}</span></div></div><div class="row-actions"><button class="action" type="button" onclick="syncAllMultiDeviceNow({silent:false,source:'manual'})" ${connected && !deosMultiDeviceSyncRuntime.syncing ? "" : "disabled"}>${deosMultiDeviceSyncRuntime.syncing ? "Synchronisation…" : "Synchroniser maintenant"}</button></div>${deosMultiDeviceSyncRuntime.lastError ? `<p class="remote-error-box">${esc(deosMultiDeviceSyncRuntime.lastError)}</p>` : ""}</section><section class="settings-card-block"><h3>Objets synchronisés</h3><div class="settings-calendar-summary">${summary.rows.map(r => `<div class="settings-calendar-summary-item"><strong>${esc(labelMap[r.entity] || r.entity)}</strong><span>${r.conflicts ? `${r.conflicts} conflit(s)` : r.error ? "Erreur" : "Actif"}</span></div>`).join("")}</div><p class="muted">Le stockage local reste conservé. En cas de modifications concurrentes, les moteurs existants signalent un conflit au lieu d'écraser silencieusement les données.</p></section></div></div>`;
+}
+
+function mountMultiDeviceSyncSettingsCard() {
+  if (document.getElementById("multiDeviceSyncSettingsCard")) return;
+  const remoteCard = document.getElementById("remoteWorkspaceSettingsCard") || document.querySelector(".settings-remote-card");
+  const host = remoteCard?.parentElement || document.getElementById("app");
+  if (!host) return;
+  const wrap = document.createElement("div");
+  wrap.innerHTML = renderMultiDeviceSyncSettingsCardHtml();
+  const card = wrap.firstElementChild;
+  if (remoteCard?.nextSibling) remoteCard.parentElement.insertBefore(card, remoteCard.nextSibling); else host.appendChild(card);
+}
 function getDefaultRemoteSyncSettings() {
   const remoteApi = window.DeosSupabase;
   const base = remoteApi?.normalizeRemoteConfig
@@ -22078,6 +22238,7 @@ async function initializeRemoteServices(options = {}) {
           try {
             await refreshRemoteTestRecords({ silent: true });
             initializeLinksHybridSync({ skipAutoSync: false });
+            initializeMultiDeviceSyncForAuthenticatedSession({ source: "auth-state" });
             await maybePromptRemoteLinksRecovery({ silent: true, autoRecover: true });
           } catch (error) {
             deosRemoteRuntime.lastError = error?.message || "Actualisation distante impossible.";
@@ -22091,6 +22252,7 @@ async function initializeRemoteServices(options = {}) {
       await refreshRemoteTestRecords({ silent: true });
       setRemoteLastOperation("Session distante restauree.");
       initializeLinksHybridSync({ skipAutoSync: false });
+      initializeMultiDeviceSyncForAuthenticatedSession({ source: "session-restored" });
       await maybePromptRemoteLinksRecovery({ silent: true, autoRecover: true });
     }
   } catch (error) {
@@ -23289,13 +23451,14 @@ function renderSettings(message = "") {
   document.querySelectorAll(".nav").forEach(btn => btn.classList.toggle("active", btn.dataset.view === "settings"));
   const statusMessage = message || restoreSuccessMessage;
   restoreSuccessMessage = "";
-  appHtml(`<div class="card hero settings-hero"><h2>⚙️ Paramètres généraux</h2><p class="muted">Personnalisez uniquement l'identité de l'application. Les données métier restent intactes.</p></div><div class="grid two"><div class="card settings-card"><h2>Identité</h2><div class="form-grid"><input id="setAppName" value="${esc(identity.appName)}" placeholder="Nom de l'application" oninput="updateSettingsPreview()"><input id="setAppVersion" value="${esc(DEOS_VERSION)}" placeholder="Version" readonly><input id="setSiteName" value="${esc(identity.siteName)}" placeholder="Nom du site" oninput="updateSettingsPreview()"><input id="setDirectorName" value="${esc(identity.directorName)}" placeholder="Nom du directeur" oninput="updateSettingsPreview()"><input id="setDirectorRole" value="${esc(identity.directorRole)}" placeholder="Fonction" oninput="updateSettingsPreview()"><input id="setOrganizationName" value="${esc(identity.organizationName)}" placeholder="Organisation / entreprise" oninput="updateSettingsPreview()"><select id="setLogoType" onchange="updateSettingsPreview()"><option value="monogram" ${identity.logoType !== "image" ? "selected" : ""}>Monogramme</option><option value="image" ${identity.logoType === "image" ? "selected" : ""}>Image</option></select><input id="setLogoText" value="${esc(identity.logoText)}" placeholder="Lettre ou initiales" oninput="updateSettingsPreview()"><input id="setLogoImage" class="full" value="${esc(identity.logoImage)}" placeholder="URL d'image optionnelle" oninput="updateSettingsPreview()"></div><div class="row-actions"><button class="action" onclick="saveSettings()">Enregistrer les paramètres</button><button class="secondary" onclick="resetIdentitySettings()">Rétablir les valeurs actuelles</button></div>${statusMessage ? `<p class="settings-confirm">${esc(statusMessage)}</p>` : ""}</div><div class="card settings-card"><h2>Aperçu</h2><div id="settingsPreview">${settingsPreviewHtml(identity)}</div><p class="muted">Cet aperçu correspond aux zones d'identité : barre latérale, titre, Brief du jour, signatures de comptes rendus et valeurs par défaut des créations futures.</p></div></div>${settingsCalendarConnectionCard()}<div class="card settings-card"><h2>Sauvegarde et restauration</h2><p class="muted">Les données DEOS sont enregistrées dans ce navigateur. Exportez régulièrement une sauvegarde afin de pouvoir les restaurer sur cet appareil ou sur un autre ordinateur.</p><div class="row-actions"><button id="backupExportBtn" class="action" onclick="exportBackup()">Exporter toutes les données</button><button id="backupImportBtn" class="secondary" onclick="triggerBackupImport()">Importer une sauvegarde</button><input id="backupFileInput" type="file" accept=".json,application/json" style="display:none" onchange="onBackupFileInputChange(event)"></div><div class="form-grid"><div class="item"><strong>Date dernière exportation</strong><span class="muted">${esc(getBackupMetadata().lastExport)}</span></div><div class="item"><strong>Date dernière restauration</strong><span class="muted">${esc(getBackupMetadata().lastRestore)}</span></div><div class="item"><strong>Catégories métier actuellement présentes</strong><span class="muted">${esc(String(currentLocalStorageCategoryCount()))}</span></div></div>${backupPreviewOpen ? renderBackupPreviewCard({ date: backupPreviewPayload.date, categoryCount: backupPreviewSummary.categoryCount, counts: backupPreviewSummary.counts }) : ""}${backupPreviewOpen ? `<div class="row-actions"><button class="action" onclick="confirmRestoreBackup()">Confirmer la restauration</button><button class="secondary" onclick="closeBackupPreview()">Annuler</button></div>` : ""}</div><div class="card settings-card"><h2>Ce qui n'est pas modifié</h2><p class="muted">Les dossiers, projets, managers, décisions, actions, documents, journal, KPI, imports, liens utiles et historiques ne sont pas modifiés par ces paramètres.</p></div>`);
+  appHtml(`<div class="card hero settings-hero"><h2>⚙️ Paramètres généraux</h2><p class="muted">Personnalisez uniquement l'identité de l'application. Les données métier restent intactes.</p></div><div class="grid two"><div class="card settings-card"><h2>Identité</h2><div class="form-grid"><input id="setAppName" value="${esc(identity.appName)}" placeholder="Nom de l'application" oninput="updateSettingsPreview()"><input id="setAppVersion" value="${esc(DEOS_VERSION)}" placeholder="Version" readonly><input id="setSiteName" value="${esc(identity.siteName)}" placeholder="Nom du site" oninput="updateSettingsPreview()"><input id="setDirectorName" value="${esc(identity.directorName)}" placeholder="Nom du directeur" oninput="updateSettingsPreview()"><input id="setDirectorRole" value="${esc(identity.directorRole)}" placeholder="Fonction" oninput="updateSettingsPreview()"><input id="setOrganizationName" value="${esc(identity.organizationName)}" placeholder="Organisation / entreprise" oninput="updateSettingsPreview()"><select id="setLogoType" onchange="updateSettingsPreview()"><option value="monogram" ${identity.logoType !== "image" ? "selected" : ""}>Monogramme</option><option value="image" ${identity.logoType === "image" ? "selected" : ""}>Image</option></select><input id="setLogoText" value="${esc(identity.logoText)}" placeholder="Lettre ou initiales" oninput="updateSettingsPreview()"><input id="setLogoImage" class="full" value="${esc(identity.logoImage)}" placeholder="URL d'image optionnelle" oninput="updateSettingsPreview()"></div><div class="row-actions"><button class="action" onclick="saveSettings()">Enregistrer les paramètres</button><button class="secondary" onclick="resetIdentitySettings()">Rétablir les valeurs actuelles</button></div>${statusMessage ? `<p class="settings-confirm">${esc(statusMessage)}</p>` : ""}</div><div class="card settings-card"><h2>Aperçu</h2><div id="settingsPreview">${settingsPreviewHtml(identity)}</div><p class="muted">Cet aperçu correspond aux zones d'identité : barre latérale, titre, Brief du jour, signatures de comptes rendus et valeurs par défaut des créations futures.</p></div></div>${settingsCalendarConnectionCard()}<div class="card settings-card"><h2>Sauvegarde et restauration</h2><p class="muted">Les données restent enregistrées localement dans ce navigateur et, lorsque le Cloud DEOS est connecté, les objets métier compatibles sont également synchronisés entre vos appareils. Conservez néanmoins des sauvegardes régulières.</p><div class="row-actions"><button id="backupExportBtn" class="action" onclick="exportBackup()">Exporter toutes les données</button><button id="backupImportBtn" class="secondary" onclick="triggerBackupImport()">Importer une sauvegarde</button><input id="backupFileInput" type="file" accept=".json,application/json" style="display:none" onchange="onBackupFileInputChange(event)"></div><div class="form-grid"><div class="item"><strong>Date dernière exportation</strong><span class="muted">${esc(getBackupMetadata().lastExport)}</span></div><div class="item"><strong>Date dernière restauration</strong><span class="muted">${esc(getBackupMetadata().lastRestore)}</span></div><div class="item"><strong>Catégories métier actuellement présentes</strong><span class="muted">${esc(String(currentLocalStorageCategoryCount()))}</span></div></div>${backupPreviewOpen ? renderBackupPreviewCard({ date: backupPreviewPayload.date, categoryCount: backupPreviewSummary.categoryCount, counts: backupPreviewSummary.counts }) : ""}${backupPreviewOpen ? `<div class="row-actions"><button class="action" onclick="confirmRestoreBackup()">Confirmer la restauration</button><button class="secondary" onclick="closeBackupPreview()">Annuler</button></div>` : ""}</div><div class="card settings-card"><h2>Ce qui n'est pas modifié</h2><p class="muted">Les dossiers, projets, managers, décisions, actions, documents, journal, KPI, imports, liens utiles et historiques ne sont pas modifiés par ces paramètres.</p></div>`);
 }
 
 const renderSettingsBase = renderSettings;
 renderSettings = function renderSettingsWithRemote(message = "") {
   renderSettingsBase(message);
   mountRemoteSettingsCard();
+  mountMultiDeviceSyncSettingsCard();
   enhanceSettingsAccordions();
 };
 
