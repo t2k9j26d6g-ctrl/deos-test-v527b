@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30G";
+const DEOS_VERSION = "V5.30H";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -21123,8 +21123,8 @@ function renderManagersConflictResolutionDialog() {
     const encodedClientId = encodeURIComponent(conflict.remoteClientId || conflict.localClientId || "");
     const encodedField = encodeURIComponent(field);
     const canMerge = managerConflictFieldCanMerge(field, localCanonical[field], remoteCanonical[field]);
-    const mergeButton = canMerge ? `<div class="row-actions" style="margin-top:8px"><button class="${choice === "merge" ? "action" : "secondary"}" type="button" onclick="chooseManagerConflictField('${encodedClientId}','${encodedField}','merge')">${choice === "merge" ? "✓ " : ""}Fusionner les deux</button></div>` : "";
-    return `<div class="card" style="margin:10px 0;padding:12px"><strong>${esc(field)}</strong><div class="settings-card-grid" style="margin-top:8px"><section class="settings-card-block"><h3>Local iPad</h3><pre style="white-space:pre-wrap;word-break:break-word;font-size:12px">${esc(managerConflictDisplayValue(localCanonical[field]))}</pre><button class="${choice === "local" ? "action" : "secondary"}" type="button" onclick="chooseManagerConflictField('${encodedClientId}','${encodedField}','local')">${choice === "local" ? "✓ " : ""}Conserver LOCAL</button></section><section class="settings-card-block"><h3>Supabase / PC</h3><pre style="white-space:pre-wrap;word-break:break-word;font-size:12px">${esc(managerConflictDisplayValue(remoteCanonical[field]))}</pre><button class="${choice === "remote" ? "action" : "secondary"}" type="button" onclick="chooseManagerConflictField('${encodedClientId}','${encodedField}','remote')">${choice === "remote" ? "✓ " : ""}Conserver SUPABASE</button></section></div>${mergeButton}</div>`;
+    const mergeButton = canMerge ? `<div class="row-actions" style="margin-top:8px"><button class="${choice === "merge" ? "action" : "secondary"}" type="button" onclick="chooseCurrentManagerConflictField('${encodedField}','merge')">${choice === "merge" ? "✓ " : ""}Fusionner les deux</button></div>` : "";
+    return `<div class="card" style="margin:10px 0;padding:12px"><strong>${esc(field)}</strong><div class="settings-card-grid" style="margin-top:8px"><section class="settings-card-block"><h3>Local iPad</h3><pre style="white-space:pre-wrap;word-break:break-word;font-size:12px">${esc(managerConflictDisplayValue(localCanonical[field]))}</pre><button class="${choice === "local" ? "action" : "secondary"}" type="button" onclick="chooseCurrentManagerConflictField('${encodedField}','local')">${choice === "local" ? "✓ " : ""}Conserver LOCAL</button></section><section class="settings-card-block"><h3>Supabase / PC</h3><pre style="white-space:pre-wrap;word-break:break-word;font-size:12px">${esc(managerConflictDisplayValue(remoteCanonical[field]))}</pre><button class="${choice === "remote" ? "action" : "secondary"}" type="button" onclick="chooseCurrentManagerConflictField('${encodedField}','remote')">${choice === "remote" ? "✓ " : ""}Conserver SUPABASE</button></section></div>${mergeButton}</div>`;
   }).join("");
   root.insertAdjacentHTML("beforeend", `<div id="managersConflictResolutionOverlay" class="modal-backdrop"><div class="modal-panel remote-auth-panel" style="max-width:960px"><div class="modal-head"><h2>Fusion Manager — ${esc(conflict.title || conflict.local?.name || conflict.remote?.name || "Manager")}</h2><button class="icon-close" type="button" onclick="closeManagersConflictResolutionDialog()" aria-label="Fermer">×</button></div><div class="remote-auth-body"><p class="muted">Manager ${index + 1}/${total} · ${selectedCount}/${fields.length} champ(s) arbitré(s). Aucun choix n'est envoyé à Supabase à ce stade.</p><div class="row-actions"><button class="secondary" type="button" onclick="chooseAllManagerConflictFields('local')">Tout conserver LOCAL</button><button class="secondary" type="button" onclick="chooseAllManagerConflictFields('remote')">Tout conserver SUPABASE</button><button class="secondary" type="button" onclick="chooseAllMergeableManagerConflictFields()">Fusionner tous les champs compatibles</button></div>${rows}<div class="row-actions"><button class="secondary" type="button" onclick="previousManagerConflictDialog()" ${index <= 0 ? "disabled" : ""}>← Précédent</button><button class="secondary" type="button" onclick="nextManagerConflictDialog()" ${index >= total - 1 ? "disabled" : ""}>Suivant →</button><button class="action" type="button" onclick="reanalyzeManagersAfterConflictChoices()">Ré-analyser les Managers</button><button class="secondary" type="button" onclick="closeManagersConflictResolutionDialog()">Fermer</button></div></div></div></div>`);
 }
@@ -21170,12 +21170,24 @@ function openManagersConflictResolutionDialog(index = 0) {
   }
 }
 function chooseManagerConflictField(encodedClientId, encodedField, side) {
-  const clientId = decodeURIComponent(String(encodedClientId || ""));
+  // V5.30H — le dialogue travaille sur le conflit actuellement affiché.
+  // Cela évite une recherche fragile par client_id (différences local/distant possibles).
   const field = decodeURIComponent(String(encodedField || ""));
-  const conflicts = ensureArray((deosManagersConflictDialogAnalysis || deosManagersSyncRuntime.lastAnalysis)?.conflicts);
-  const conflict = conflicts.find(item => sameId(item.remoteClientId || item.localClientId, clientId));
+  const data = managersConflictForDialog();
+  const conflict = data?.conflict || null;
   if (!conflict) return alert("Conflit Manager introuvable dans la dernière analyse.");
-  saveManagerConflictFieldChoice(conflict, field, side);
+  if (!field) return alert("Champ Manager introuvable.");
+  const ok = saveManagerConflictFieldChoice(conflict, field, side);
+  if (!ok) return alert("Impossible d’enregistrer ce choix de fusion.");
+  renderManagersConflictResolutionDialog();
+}
+
+function chooseCurrentManagerConflictField(encodedField, side) {
+  const field = decodeURIComponent(String(encodedField || ""));
+  const data = managersConflictForDialog();
+  if (!data?.conflict) return alert("Conflit Manager introuvable dans la dernière analyse.");
+  const ok = saveManagerConflictFieldChoice(data.conflict, field, side);
+  if (!ok) return alert("Impossible d’enregistrer ce choix de fusion.");
   renderManagersConflictResolutionDialog();
 }
 function chooseAllManagerConflictFields(side) {
@@ -21234,6 +21246,7 @@ window.openManagersConflictResolutionFromSettings = openManagersConflictResoluti
 window.openManagersConflictResolutionDialog = openManagersConflictResolutionDialog;
 window.closeManagersConflictResolutionDialog = closeManagersConflictResolutionDialog;
 window.chooseManagerConflictField = chooseManagerConflictField;
+window.chooseCurrentManagerConflictField = chooseCurrentManagerConflictField;
 window.chooseAllManagerConflictFields = chooseAllManagerConflictFields;
 window.chooseAllMergeableManagerConflictFields = chooseAllMergeableManagerConflictFields;
 window.previousManagerConflictDialog = previousManagerConflictDialog;
