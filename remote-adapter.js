@@ -566,7 +566,31 @@ class SupabaseRemoteAdapter {
         .single();
       if (response.error) {
         const code = String(response.error.code || "").trim();
-        if (code === "23505") throw createRemoteError("REMOTE_ACTION_EXISTS", response.error.message || "L'Action existe déjà à distance.", response.error);
+        if (code === "23505") {
+          // V5.30K — même protection que pour Projets : un enregistrement distant
+          // peut déjà porter ce client_id (y compris après soft-delete). On le
+          // réutilise/restaure au lieu de provoquer une nouvelle erreur de clé unique.
+          const existing = await context.client
+            .from("deos_actions")
+            .select("id, workspace_id, owner_id, client_id, data, created_at, updated_at, deleted_at, version")
+            .eq("workspace_id", context.workspaceId)
+            .eq("client_id", clientId)
+            .maybeSingle();
+          if (existing.error) throw createRemoteError("REMOTE_ACTION_EXISTS_LOOKUP_FAILED", existing.error.message || "L'Action existe déjà mais sa lecture a échoué.", existing.error);
+          if (existing.data && !existing.data.deleted_at) return normalizeActionRow(existing.data);
+          if (existing.data && existing.data.deleted_at) {
+            const restored = await context.client
+              .from("deos_actions")
+              .update({ owner_id: context.userId, data: payload, deleted_at: null })
+              .eq("workspace_id", context.workspaceId)
+              .eq("client_id", clientId)
+              .select("id, workspace_id, owner_id, client_id, data, created_at, updated_at, deleted_at, version")
+              .single();
+            if (restored.error) throw createRemoteError("REMOTE_ACTION_RESTORE_FAILED", restored.error.message || "Restauration de l'Action distante impossible.", restored.error);
+            return normalizeActionRow(restored.data);
+          }
+          throw createRemoteError("REMOTE_ACTION_EXISTS", response.error.message || "L'Action existe déjà à distance.", response.error);
+        }
         throw createRemoteError("REMOTE_ACTION_CREATE_FAILED", response.error.message || "Création distante de l'Action impossible.", response.error);
       }
       return normalizeActionRow(response.data);
