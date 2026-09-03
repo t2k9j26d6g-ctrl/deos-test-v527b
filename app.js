@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30I";
+const DEOS_VERSION = "V5.30J";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -21435,6 +21435,42 @@ function createSimpleEntitySyncController(config) {
           state[entity].push(normalizeEntity(entity,{...remote,id,clientId:id})); localChanged=true;
           setMeta(id,{remoteId:row.remoteId,remoteVersion:Number(row.version||0),remoteUpdatedAt:row.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:simpleSyncFingerprint(remote),lastSyncError:"",conflictFields:[]});
           continue;
+        }
+        // V5.30J — Décisions : les rattachements Managers sont additifs.
+        // Si linkedManagers est la seule différence, on conserve l’union des deux côtés
+        // au lieu de créer un conflit demandant un arbitrage destructif.
+        if (entity === "decisions") {
+          const decisionDiffs = simpleSyncConflictFields(local, remote);
+          if (decisionDiffs.length === 1 && decisionDiffs[0] === "linkedManagers") {
+            const mergedLinkedManagers = normalizeLinkedManagerIds([
+              ...ensureArray(local.linkedManagers),
+              ...ensureArray(remote.linkedManagers)
+            ]);
+            const mergedDecision = normalizeEntity("decisions", {
+              ...remote,
+              ...local,
+              id,
+              clientId: id,
+              linkedManagers: mergedLinkedManagers
+            });
+            const updated = await timeout(
+              deosRemoteAdapter[updateMethod](id, mergedDecision, Number(row.version || 0)),
+              `Fusion des managers liés — ${mergedDecision.title || id}`
+            );
+            state[entity][idx] = mergedDecision;
+            localChanged = true;
+            setMeta(id, {
+              remoteId: updated.remoteId,
+              remoteVersion: Number(updated.version || 0),
+              remoteUpdatedAt: updated.updatedAt || "",
+              lastSyncedAt: new Date().toISOString(),
+              syncStatus: DEOS_LINKS_SYNC_STATUS.SYNCED,
+              lastLocalFingerprint: simpleSyncFingerprint(mergedDecision),
+              lastSyncError: "",
+              conflictFields: []
+            });
+            continue;
+          }
         }
         const lfp=simpleSyncFingerprint(local), rfp=simpleSyncFingerprint(remote);
         if (!meta.lastLocalFingerprint) {
