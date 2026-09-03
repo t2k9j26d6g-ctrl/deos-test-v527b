@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30K";
+const DEOS_VERSION = "V5.30L";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -898,9 +898,11 @@ function persist(name) {
   } else {
     deosDataService.save(name, state[name]);
   }
-  // V5.27B — une écriture locale Décision/Document déclenche une synchro différée
-  // uniquement si le pilote correspondant a été explicitement activé.
-  if (name === "decisions" || name === "documents") scheduleSimpleEntityAutoSync(name);
+  // V5.30L — toute écriture sur un des 7 objets multi-appareils déclenche
+  // une synchronisation Cloud différée. Le stockage local reste immédiat.
+  if (["links", "actions", "projects", "folders", "managers", "decisions", "documents"].includes(name)) {
+    scheduleMultiDeviceWriteSync(name);
+  }
 }
 
 function normalizeIdentity(value = {}) {
@@ -21657,6 +21659,24 @@ function scheduleMultiDeviceAutoSync(source = "auto") {
   deosMultiDeviceSyncRuntime.lastAutoAttemptAt = now;
   window.setTimeout(() => syncAllMultiDeviceNow({ silent: true, source }), 500);
 }
+
+// V5.30L — debounce dédié aux écritures métier. Contrairement au contrôle
+// startup/focus, une modification locale ne doit pas attendre 12 secondes.
+let deosMultiDeviceWriteSyncTimer = null;
+function scheduleMultiDeviceWriteSync(entity = "change") {
+  if (typeof window === "undefined") return;
+  if (!multiDeviceConnected()) return;
+  // Une persistance effectuée pendant une synchro distante ne doit pas
+  // réamorcer une boucle de synchronisation.
+  if (deosMultiDeviceSyncRuntime.syncing) return;
+  if (deosMultiDeviceWriteSyncTimer) window.clearTimeout(deosMultiDeviceWriteSyncTimer);
+  deosMultiDeviceWriteSyncTimer = window.setTimeout(async () => {
+    deosMultiDeviceWriteSyncTimer = null;
+    if (!multiDeviceConnected() || deosMultiDeviceSyncRuntime.syncing) return;
+    await syncAllMultiDeviceNow({ silent: true, source: `write:${entity}` });
+  }, 1200);
+}
+window.scheduleMultiDeviceWriteSync = scheduleMultiDeviceWriteSync;
 
 function bindMultiDeviceSyncListeners() {
   if (deosMultiDeviceSyncRuntime.listenersBound || typeof window === "undefined") return;
