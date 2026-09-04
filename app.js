@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30M";
+const DEOS_VERSION = "V5.30O";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -7714,20 +7714,30 @@ function managerCard(m) {
 
 
 
-// V5.30M — Notes de pilotage / 1:1 Performance.
-// Objectif : conserver la liberté d'une page Goodnotes tout en permettant à DEOS
-// de transformer uniquement les éléments utiles en Actions, Décisions, Projets ou Demandes.
+// V5.30O — Note de pilotage : ergonomie "feuille de travail".
+// Principe : l'entretien reste libre dans une zone centrale ; les marqueurs servent à
+// structurer a posteriori Questions, Vigilances, Actions, Décisions et Faits marquants.
+const MANAGER_PILOT_MARKERS = [
+  { symbol: "?", kind: "question", label: "Question" },
+  { symbol: "!", kind: "vigilance", label: "Vigilance" },
+  { symbol: "→", kind: "action", label: "Action" },
+  { symbol: "✓", kind: "decision", label: "Décision" },
+  { symbol: "★", kind: "fact", label: "Fait marquant" }
+];
+
 function normalizeManagerPilotNotes(rows = []) {
   return ensureArray(rows).filter(row => row && typeof row === "object").map(row => {
     const followUps = ensureArray(row.followUps).map(item => {
-      if (typeof item === "string") return { id: newId("pilot-follow"), text: item.trim(), createdRefs: {} };
-      return { id: item.id || newId("pilot-follow"), text: String(item.text || "").trim(), createdRefs: item.createdRefs && typeof item.createdRefs === "object" ? { ...item.createdRefs } : {} };
+      if (typeof item === "string") return { id: newId("pilot-follow"), text: item.trim(), kind: "follow", createdRefs: {} };
+      return { id: item.id || newId("pilot-follow"), text: String(item.text || "").trim(), kind: String(item.kind || "follow"), createdRefs: item.createdRefs && typeof item.createdRefs === "object" ? { ...item.createdRefs } : {} };
     }).filter(item => item.text);
     return {
       id: row.id || newId("pilot-note"),
       date: String(row.date || "").trim() || isoToday(),
       type: String(row.type || "performance").trim() || "performance",
       previousReview: String(row.previousReview || ""),
+      // Compatibilité avec les notes V5.30M/N : les deux anciens champs restent lus
+      // puis sont fusionnés dans la feuille centrale à la prochaine modification.
       facts: String(row.facts || ""),
       questions: String(row.questions || ""),
       notes: String(row.notes || ""),
@@ -7743,20 +7753,20 @@ function managerPilotTypeLabel(value) {
   return labels[String(value || "performance")] || "Note de pilotage";
 }
 
+function managerPilotMarkerInfoFromLine(line) {
+  const raw = String(line || "").trim();
+  if (!raw) return null;
+  const found = MANAGER_PILOT_MARKERS.find(item => raw.startsWith(item.symbol));
+  if (!found) return null;
+  return { ...found, text: raw.slice(found.symbol.length).trim() };
+}
+
 function managerPilotMarkerLine(line) {
   const raw = String(line || "").trim();
   if (!raw) return "";
-  const markers = [
-    ["?", "Question", "#2563eb"],
-    ["!", "Vigilance", "#d97706"],
-    ["→", "Action", "#7c3aed"],
-    ["✓", "Décision", "#15803d"]
-  ];
-  const found = markers.find(([symbol]) => raw.startsWith(symbol));
-  if (!found) return `<div style="padding:3px 0">${esc(raw)}</div>`;
-  const [symbol,label,color] = found;
-  const text = raw.slice(symbol.length).trim();
-  return `<div style="padding:3px 0"><span style="display:inline-block;min-width:82px;font-size:12px;font-weight:700;color:${color}">${esc(symbol)} ${esc(label)}</span>${esc(text)}</div>`;
+  const info = managerPilotMarkerInfoFromLine(raw);
+  if (!info) return `<div class="pilot-render-line">${esc(raw)}</div>`;
+  return `<div class="pilot-render-line pilot-render-${esc(info.kind)}"><span class="pilot-render-tag">${esc(info.symbol)} ${esc(info.label)}</span><span>${esc(info.text)}</span></div>`;
 }
 
 function managerPilotTextBlock(value) {
@@ -7765,43 +7775,136 @@ function managerPilotTextBlock(value) {
 }
 
 function managerPilotOpenActions(m) {
-  const linked = state.actions.filter(a => !a.done && normalizeLinkedManagerIds(ensureArray(a.linkedManagers)).some(id => sameId(id, m.id)));
-  return linked;
+  return state.actions.filter(a => !a.done && normalizeLinkedManagerIds(ensureArray(a.linkedManagers)).some(id => sameId(id, m.id)));
 }
 
-function managerPilotSinceLast(m, excludeNoteId = "") {
+function managerPilotSinceLastData(m, excludeNoteId = "") {
   const notes = normalizeManagerPilotNotes(m.pilotNotes).filter(note => !sameId(note.id, excludeNoteId));
   const previous = notes[0] || null;
   const actions = managerPilotOpenActions(m);
   const requests = ensureArray(m.managementRequests).filter(r => ["open","progress","partial"].includes(String(r.status || "open")));
   const followUps = previous ? ensureArray(previous.followUps).filter(f => !f.createdRefs || Object.keys(f.createdRefs).length === 0) : [];
-  if (!previous && !actions.length && !requests.length) return `<div class="empty">Aucun élément en attente depuis le précédent entretien.</div>`;
-  return `<div style="display:grid;gap:10px">
-    ${previous ? `<div><strong>Dernière note :</strong> ${esc(previous.date)} · ${esc(managerPilotTypeLabel(previous.type))}</div>` : ""}
-    ${actions.length ? `<div><strong>Actions ouvertes (${actions.length})</strong>${actions.slice(0,6).map(a => `<div class="item clickable" onclick="openAction('${esc(a.id)}')">${esc(a.title)}</div>`).join("")}</div>` : ""}
-    ${requests.length ? `<div><strong>Demandes / objectifs à suivre (${requests.length})</strong>${requests.slice(0,6).map(r => `<div class="item">${esc(r.subject || r.requestText || "Demande")}</div>`).join("")}</div>` : ""}
-    ${followUps.length ? `<div><strong>À revoir du dernier entretien</strong>${followUps.slice(0,8).map(f => `<div class="item">${esc(f.text)}</div>`).join("")}</div>` : ""}
-  </div>`;
+  return { previous, actions, requests, followUps };
 }
+
+function managerPilotSinceLastSummary(m, excludeNoteId = "") {
+  const { actions, requests, followUps } = managerPilotSinceLastData(m, excludeNoteId);
+  const bits = [];
+  if (requests.length) bits.push(`${requests.length} demande${requests.length > 1 ? "s" : ""}`);
+  if (actions.length) bits.push(`${actions.length} action${actions.length > 1 ? "s" : ""}`);
+  if (followUps.length) bits.push(`${followUps.length} point${followUps.length > 1 ? "s" : ""} à revoir`);
+  return bits.length ? bits.join(" · ") : "Aucun élément en attente";
+}
+
+function managerPilotSinceLast(m, excludeNoteId = "") {
+  const { previous, actions, requests, followUps } = managerPilotSinceLastData(m, excludeNoteId);
+  if (!previous && !actions.length && !requests.length && !followUps.length) return `<div class="empty">Aucun élément en attente depuis le précédent entretien.</div>`;
+  const items = [];
+  actions.slice(0,6).forEach(a => items.push(`<button type="button" class="pilot-carry-chip pilot-carry-action" onclick="openAction('${esc(a.id)}')"><span>→</span>${esc(a.title)}</button>`));
+  requests.slice(0,6).forEach(r => items.push(`<span class="pilot-carry-chip pilot-carry-request"><span>◎</span>${esc(r.subject || r.requestText || "Demande")}</span>`));
+  followUps.slice(0,8).forEach(f => items.push(`<span class="pilot-carry-chip pilot-carry-follow"><span>↻</span>${esc(f.text)}</span>`));
+  return `<div class="pilot-carry-body">${previous ? `<div class="pilot-carry-last"><strong>Dernière note</strong><span>${esc(previous.date)} · ${esc(managerPilotTypeLabel(previous.type))}</span></div>` : ""}<div class="pilot-carry-chips">${items.join("")}</div></div>`;
+}
+
+function managerPilotLegacyNotes(existing = {}) {
+  const blocks = [];
+  const facts = String(existing.facts || "").split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+  const questions = String(existing.questions || "").split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+  facts.forEach(line => blocks.push(line.startsWith("★") ? line : `★ ${line}`));
+  questions.forEach(line => blocks.push(line.startsWith("?") ? line : `? ${line}`));
+  const free = String(existing.notes || "").trim();
+  if (free) blocks.push(free);
+  return blocks.join("\n");
+}
+
+function managerPilotExtractTagged(value) {
+  return String(value || "").split(/\r?\n/).map((line, index) => {
+    const info = managerPilotMarkerInfoFromLine(line);
+    return info && info.text ? { ...info, index } : null;
+  }).filter(Boolean);
+}
+
+function managerPilotRetainedHtml(value) {
+  const items = managerPilotExtractTagged(value);
+  if (!items.length) return `<div class="pilot-retained-empty">Aucun élément qualifié pour le moment.<br><span>Sélectionnez une ligne puis utilisez Question, Vigilance, Action, Décision ou Fait marquant.</span></div>`;
+  const groups = MANAGER_PILOT_MARKERS.map(marker => ({ ...marker, items: items.filter(item => item.kind === marker.kind) })).filter(group => group.items.length);
+  return groups.map(group => `<section class="pilot-retained-group"><h4><span>${esc(group.symbol)}</span>${esc(group.label)} <small>${group.items.length}</small></h4>${group.items.map(item => `<div class="pilot-retained-item pilot-retained-${esc(group.kind)}">${esc(item.text)}</div>`).join("")}</section>`).join("");
+}
+
+function updatePilotRetainedPanel() {
+  const field = document.getElementById("mpNotes");
+  const panel = document.getElementById("mpRetained");
+  if (!field || !panel) return;
+  panel.innerHTML = managerPilotRetainedHtml(field.value);
+}
+window.updatePilotRetainedPanel = updatePilotRetainedPanel;
 
 function managerPilotForm(m, noteId = "") {
   const existing = normalizeManagerPilotNotes(m.pilotNotes).find(n => sameId(n.id, noteId)) || {};
   const editing = Boolean(existing.id);
-  const followText = ensureArray(existing.followUps).map(f => f.text || "").filter(Boolean).join("\n");
-  return `<div id="manager-pilot-form" class="card full-span" style="scroll-margin-top:14px">
-    <div class="row"><div><h2>${editing ? "Modifier la note de pilotage" : "Nouvelle note de pilotage"}</h2><p class="muted">Prise de notes libre, pensée pour les entretiens de performance et les 1:1.</p></div></div>
-    <div class="card" style="margin:10px 0"><h3>Depuis le dernier entretien</h3>${managerPilotSinceLast(m, existing.id || "")}</div>
-    <div class="form-grid"><input id="mpDate" type="date" value="${esc(existing.date || isoToday())}"><select id="mpType"><option value="performance" ${!editing || existing.type === "performance" ? "selected" : ""}>Entretien performance</option><option value="oneToOne" ${existing.type === "oneToOne" ? "selected" : ""}>1:1 managérial</option><option value="quick" ${existing.type === "quick" ? "selected" : ""}>Point rapide</option><option value="other" ${existing.type === "other" ? "selected" : ""}>Autre note</option></select></div>
-    <label><strong>Retour entretien précédent</strong></label><textarea id="mpPrevious" placeholder="Ce qui devait être revu / relancé depuis le précédent entretien">${esc(existing.previousReview || "")}</textarea>
-    <label><strong>Chiffres / faits marquants</strong></label><textarea id="mpFacts" placeholder="Productivité, heures, budget, absentéisme, volumes, faits...">${esc(existing.facts || "")}</textarea>
-    <label><strong>Sujets / questions</strong></label><textarea id="mpQuestions" placeholder="Questions à poser, sujets à comprendre, hypothèses...">${esc(existing.questions || "")}</textarea>
-    <label><strong>Notes libres</strong></label><div class="row-actions" style="margin-bottom:6px"><button class="secondary" type="button" onclick="insertPilotMarker('mpNotes','?')">? Question</button><button class="secondary" type="button" onclick="insertPilotMarker('mpNotes','!')">! Vigilance</button><button class="secondary" type="button" onclick="insertPilotMarker('mpNotes','→')">→ Action</button><button class="secondary" type="button" onclick="insertPilotMarker('mpNotes','✓')">✓ Décision</button></div><textarea id="mpNotes" style="min-height:190px" placeholder="Écrivez librement comme dans votre carnet Goodnotes...">${esc(existing.notes || "")}</textarea>
-    <label><strong>À suivre</strong></label><textarea id="mpFollow" placeholder="Un sujet par ligne. Après enregistrement, chaque ligne pourra devenir une Action, une Décision, une Demande manager ou un Projet.">${esc(followText)}</textarea>
-    <div class="row-actions"><button class="action" onclick="saveManagerPilotNote('${esc(m.id)}','${esc(existing.id || "")}')">${editing ? "Enregistrer" : "Enregistrer la note"}</button><button class="secondary" onclick="openManager('${esc(m.id)}')">Annuler</button></div>
+  const noteDate = existing.date || isoToday();
+  const noteType = existing.type || "performance";
+  const centralNotes = managerPilotLegacyNotes(existing);
+  return `<div id="manager-pilot-form" class="card full-span pilot-workspace" style="scroll-margin-top:14px">
+    <div class="pilot-heading"><div><h2>${editing ? "Modifier la note de pilotage" : "Nouvelle note de pilotage"}</h2><p>Prise de notes libre, pensée pour les entretiens de performance et les 1:1.</p></div><span class="meta">${editing ? "Note existante" : "Nouvelle note"}</span></div>
+
+    <div class="pilot-meta-row">
+      <label class="pilot-field"><span>Date</span><input id="mpDate" type="date" value="${esc(noteDate)}"></label>
+      <label class="pilot-field"><span>Type</span><select id="mpType"><option value="performance" ${noteType === "performance" ? "selected" : ""}>Entretien performance</option><option value="oneToOne" ${noteType === "oneToOne" ? "selected" : ""}>1:1 managérial</option><option value="quick" ${noteType === "quick" ? "selected" : ""}>Point rapide</option><option value="other" ${noteType === "other" ? "selected" : ""}>Autre note</option></select></label>
+      <div class="pilot-manager-pill"><span>Manager</span><strong>${esc(m.name)}</strong><small>${esc(m.role || "")}</small></div>
+    </div>
+
+    <details class="pilot-carry" ${managerPilotSinceLastSummary(m, existing.id || "") !== "Aucun élément en attente" ? "open" : ""}><summary><span>Depuis le dernier entretien</span><strong>${esc(managerPilotSinceLastSummary(m, existing.id || ""))}</strong></summary>${managerPilotSinceLast(m, existing.id || "")}</details>
+
+    <input id="mpPrevious" type="hidden" value="${esc(existing.previousReview || "")}">
+    <div class="pilot-main-grid">
+      <section class="pilot-note-sheet">
+        <div class="pilot-sheet-header"><div><h3>Notes de l'entretien</h3><p>Écrivez d'abord. Qualifiez ensuite uniquement ce qui mérite d'être suivi.</p></div>
+          <div class="pilot-marker-toolbar" role="toolbar" aria-label="Qualifier une ligne de note">
+            <button type="button" class="pilot-marker pilot-marker-question" onclick="tagPilotSelection('?')">? <span>Question</span></button>
+            <button type="button" class="pilot-marker pilot-marker-vigilance" onclick="tagPilotSelection('!')">! <span>Vigilance</span></button>
+            <button type="button" class="pilot-marker pilot-marker-action" onclick="tagPilotSelection('→')">→ <span>Action</span></button>
+            <button type="button" class="pilot-marker pilot-marker-decision" onclick="tagPilotSelection('✓')">✓ <span>Décision</span></button>
+            <button type="button" class="pilot-marker pilot-marker-fact" onclick="tagPilotSelection('★')">★ <span>Fait marquant</span></button>
+          </div>
+        </div>
+        <textarea id="mpNotes" class="pilot-note-area" oninput="updatePilotRetainedPanel()" placeholder="Écrivez librement comme dans votre carnet Goodnotes…\n\nPuis sélectionnez une ligne ou placez le curseur dessus pour la qualifier.">${esc(centralNotes)}</textarea>
+        <p class="pilot-tip">Astuce : le bouton appliqué au curseur qualifie toute la ligne. Un second marqueur remplace le précédent.</p>
+      </section>
+      <aside class="pilot-retained-panel"><div class="pilot-retained-heading"><div><h3>Ce que DEOS a retenu</h3><p>Lecture automatique des éléments qualifiés.</p></div></div><div id="mpRetained" class="pilot-retained-content">${managerPilotRetainedHtml(centralNotes)}</div></aside>
+    </div>
+
+    <div class="pilot-footer"><div class="pilot-footer-summary"><span>Les éléments marqués →, ✓, ! et ? seront conservés dans « À suivre » après l'enregistrement.</span></div><div class="row-actions"><button class="action" onclick="saveManagerPilotNote('${esc(m.id)}','${esc(existing.id || "")}')">${editing ? "Enregistrer les modifications" : "Enregistrer la note"}</button><button class="secondary" onclick="openManager('${esc(m.id)}')">Annuler</button></div></div>
   </div>`;
 }
 
+function tagPilotSelection(marker) {
+  const field = document.getElementById("mpNotes");
+  if (!field) return;
+  const value = field.value || "";
+  const start = Number.isFinite(field.selectionStart) ? field.selectionStart : value.length;
+  const end = Number.isFinite(field.selectionEnd) ? field.selectionEnd : start;
+  const lineStart = value.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+  let lineEnd = value.indexOf("\n", end);
+  if (lineEnd < 0) lineEnd = value.length;
+  const before = value.slice(0, lineStart);
+  const originalLine = value.slice(lineStart, lineEnd);
+  const leading = originalLine.match(/^\s*/)?.[0] || "";
+  let body = originalLine.slice(leading.length);
+  const old = MANAGER_PILOT_MARKERS.find(item => body.startsWith(item.symbol));
+  if (old) body = body.slice(old.symbol.length).replace(/^\s+/, "");
+  const nextLine = body.trim() ? `${leading}${marker} ${body}` : `${leading}${marker} `;
+  field.value = before + nextLine + value.slice(lineEnd);
+  const cursor = lineStart + nextLine.length;
+  field.focus();
+  if (field.setSelectionRange) field.setSelectionRange(cursor, cursor);
+  updatePilotRetainedPanel();
+}
+window.tagPilotSelection = tagPilotSelection;
+
+// Compatibilité avec les boutons ou appels V5.30M/N.
 function insertPilotMarker(fieldId, marker) {
+  if (fieldId === "mpNotes") return tagPilotSelection(marker);
   const field = document.getElementById(fieldId);
   if (!field) return;
   const prefix = field.value && !field.value.endsWith("\n") ? "\n" : "";
@@ -7822,20 +7925,22 @@ function saveManagerPilotNote(managerId, noteId = "") {
   const existingIndex = m.pilotNotes.findIndex(n => sameId(n.id, noteId));
   const existing = existingIndex >= 0 ? m.pilotNotes[existingIndex] : null;
   const date = document.getElementById("mpDate")?.value || isoToday();
-  const rawFollow = String(document.getElementById("mpFollow")?.value || "").split(/\r?\n/).map(x => x.trim()).filter(Boolean);
-  const previousByText = new Map(ensureArray(existing?.followUps).map(f => [String(f.text || "").trim(), f]));
-  const followUps = rawFollow.map(text => {
-    const old = previousByText.get(text);
-    return old ? { ...old, text } : { id: newId("pilot-follow"), text, createdRefs: {} };
+  const notes = document.getElementById("mpNotes")?.value.trim() || "";
+  const tagged = managerPilotExtractTagged(notes).filter(item => item.kind !== "fact");
+  const previousByKey = new Map(ensureArray(existing?.followUps).map(f => [`${String(f.kind || "follow")}|${String(f.text || "").trim()}`, f]));
+  const followUps = tagged.map(item => {
+    const key = `${item.kind}|${item.text}`;
+    const old = previousByKey.get(key) || ensureArray(existing?.followUps).find(f => String(f.text || "").trim() === item.text);
+    return old ? { ...old, text: item.text, kind: item.kind } : { id: newId("pilot-follow"), text: item.text, kind: item.kind, createdRefs: {} };
   });
   const stamp = new Date().toISOString();
   const payload = {
     id: noteId || newId("pilot-note"), date,
     type: document.getElementById("mpType")?.value || "performance",
     previousReview: document.getElementById("mpPrevious")?.value.trim() || "",
-    facts: document.getElementById("mpFacts")?.value.trim() || "",
-    questions: document.getElementById("mpQuestions")?.value.trim() || "",
-    notes: document.getElementById("mpNotes")?.value.trim() || "",
+    facts: "",
+    questions: "",
+    notes,
     followUps,
     createdAt: existing?.createdAt || stamp,
     updatedAt: stamp
@@ -7860,8 +7965,10 @@ function managerPilotCreatedRefButton(type, id) {
 function managerPilotFollowUpItem(m, note, f) {
   const refs = f.createdRefs || {};
   const createdButtons = Object.entries(refs).map(([type,id]) => managerPilotCreatedRefButton(type,id)).filter(Boolean).join("");
-  if (createdButtons) return `<div class="item"><strong>${esc(f.text)}</strong><div class="row-actions" style="margin-top:6px">${createdButtons}<span class="badge green">Converti</span></div></div>`;
-  return `<div class="item"><strong>${esc(f.text)}</strong><div class="row-actions" style="margin-top:6px"><button class="secondary" onclick="convertManagerPilotFollowUp('${esc(m.id)}','${esc(note.id)}','${esc(f.id)}','action')">→ Action</button><button class="secondary" onclick="convertManagerPilotFollowUp('${esc(m.id)}','${esc(note.id)}','${esc(f.id)}','decision')">✓ Décision</button><button class="secondary" onclick="convertManagerPilotFollowUp('${esc(m.id)}','${esc(note.id)}','${esc(f.id)}','request')">Demande manager</button><button class="secondary" onclick="convertManagerPilotFollowUp('${esc(m.id)}','${esc(note.id)}','${esc(f.id)}','project')">Projet</button></div></div>`;
+  const marker = MANAGER_PILOT_MARKERS.find(item => item.kind === f.kind);
+  const kindBadge = marker ? `<span class="pilot-inline-kind pilot-inline-${esc(marker.kind)}">${esc(marker.symbol)} ${esc(marker.label)}</span>` : "";
+  if (createdButtons) return `<div class="item"><div class="pilot-follow-title">${kindBadge}<strong>${esc(f.text)}</strong></div><div class="row-actions" style="margin-top:6px">${createdButtons}<span class="badge green">Converti</span></div></div>`;
+  return `<div class="item"><div class="pilot-follow-title">${kindBadge}<strong>${esc(f.text)}</strong></div><div class="row-actions" style="margin-top:6px"><button class="secondary" onclick="convertManagerPilotFollowUp('${esc(m.id)}','${esc(note.id)}','${esc(f.id)}','action')">→ Action</button><button class="secondary" onclick="convertManagerPilotFollowUp('${esc(m.id)}','${esc(note.id)}','${esc(f.id)}','decision')">✓ Décision</button><button class="secondary" onclick="convertManagerPilotFollowUp('${esc(m.id)}','${esc(note.id)}','${esc(f.id)}','request')">Demande manager</button><button class="secondary" onclick="convertManagerPilotFollowUp('${esc(m.id)}','${esc(note.id)}','${esc(f.id)}','project')">Projet</button></div></div>`;
 }
 
 function managerPilotNotesList(m) {
@@ -7871,7 +7978,7 @@ function managerPilotNotesList(m) {
     ${note.previousReview ? `<h3>Retour précédent</h3>${managerPilotTextBlock(note.previousReview)}` : ""}
     ${note.facts ? `<h3>Chiffres / faits</h3>${managerPilotTextBlock(note.facts)}` : ""}
     ${note.questions ? `<h3>Sujets / questions</h3>${managerPilotTextBlock(note.questions)}` : ""}
-    ${note.notes ? `<h3>Notes libres</h3>${managerPilotTextBlock(note.notes)}` : ""}
+    ${note.notes ? `<h3>Notes de l'entretien</h3>${managerPilotTextBlock(note.notes)}` : ""}
     ${ensureArray(note.followUps).length ? `<h3>À suivre</h3>${ensureArray(note.followUps).map(f => managerPilotFollowUpItem(m,note,f)).join("")}` : ""}
     <div class="row-actions" style="margin-top:10px"><button class="secondary" onclick="openManager('${esc(m.id)}','pilot:${esc(note.id)}')">Modifier cette note</button></div>
   </div></details>`).join("");
