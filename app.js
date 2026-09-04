@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30O";
+const DEOS_VERSION = "V5.30P";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -12993,7 +12993,7 @@ const CGTAB_KPI_DEFINITIONS = [
   { metricKey: "premium_hours.night_28", label: "Nuit28%", category: "premium_hours", unit: "h", aggregationType: "sum", headers: ["Nuit28%"] },
   { metricKey: "premium_hours.night_30", label: "Nuit30%", category: "premium_hours", unit: "h", aggregationType: "sum", headers: ["Nuit30%"] },
   { metricKey: "premium_hours.night_60", label: "Nuit60%", category: "premium_hours", unit: "h", aggregationType: "sum", headers: ["Nuit60%"] },
-  { metricKey: "premium_hours.additional_hours", label: "Hrs Compl", category: "premium_hours", unit: "h", aggregationType: "sum", headers: ["Hrs Compl"] },
+  { metricKey: "premium_hours.additional_hours", label: "Hrs Compl", category: "premium_hours", unit: "h", aggregationType: "sum", headers: ["Hrs Compl"], optionalHeader: true },
   { metricKey: "premium_hours.overtime_25", label: "HS25", category: "premium_hours", unit: "h", aggregationType: "sum", headers: ["HS25"] },
   { metricKey: "premium_hours.overtime_50", label: "HS50", category: "premium_hours", unit: "h", aggregationType: "sum", headers: ["HS50"] },
   { metricKey: "premium_hours.sunday_100", label: "Dim 100%", category: "premium_hours", unit: "h", aggregationType: "sum", headers: ["Dim 100%"] },
@@ -13569,6 +13569,16 @@ function cgtabAggregateForMetric(definition, employeeRows, sheet, headerMap) {
   const resolvedCols = definition.headers.map(token => cgtabResolveHeaderToken(token, headerMap));
   const missing = resolvedCols.filter(item => !item.col);
   if (missing.length) {
+    if (definition.optionalHeader) {
+      return {
+        unavailable: true,
+        missingHeaders: missing.map(item => item.header),
+        actual: null,
+        contributors: 0,
+        sourceColumns: cgtabBuildSourceColumns(definition.headers, headerMap),
+        sourceCell: ""
+      };
+    }
     throw new Error(`CGTAB: en-tête introuvable (${missing.map(item => item.header).join(", ")})`);
   }
   let sum = 0;
@@ -13600,10 +13610,18 @@ function cgtabDestinationPath(metricKey = "") {
   return `complementary.cgtab.${key}`;
 }
 
-function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap) {
+function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skippedMetrics = []) {
   return CGTAB_KPI_DEFINITIONS.map(definition => {
     const destinationPath = cgtabDestinationPath(definition.metricKey);
     const aggregate = cgtabAggregateForMetric(definition, employeeRows, sheet, headerMap);
+    if (aggregate?.unavailable) {
+      skippedMetrics.push({
+        metricKey: definition.metricKey,
+        label: definition.label,
+        missingHeaders: ensureArray(aggregate.missingHeaders)
+      });
+      return null;
+    }
     return {
       id: newId("preview"),
       period,
@@ -13643,7 +13661,7 @@ function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap) {
       selected: true,
       action: ""
     };
-  });
+  }).filter(Boolean);
 }
 
 const GA_ST_GILLES_KNOWN_SHA256 = "D000A9940051F314AAE81B8B73FEFB2683341E6B978C25423C9A936BBDC110B5";
@@ -13867,13 +13885,16 @@ async function analyzeCgtabFile(file, detected) {
   const employeeRows = cgtabFindEmployeeRows(sheet, range, headerMap, PERFORMANCE_IMPORT_SITE.code);
   if (!employeeRows.length) throw new Error(`Aucune ligne salarié ${performanceImportSiteLabel()} détectée dans CGTAB.`);
   const period = cgtabDetectPeriod(sheet, headerMap, employeeRows, file.name || "");
-  const indicators = buildCgtabAggregateRows(period, employeeRows, sheet, headerMap);
+  const skippedMetrics = [];
+  const indicators = buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skippedMetrics);
+  const skippedLabels = skippedMetrics.map(item => item.label);
   return {
     ...detected, source: "CGTAB", sourceType: "CGTAB XLSB", status: "reconnu", confidence: "élevée",
     site: PERFORMANCE_IMPORT_SITE.name, siteCode: PERFORMANCE_IMPORT_SITE.code, detectedSiteCodes, scope: CGTAB_SCOPE,
     period, periods: [period], selectedPeriods: [period], sheets: ensureArray(workbook.SheetNames || []), selectedSheet: sheetName,
     sourceRowCount: employeeRows.length, excludedNominativeColumns: CGTAB_EXCLUDED_NOMINATIVE_COLUMNS, detectedIndicators: dedupeImportRows(indicators),
-    message: `${indicators.length} agrégat(s) RH anonymisé(s) depuis CGTAB pour ${performanceImportSiteLabel()} (${employeeRows.length} lignes retenues).`
+    skippedMetrics,
+    message: `${indicators.length} agrégat(s) RH anonymisé(s) depuis CGTAB pour ${performanceImportSiteLabel()} (${employeeRows.length} lignes retenues).${skippedLabels.length ? ` KPI non disponible(s) dans ce fichier : ${skippedLabels.join(", ")}.` : ""}`
   };
 }
 
