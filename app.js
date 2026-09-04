@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30L";
+const DEOS_VERSION = "V5.30M";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -1653,8 +1653,8 @@ function normalizeEntity(name, item) {
   const base = { ...item, id: item.id || newId(name) };
   if (name === "managers") {
     const template = defaults.managers.find(m => m.id === base.id) || {};
-    const merged = { priority: "", lastInterview: "", nextMeeting: "", objectives: [], strengths: [], watchPoints: [], actions: [], linkedActions: [], linkedProjects: [], linkedDecisions: [], linkedFolders: [], events: [], directorNotes: [], managementRequests: [], ...template, ...base };
-    return { ...merged, objectives: ensureArray(merged.objectives), strengths: ensureArray(merged.strengths), watchPoints: ensureArray(merged.watchPoints), actions: ensureArray(merged.actions), linkedActions: ensureArray(merged.linkedActions), linkedProjects: ensureArray(merged.linkedProjects), linkedDecisions: ensureArray(merged.linkedDecisions), linkedFolders: ensureArray(merged.linkedFolders), events: ensureTimeline(merged.events), directorNotes: ensureNotes(merged.directorNotes), managementRequests: ensureArray(merged.managementRequests) };
+    const merged = { priority: "", lastInterview: "", nextMeeting: "", objectives: [], strengths: [], watchPoints: [], actions: [], linkedActions: [], linkedProjects: [], linkedDecisions: [], linkedFolders: [], events: [], directorNotes: [], managementRequests: [], pilotNotes: [], ...template, ...base };
+    return { ...merged, objectives: ensureArray(merged.objectives), strengths: ensureArray(merged.strengths), watchPoints: ensureArray(merged.watchPoints), actions: ensureArray(merged.actions), linkedActions: ensureArray(merged.linkedActions), linkedProjects: ensureArray(merged.linkedProjects), linkedDecisions: ensureArray(merged.linkedDecisions), linkedFolders: ensureArray(merged.linkedFolders), events: ensureTimeline(merged.events), directorNotes: ensureNotes(merged.directorNotes), managementRequests: ensureArray(merged.managementRequests), pilotNotes: normalizeManagerPilotNotes(merged.pilotNotes) };
   }
   if (name === "projects") {
     const template = defaults.projects.find(p => p.id === base.id) || {};
@@ -7544,8 +7544,9 @@ function linkedDecisionsList(m) {
 
 function managerTimeline(m) {
   const managerEvents = (m.events || []).map(e => ({ date: e.date || "", title: e.title || "Événement", detail: e.detail || "", kind: "Échange" }));
+  const pilotEvents = normalizeManagerPilotNotes(m.pilotNotes).map(n => ({ date: n.date || "", title: managerPilotTypeLabel(n.type), detail: ensureArray(n.followUps).length ? `${ensureArray(n.followUps).length} élément(s) à suivre` : "Note de pilotage", kind: "Pilotage" }));
   const activityEvents = state.activity.filter(a => a.entityId === m.id).map(a => ({ date: a.date || "", title: a.type || "Activité", detail: `${a.title || ""}${a.detail ? " · " + a.detail : ""}`, kind: "Activité" }));
-  return [...managerEvents, ...activityEvents].sort((a, b) => String(b.date).localeCompare(String(a.date))).map(e => `<div class="item"><strong>${esc(e.date || "Sans date")} · ${esc(e.title)}</strong><span class="muted">${esc(e.kind)}${e.detail ? " · " + esc(e.detail) : ""}</span></div>`).join("") || `<div class="empty">Aucun échange enregistré.</div>`;
+  return [...managerEvents, ...pilotEvents, ...activityEvents].sort((a, b) => String(b.date).localeCompare(String(a.date))).map(e => `<div class="item"><strong>${esc(e.date || "Sans date")} · ${esc(e.title)}</strong><span class="muted">${esc(e.kind)}${e.detail ? " · " + esc(e.detail) : ""}</span></div>`).join("") || `<div class="empty">Aucun échange enregistré.</div>`;
 }
 
 function directorNotesList(m) {
@@ -7712,11 +7713,209 @@ function managerCard(m) {
 }
 
 
+
+// V5.30M — Notes de pilotage / 1:1 Performance.
+// Objectif : conserver la liberté d'une page Goodnotes tout en permettant à DEOS
+// de transformer uniquement les éléments utiles en Actions, Décisions, Projets ou Demandes.
+function normalizeManagerPilotNotes(rows = []) {
+  return ensureArray(rows).filter(row => row && typeof row === "object").map(row => {
+    const followUps = ensureArray(row.followUps).map(item => {
+      if (typeof item === "string") return { id: newId("pilot-follow"), text: item.trim(), createdRefs: {} };
+      return { id: item.id || newId("pilot-follow"), text: String(item.text || "").trim(), createdRefs: item.createdRefs && typeof item.createdRefs === "object" ? { ...item.createdRefs } : {} };
+    }).filter(item => item.text);
+    return {
+      id: row.id || newId("pilot-note"),
+      date: String(row.date || "").trim() || isoToday(),
+      type: String(row.type || "performance").trim() || "performance",
+      previousReview: String(row.previousReview || ""),
+      facts: String(row.facts || ""),
+      questions: String(row.questions || ""),
+      notes: String(row.notes || ""),
+      followUps,
+      createdAt: row.createdAt || row.updatedAt || new Date().toISOString(),
+      updatedAt: row.updatedAt || row.createdAt || new Date().toISOString()
+    };
+  }).sort((a,b) => String(b.date || b.updatedAt || "").localeCompare(String(a.date || a.updatedAt || "")));
+}
+
+function managerPilotTypeLabel(value) {
+  const labels = { performance: "Entretien performance", oneToOne: "1:1 managérial", quick: "Point rapide", other: "Autre note de pilotage" };
+  return labels[String(value || "performance")] || "Note de pilotage";
+}
+
+function managerPilotMarkerLine(line) {
+  const raw = String(line || "").trim();
+  if (!raw) return "";
+  const markers = [
+    ["?", "Question", "#2563eb"],
+    ["!", "Vigilance", "#d97706"],
+    ["→", "Action", "#7c3aed"],
+    ["✓", "Décision", "#15803d"]
+  ];
+  const found = markers.find(([symbol]) => raw.startsWith(symbol));
+  if (!found) return `<div style="padding:3px 0">${esc(raw)}</div>`;
+  const [symbol,label,color] = found;
+  const text = raw.slice(symbol.length).trim();
+  return `<div style="padding:3px 0"><span style="display:inline-block;min-width:82px;font-size:12px;font-weight:700;color:${color}">${esc(symbol)} ${esc(label)}</span>${esc(text)}</div>`;
+}
+
+function managerPilotTextBlock(value) {
+  const lines = String(value || "").split(/\r?\n/).filter(line => line.trim());
+  return lines.length ? lines.map(managerPilotMarkerLine).join("") : `<span class="muted">Aucune note.</span>`;
+}
+
+function managerPilotOpenActions(m) {
+  const linked = state.actions.filter(a => !a.done && normalizeLinkedManagerIds(ensureArray(a.linkedManagers)).some(id => sameId(id, m.id)));
+  return linked;
+}
+
+function managerPilotSinceLast(m, excludeNoteId = "") {
+  const notes = normalizeManagerPilotNotes(m.pilotNotes).filter(note => !sameId(note.id, excludeNoteId));
+  const previous = notes[0] || null;
+  const actions = managerPilotOpenActions(m);
+  const requests = ensureArray(m.managementRequests).filter(r => ["open","progress","partial"].includes(String(r.status || "open")));
+  const followUps = previous ? ensureArray(previous.followUps).filter(f => !f.createdRefs || Object.keys(f.createdRefs).length === 0) : [];
+  if (!previous && !actions.length && !requests.length) return `<div class="empty">Aucun élément en attente depuis le précédent entretien.</div>`;
+  return `<div style="display:grid;gap:10px">
+    ${previous ? `<div><strong>Dernière note :</strong> ${esc(previous.date)} · ${esc(managerPilotTypeLabel(previous.type))}</div>` : ""}
+    ${actions.length ? `<div><strong>Actions ouvertes (${actions.length})</strong>${actions.slice(0,6).map(a => `<div class="item clickable" onclick="openAction('${esc(a.id)}')">${esc(a.title)}</div>`).join("")}</div>` : ""}
+    ${requests.length ? `<div><strong>Demandes / objectifs à suivre (${requests.length})</strong>${requests.slice(0,6).map(r => `<div class="item">${esc(r.subject || r.requestText || "Demande")}</div>`).join("")}</div>` : ""}
+    ${followUps.length ? `<div><strong>À revoir du dernier entretien</strong>${followUps.slice(0,8).map(f => `<div class="item">${esc(f.text)}</div>`).join("")}</div>` : ""}
+  </div>`;
+}
+
+function managerPilotForm(m, noteId = "") {
+  const existing = normalizeManagerPilotNotes(m.pilotNotes).find(n => sameId(n.id, noteId)) || {};
+  const editing = Boolean(existing.id);
+  const followText = ensureArray(existing.followUps).map(f => f.text || "").filter(Boolean).join("\n");
+  return `<div id="manager-pilot-form" class="card full-span" style="scroll-margin-top:14px">
+    <div class="row"><div><h2>${editing ? "Modifier la note de pilotage" : "Nouvelle note de pilotage"}</h2><p class="muted">Prise de notes libre, pensée pour les entretiens de performance et les 1:1.</p></div></div>
+    <div class="card" style="margin:10px 0"><h3>Depuis le dernier entretien</h3>${managerPilotSinceLast(m, existing.id || "")}</div>
+    <div class="form-grid"><input id="mpDate" type="date" value="${esc(existing.date || isoToday())}"><select id="mpType"><option value="performance" ${!editing || existing.type === "performance" ? "selected" : ""}>Entretien performance</option><option value="oneToOne" ${existing.type === "oneToOne" ? "selected" : ""}>1:1 managérial</option><option value="quick" ${existing.type === "quick" ? "selected" : ""}>Point rapide</option><option value="other" ${existing.type === "other" ? "selected" : ""}>Autre note</option></select></div>
+    <label><strong>Retour entretien précédent</strong></label><textarea id="mpPrevious" placeholder="Ce qui devait être revu / relancé depuis le précédent entretien">${esc(existing.previousReview || "")}</textarea>
+    <label><strong>Chiffres / faits marquants</strong></label><textarea id="mpFacts" placeholder="Productivité, heures, budget, absentéisme, volumes, faits...">${esc(existing.facts || "")}</textarea>
+    <label><strong>Sujets / questions</strong></label><textarea id="mpQuestions" placeholder="Questions à poser, sujets à comprendre, hypothèses...">${esc(existing.questions || "")}</textarea>
+    <label><strong>Notes libres</strong></label><div class="row-actions" style="margin-bottom:6px"><button class="secondary" type="button" onclick="insertPilotMarker('mpNotes','?')">? Question</button><button class="secondary" type="button" onclick="insertPilotMarker('mpNotes','!')">! Vigilance</button><button class="secondary" type="button" onclick="insertPilotMarker('mpNotes','→')">→ Action</button><button class="secondary" type="button" onclick="insertPilotMarker('mpNotes','✓')">✓ Décision</button></div><textarea id="mpNotes" style="min-height:190px" placeholder="Écrivez librement comme dans votre carnet Goodnotes...">${esc(existing.notes || "")}</textarea>
+    <label><strong>À suivre</strong></label><textarea id="mpFollow" placeholder="Un sujet par ligne. Après enregistrement, chaque ligne pourra devenir une Action, une Décision, une Demande manager ou un Projet.">${esc(followText)}</textarea>
+    <div class="row-actions"><button class="action" onclick="saveManagerPilotNote('${esc(m.id)}','${esc(existing.id || "")}')">${editing ? "Enregistrer" : "Enregistrer la note"}</button><button class="secondary" onclick="openManager('${esc(m.id)}')">Annuler</button></div>
+  </div>`;
+}
+
+function insertPilotMarker(fieldId, marker) {
+  const field = document.getElementById(fieldId);
+  if (!field) return;
+  const prefix = field.value && !field.value.endsWith("\n") ? "\n" : "";
+  const addition = `${prefix}${marker} `;
+  const start = Number.isFinite(field.selectionStart) ? field.selectionStart : field.value.length;
+  const end = Number.isFinite(field.selectionEnd) ? field.selectionEnd : field.value.length;
+  field.value = field.value.slice(0,start) + addition + field.value.slice(end);
+  field.focus();
+  const pos = start + addition.length;
+  if (field.setSelectionRange) field.setSelectionRange(pos,pos);
+}
+window.insertPilotMarker = insertPilotMarker;
+
+function saveManagerPilotNote(managerId, noteId = "") {
+  const m = byId("managers", managerId);
+  if (!m) return;
+  m.pilotNotes = normalizeManagerPilotNotes(m.pilotNotes);
+  const existingIndex = m.pilotNotes.findIndex(n => sameId(n.id, noteId));
+  const existing = existingIndex >= 0 ? m.pilotNotes[existingIndex] : null;
+  const date = document.getElementById("mpDate")?.value || isoToday();
+  const rawFollow = String(document.getElementById("mpFollow")?.value || "").split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+  const previousByText = new Map(ensureArray(existing?.followUps).map(f => [String(f.text || "").trim(), f]));
+  const followUps = rawFollow.map(text => {
+    const old = previousByText.get(text);
+    return old ? { ...old, text } : { id: newId("pilot-follow"), text, createdRefs: {} };
+  });
+  const stamp = new Date().toISOString();
+  const payload = {
+    id: noteId || newId("pilot-note"), date,
+    type: document.getElementById("mpType")?.value || "performance",
+    previousReview: document.getElementById("mpPrevious")?.value.trim() || "",
+    facts: document.getElementById("mpFacts")?.value.trim() || "",
+    questions: document.getElementById("mpQuestions")?.value.trim() || "",
+    notes: document.getElementById("mpNotes")?.value.trim() || "",
+    followUps,
+    createdAt: existing?.createdAt || stamp,
+    updatedAt: stamp
+  };
+  if (existingIndex >= 0) m.pilotNotes[existingIndex] = payload; else m.pilotNotes.unshift(payload);
+  m.pilotNotes = normalizeManagerPilotNotes(m.pilotNotes);
+  if (payload.type === "performance" || payload.type === "oneToOne") m.lastInterview = date;
+  persist("managers");
+  addActivity("🗒️ Note de pilotage", m.name, `${managerPilotTypeLabel(payload.type)} · ${date}`, m.id);
+  openManager(m.id);
+}
+window.saveManagerPilotNote = saveManagerPilotNote;
+
+function managerPilotCreatedRefButton(type, id) {
+  if (!id) return "";
+  if (type === "action") return `<button class="secondary" onclick="openAction('${esc(id)}')">Ouvrir Action</button>`;
+  if (type === "decision") return `<button class="secondary" onclick="openDecision('${esc(id)}')">Ouvrir Décision</button>`;
+  if (type === "project") return `<button class="secondary" onclick="openProject('${esc(id)}')">Ouvrir Projet</button>`;
+  return "";
+}
+
+function managerPilotFollowUpItem(m, note, f) {
+  const refs = f.createdRefs || {};
+  const createdButtons = Object.entries(refs).map(([type,id]) => managerPilotCreatedRefButton(type,id)).filter(Boolean).join("");
+  if (createdButtons) return `<div class="item"><strong>${esc(f.text)}</strong><div class="row-actions" style="margin-top:6px">${createdButtons}<span class="badge green">Converti</span></div></div>`;
+  return `<div class="item"><strong>${esc(f.text)}</strong><div class="row-actions" style="margin-top:6px"><button class="secondary" onclick="convertManagerPilotFollowUp('${esc(m.id)}','${esc(note.id)}','${esc(f.id)}','action')">→ Action</button><button class="secondary" onclick="convertManagerPilotFollowUp('${esc(m.id)}','${esc(note.id)}','${esc(f.id)}','decision')">✓ Décision</button><button class="secondary" onclick="convertManagerPilotFollowUp('${esc(m.id)}','${esc(note.id)}','${esc(f.id)}','request')">Demande manager</button><button class="secondary" onclick="convertManagerPilotFollowUp('${esc(m.id)}','${esc(note.id)}','${esc(f.id)}','project')">Projet</button></div></div>`;
+}
+
+function managerPilotNotesList(m) {
+  const notes = normalizeManagerPilotNotes(m.pilotNotes);
+  if (!notes.length) return `<div class="empty">Aucune note de pilotage. Créez le prochain entretien directement dans DEOS.</div>`;
+  return notes.map(note => `<details class="item"><summary><strong>${esc(note.date)} · ${esc(managerPilotTypeLabel(note.type))}</strong> <span class="badge orange">${ensureArray(note.followUps).length} à suivre</span></summary><div style="padding-top:10px">
+    ${note.previousReview ? `<h3>Retour précédent</h3>${managerPilotTextBlock(note.previousReview)}` : ""}
+    ${note.facts ? `<h3>Chiffres / faits</h3>${managerPilotTextBlock(note.facts)}` : ""}
+    ${note.questions ? `<h3>Sujets / questions</h3>${managerPilotTextBlock(note.questions)}` : ""}
+    ${note.notes ? `<h3>Notes libres</h3>${managerPilotTextBlock(note.notes)}` : ""}
+    ${ensureArray(note.followUps).length ? `<h3>À suivre</h3>${ensureArray(note.followUps).map(f => managerPilotFollowUpItem(m,note,f)).join("")}` : ""}
+    <div class="row-actions" style="margin-top:10px"><button class="secondary" onclick="openManager('${esc(m.id)}','pilot:${esc(note.id)}')">Modifier cette note</button></div>
+  </div></details>`).join("");
+}
+
+function convertManagerPilotFollowUp(managerId, noteId, followId, type) {
+  const m = byId("managers", managerId);
+  if (!m) return;
+  m.pilotNotes = normalizeManagerPilotNotes(m.pilotNotes);
+  const note = m.pilotNotes.find(n => sameId(n.id, noteId));
+  const follow = note && ensureArray(note.followUps).find(f => sameId(f.id, followId));
+  if (!note || !follow || !follow.text) return;
+  follow.createdRefs = follow.createdRefs && typeof follow.createdRefs === "object" ? { ...follow.createdRefs } : {};
+  let createdId = "";
+  if (type === "action") {
+    const action = normalizeEntity("actions", { id: newId("action"), title: follow.text, link: `Note de pilotage · ${m.name} · ${note.date}`, owner: m.name, due: "", done: false, linkedManagers: [m.id] });
+    state.actions.unshift(action); createdId = action.id; m.linkedActions = normalizeLinkedIdArray([...(m.linkedActions || []), action.id]); persist("actions");
+  } else if (type === "decision") {
+    const decision = normalizeEntity("decisions", { id: newId("decision"), title: follow.text, date: note.date || isoToday(), status: "decided", importance: "orange", context: `Note de pilotage ${m.name} · ${note.date}`, decision: follow.text, owner: m.name, linkedManagers: [m.id], tags: ["Note de pilotage"] });
+    state.decisions.unshift(decision); createdId = decision.id; m.linkedDecisions = normalizeLinkedIdArray([...(m.linkedDecisions || []), decision.id]); persist("decisions");
+  } else if (type === "project") {
+    const project = normalizeEntity("projects", { id: newId("project"), name: follow.text, status: "orange", progress: 0, objective: follow.text, owner: m.name, ownerId: m.id, linkedManagers: [m.id], launchDate: note.date || isoToday(), deadline: "", priorityLevel: "orange", context: `Créé depuis la note de pilotage du ${note.date}`, next: "À préciser" });
+    state.projects.unshift(project); createdId = project.id; persist("projects");
+  } else if (type === "request") {
+    const stamp = new Date().toISOString();
+    const request = { id: newId("mgr-request"), date: note.date || isoToday(), type: "request", subject: follow.text, requestText: follow.text, expectedResult: "", dueDate: "", channel: "Entretien", emailRef: "", documentRef: `Note de pilotage ${note.date}`, status: "open", closureComment: "", actionId: "", createdAt: stamp, updatedAt: stamp };
+    m.managementRequests = mergeManagerManagementRequests(m.managementRequests, [request]); createdId = request.id;
+  }
+  if (!createdId) return;
+  follow.createdRefs[type] = createdId;
+  note.updatedAt = new Date().toISOString();
+  persist("managers");
+  addActivity("Conversion note de pilotage", m.name, `${follow.text} → ${type}`, m.id);
+  openManager(m.id);
+}
+window.convertManagerPilotFollowUp = convertManagerPilotFollowUp;
+
 function managerQuickForm(m, mode = "") {
   if (mode === "note") return `<div class="card full-span"><h2>Ajouter une note du directeur</h2><textarea id="mnContent" placeholder="Note du directeur"></textarea><button class="action" onclick="saveManagerNote('${m.id}')">Enregistrer</button><button class="secondary" onclick="openManager('${m.id}')">Annuler</button></div>`;
   if (mode === "event") return `<div class="card full-span"><h2>Ajouter un événement</h2><div class="form-grid"><input id="meTitle" placeholder="Titre de l'événement"><input id="meDate" value="${esc(new Date().toLocaleString("fr-FR"))}" placeholder="Date"></div><textarea id="meDetail" placeholder="Détail de l'événement"></textarea><button class="action" onclick="saveManagerEvent('${m.id}')">Enregistrer</button><button class="secondary" onclick="openManager('${m.id}')">Annuler</button></div>`;
   if (mode === "request") return managerManagementRequestForm(m);
   if (String(mode || "").startsWith("request:")) return managerManagementRequestForm(m, String(mode).slice(8));
+  if (mode === "pilot") return managerPilotForm(m);
+  if (String(mode || "").startsWith("pilot:")) return managerPilotForm(m, String(mode).slice(6));
   return "";
 }
 
@@ -7725,12 +7924,19 @@ function openManager(id, mode = "") {
   if (!m) return renderManagers();
   const responsibleCount = managerResponsibleProjects(m).length;
   document.getElementById("viewTitle").textContent = m.name;
-  appHtml(`<div class="card hero manager-hero"><button class="secondary" onclick="renderManagers()">Retour Managers</button><h2>${esc(m.name)}</h2><p>${esc(m.role || "")}</p>${badge(m.status)}<p class="muted">${esc(m.note || "")}</p><span class="meta">ID ${esc(m.id)} ? ${responsibleCount} projet(s) sous responsabilité</span><div class="row-actions"><button class="action" onclick="editManager('${m.id}')">Modifier</button><button class="secondary" onclick="startReport('managers','${m.id}')">Générer un compte rendu</button><button class="secondary" onclick="openManager('${m.id}','note')">Ajouter une note</button><button class="secondary" onclick="openManager('${m.id}','event')">Ajouter un événement</button><button class="secondary" onclick="openManager('${m.id}','request')">Tracer un échange</button><button class="danger" onclick="deleteManager('${m.id}')">Supprimer</button></div></div><div class="grid two">${managerQuickForm(m, mode)}<div class="card"><h2>Priorité managériale</h2><p>${esc(m.priority || "À compléter")}</p></div><div class="card"><h2>Entretiens</h2><p><strong>Dernier :</strong> ${esc(m.lastInterview || "À compléter")}</p><p><strong>Prochaine rencontre :</strong> ${esc(m.nextMeeting || "À planifier")}</p></div><div class="card full-span"><h2>Rendez-vous liés</h2>${managerAgendaList(m)}</div><div class="card full-span"><h2>Préparations de réunion liées</h2>${managerMeetingPreparationsList(m)}</div><div class="card full-span"><h2>Projets sous ma responsabilité</h2>${managerResponsibleProjectsList(m)}</div><div class="card full-span"><h2>Autres projets associés</h2>${managerAssociatedProjectsList(m)}</div><div class="card"><h2>Dossiers liés</h2>${linkedFoldersList(m)}</div><div class="card full-span"><h2>Demandes & objectifs managériaux</h2>${managerManagementRequestsSummary(m)}<div style="margin-top:12px">${managerManagementRequestsList(m)}</div><div class="row-actions" style="margin-top:12px"><button class="action" onclick="openManager('${m.id}','request')">+ Tracer un échange</button></div></div><div class="card"><h2>Objectifs en cours</h2>${listItems(m.objectives)}</div><div class="card"><h2>Points forts</h2>${listItems(m.strengths)}</div><div class="card"><h2>Points de vigilance</h2>${listItems(m.watchPoints)}</div><div class="card"><h2>Actions internes</h2>${listItems(m.actions, "? ")}</div><div class="card"><h2>Actions liées</h2>${linkedActionsList(m)}</div><div class="card"><h2>Décisions liées</h2>${linkedDecisionsList(m)}</div><div class="card"><h2>Journal lié</h2>${managerJournalList(m)}</div><div class="card"><h2>Documents liés</h2>${managerDocumentsList(m)}</div><div class="card"><h2>Notes du directeur</h2>${directorNotesList(m)}</div><div class="card full-span"><h2>Historique chronologique</h2>${managerTimeline(m)}</div></div>`);
+  appHtml(`<div class="card hero manager-hero"><button class="secondary" onclick="renderManagers()">Retour Managers</button><h2>${esc(m.name)}</h2><p>${esc(m.role || "")}</p>${badge(m.status)}<p class="muted">${esc(m.note || "")}</p><span class="meta">ID ${esc(m.id)} ? ${responsibleCount} projet(s) sous responsabilité</span><div class="row-actions"><button class="action" onclick="editManager('${m.id}')">Modifier</button><button class="secondary" onclick="startReport('managers','${m.id}')">Générer un compte rendu</button><button class="secondary" onclick="openManager('${m.id}','note')">Ajouter une note</button><button class="secondary" onclick="openManager('${m.id}','event')">Ajouter un événement</button><button class="secondary" onclick="openManager('${m.id}','request')">Tracer un échange</button><button class="action" onclick="openManager('${m.id}','pilot')">+ Note de pilotage</button><button class="danger" onclick="deleteManager('${m.id}')">Supprimer</button></div></div><div class="grid two">${managerQuickForm(m, mode)}<div class="card"><h2>Priorité managériale</h2><p>${esc(m.priority || "À compléter")}</p></div><div class="card"><h2>Entretiens</h2><p><strong>Dernier :</strong> ${esc(m.lastInterview || "À compléter")}</p><p><strong>Prochaine rencontre :</strong> ${esc(m.nextMeeting || "À planifier")}</p></div><div class="card full-span"><h2>Rendez-vous liés</h2>${managerAgendaList(m)}</div><div class="card full-span"><h2>Préparations de réunion liées</h2>${managerMeetingPreparationsList(m)}</div><div class="card full-span"><h2>Projets sous ma responsabilité</h2>${managerResponsibleProjectsList(m)}</div><div class="card full-span"><h2>Autres projets associés</h2>${managerAssociatedProjectsList(m)}</div><div class="card"><h2>Dossiers liés</h2>${linkedFoldersList(m)}</div><div class="card full-span"><div class="row"><div><h2>Notes de pilotage / 1:1 Performance</h2><p class="muted">Notes libres, suivi du précédent entretien et conversion des éléments à suivre.</p></div><button class="action" onclick="openManager('${m.id}','pilot')">+ Nouvelle note</button></div>${managerPilotNotesList(m)}</div><div class="card full-span"><h2>Demandes & objectifs managériaux</h2>${managerManagementRequestsSummary(m)}<div style="margin-top:12px">${managerManagementRequestsList(m)}</div><div class="row-actions" style="margin-top:12px"><button class="action" onclick="openManager('${m.id}','request')">+ Tracer un échange</button></div></div><div class="card"><h2>Objectifs en cours</h2>${listItems(m.objectives)}</div><div class="card"><h2>Points forts</h2>${listItems(m.strengths)}</div><div class="card"><h2>Points de vigilance</h2>${listItems(m.watchPoints)}</div><div class="card"><h2>Actions internes</h2>${listItems(m.actions, "? ")}</div><div class="card"><h2>Actions liées</h2>${linkedActionsList(m)}</div><div class="card"><h2>Décisions liées</h2>${linkedDecisionsList(m)}</div><div class="card"><h2>Journal lié</h2>${managerJournalList(m)}</div><div class="card"><h2>Documents liés</h2>${managerDocumentsList(m)}</div><div class="card"><h2>Notes du directeur</h2>${directorNotesList(m)}</div><div class="card full-span"><h2>Historique chronologique</h2>${managerTimeline(m)}</div></div>`);
   if (String(mode || "").startsWith("request")) {
     requestAnimationFrame(() => {
       const form = document.getElementById("manager-request-form");
       if (form) form.scrollIntoView({ behavior: "smooth", block: "start" });
       document.getElementById("mrDate")?.focus({ preventScroll: true });
+    });
+  }
+  if (String(mode || "").startsWith("pilot")) {
+    requestAnimationFrame(() => {
+      const form = document.getElementById("manager-pilot-form");
+      if (form) form.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById("mpDate")?.focus({ preventScroll: true });
     });
   }
 }
@@ -20278,6 +20484,33 @@ function mergeManagerManagementRequests(localRows = [], remoteRows = []) {
   return [...result.values()].sort((a,b) => String(b.date || b.updatedAt || "").localeCompare(String(a.date || a.updatedAt || "")));
 }
 
+
+function mergeManagerPilotNotes(localRows = [], remoteRows = []) {
+  const result = new Map();
+  const put = raw => {
+    if (!raw || typeof raw !== "object") return;
+    const row = normalizeManagerPilotNotes([raw])[0];
+    if (!row) return;
+    const id = String(row.id || "").trim() || `legacy:${row.date}:${row.type}`;
+    const previous = result.get(id);
+    if (!previous) { result.set(id, row); return; }
+    const prevStamp = Date.parse(previous.updatedAt || previous.createdAt || previous.date || "") || 0;
+    const nextStamp = Date.parse(row.updatedAt || row.createdAt || row.date || "") || 0;
+    const newest = nextStamp >= prevStamp ? row : previous;
+    const older = nextStamp >= prevStamp ? previous : row;
+    const followMap = new Map();
+    [...ensureArray(older.followUps), ...ensureArray(newest.followUps)].forEach(f => {
+      const fid = String(f.id || "").trim() || `legacy:${String(f.text || "")}`;
+      const prior = followMap.get(fid) || {};
+      followMap.set(fid, { ...prior, ...f, createdRefs: { ...(prior.createdRefs || {}), ...(f.createdRefs || {}) } });
+    });
+    result.set(id, { ...older, ...newest, followUps: [...followMap.values()] });
+  };
+  ensureArray(remoteRows).forEach(put);
+  ensureArray(localRows).forEach(put);
+  return normalizeManagerPilotNotes([...result.values()]);
+}
+
 function resolveManagerNonDestructive(localManager = {}, remoteManager = {}, baseManager = null) {
   const localNormalized = normalizeEntity("managers", { ...(localManager || {}) });
   const remoteNormalized = normalizeEntity("managers", { ...(remoteManager || {}) });
@@ -20300,6 +20533,13 @@ function resolveManagerNonDestructive(localManager = {}, remoteManager = {}, bas
     if (key === "managementRequests") {
       const combined = mergeManagerManagementRequests(localNormalized.managementRequests, remoteNormalized.managementRequests);
       merged.managementRequests = combined;
+      if (!managerCanonicalValuesEqual(canonicalManagerStructuredValue(combined), l)) fromRemoteFields.push(key);
+      if (!managerCanonicalValuesEqual(canonicalManagerStructuredValue(combined), r)) fromLocalFields.push(key);
+      continue;
+    }
+    if (key === "pilotNotes") {
+      const combined = mergeManagerPilotNotes(localNormalized.pilotNotes, remoteNormalized.pilotNotes);
+      merged.pilotNotes = combined;
       if (!managerCanonicalValuesEqual(canonicalManagerStructuredValue(combined), l)) fromRemoteFields.push(key);
       if (!managerCanonicalValuesEqual(canonicalManagerStructuredValue(combined), r)) fromLocalFields.push(key);
       continue;
@@ -20728,15 +20968,22 @@ async function reconcileManagerRequestsBeforeConflictCheck(remoteRows = []) {
     if (!row) continue;
 
     const combined = mergeManagerManagementRequests(local.managementRequests, row.manager?.managementRequests);
+    const combinedPilotNotes = mergeManagerPilotNotes(local.pilotNotes, row.manager?.pilotNotes);
     const localSame = managerCanonicalValuesEqual(canonicalManagerStructuredValue(ensureArray(local.managementRequests)), canonicalManagerStructuredValue(combined));
     const remoteSame = managerCanonicalValuesEqual(canonicalManagerStructuredValue(ensureArray(row.manager?.managementRequests)), canonicalManagerStructuredValue(combined));
+    const localPilotSame = managerCanonicalValuesEqual(canonicalManagerStructuredValue(normalizeManagerPilotNotes(local.pilotNotes)), canonicalManagerStructuredValue(combinedPilotNotes));
+    const remotePilotSame = managerCanonicalValuesEqual(canonicalManagerStructuredValue(normalizeManagerPilotNotes(row.manager?.pilotNotes)), canonicalManagerStructuredValue(combinedPilotNotes));
 
     if (!localSame) {
       local.managementRequests = combined;
       localChanged = true;
     }
-    if (!remoteSame) {
-      const remotePayload = normalizeEntity('managers', { ...(row.manager || {}), id: row.clientId, clientId: row.clientId, managementRequests: combined });
+    if (!localPilotSame) {
+      local.pilotNotes = combinedPilotNotes;
+      localChanged = true;
+    }
+    if (!remoteSame || !remotePilotSame) {
+      const remotePayload = normalizeEntity('managers', { ...(row.manager || {}), id: row.clientId, clientId: row.clientId, managementRequests: combined, pilotNotes: combinedPilotNotes });
       const updated = await withManagersRemoteTimeout(
         deosRemoteAdapter.updateManager(String(row.clientId || ''), remotePayload, Number(row.version || 0)),
         `Réconciliation des échanges managériaux de ${remotePayload.name || row.clientId}`
