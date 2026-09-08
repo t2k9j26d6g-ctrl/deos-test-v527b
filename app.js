@@ -12451,8 +12451,8 @@ function extractGpoIndicators(pages, period) {
   pages.forEach(page => {
     const text = page.text;
     const layout = extractGpoSaintGillesLayout(page) || {};
-    if (/Passage IPO total/i.test(text)) pushMetric(page, "ipo_total", extractGpoIpoValues(extractGpoSection(text, "Passage\\s+IPO\\s+total", 240)), "élevée");
-    if (/Passage IPO Variable/i.test(text)) pushMetric(page, "ipo_variable", extractGpoIpoValues(extractGpoSection(text, "Passage\\s+IPO\\s+Variable", 240)), "élevée");
+    if (/Passage IPO total/i.test(text)) pushMetric(page, "ipo_total", extractGpoIpoValues(extractGpoSection(text, "Passage\\s+IPO\\s+total", 1800)), "élevée");
+    if (/Passage IPO Variable/i.test(text)) pushMetric(page, "ipo_variable", extractGpoIpoValues(extractGpoSection(text, "Passage\\s+IPO\\s+Variable", 1800)), "élevée");
     if (/Performance mensuelle/i.test(text)) {
       pushMetric(page, "productivity_preparation", layout.productivity_preparation || extractGpoTripleAround(extractGpoSection(text, "PRÉPARATION|PREPARATION", 180), "PRÉPARATION|PREPARATION", { preferDecimal: true }), "moyenne", Boolean(layout.productivity_preparation));
       pushMetric(page, "productivity_reception", layout.productivity_reception || extractGpoTripleAround(extractGpoSection(text, "RÉCEPTION|RECEPTION", 180), "RÉCEPTION|RECEPTION", { preferDecimal: true }), "moyenne", Boolean(layout.productivity_reception));
