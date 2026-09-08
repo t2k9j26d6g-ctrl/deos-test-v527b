@@ -12534,16 +12534,26 @@ function gpoNumbers(text) {
 }
 
 function extractGpoIpoValues(text) {
-  // Sur le GPO Saint-Gilles, les valeurs des trois barres sont visuellement
-  // placées AU-DESSUS des libellés IPO BUDGET / RÉALISÉ / HISTO.
-  // Le fallback "after" reste utile si le modèle PDF évolue.
-  const around = regex => {
-    const before = matchNumberBefore(text, regex);
-    return before !== "" ? before : matchNumberAfter(text, regex);
-  };
-  const h = around(/IPO\s*HISTO/i);
-  const b = around(/IPO\s*BUDGET/i);
-  const r = around(/IPO\s*R[ÉE]ALIS[ÉE]/i);
+  // Structure réelle du GPO :
+  // Budget : valeur AVANT "IPO BUDGET"
+  // Historique : valeur APRÈS "IPO HISTO"
+  // Réalisé : valeur APRÈS "IPO RÉALISÉ"
+
+  const bBefore = matchNumberBefore(text, /IPO\s*BUDGET/i);
+  const b = bBefore !== ""
+    ? bBefore
+    : matchNumberAfter(text, /IPO\s*BUDGET/i);
+
+  const hAfter = matchNumberAfter(text, /IPO\s*HISTO/i);
+  const h = hAfter !== ""
+    ? hAfter
+    : matchNumberBefore(text, /IPO\s*HISTO/i);
+
+  const rAfter = matchNumberAfter(text, /IPO\s*R[ÉE]ALIS[ÉE]/i);
+  const r = rAfter !== ""
+    ? rAfter
+    : matchNumberBefore(text, /IPO\s*R[ÉE]ALIS[ÉE]/i);
+
   return { historical: h, budget: b, actual: r };
 }
 
