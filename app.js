@@ -25621,20 +25621,59 @@ function ensurePerformanceSourcesSummaryStyle() {
 }
 
 function getPerformanceSelectedPeriod() {
+  // 1. Si le filtre contient réellement une période MM/YYYY, on l'utilise.
   const selects = [...document.querySelectorAll("select")];
 
-  const periodSelect = selects.find(select =>
-    /période/i.test(
-      select.previousElementSibling?.textContent || select.getAttribute("aria-label") || ""
-    )
+  for (const select of selects) {
+    const value = String(select.value || "").trim();
+
+    if (/^(0[1-9]|1[0-2])\/20\d{2}$/.test(value)) {
+      return value;
+    }
+
+    const selectedText =
+      String(select.options?.[select.selectedIndex]?.textContent || "").trim();
+
+    const directPeriod = selectedText.match(/\b(0[1-9]|1[0-2])\/20\d{2}\b/);
+    if (directPeriod) return directPeriod[0];
+  }
+
+  // 2. Cherche une période MM/YYYY déjà affichée dans la page.
+  const text = document.body.innerText || "";
+
+  const numericPeriod = text.match(/\b(0[1-9]|1[0-2])\/20\d{2}\b/);
+  if (numericPeriod) return numericPeriod[0];
+
+  // 3. Sinon, utilise le mois écrit en français :
+  // "Août 2026" -> "08/2026"
+  const months = {
+    janvier: "01",
+    février: "02",
+    fevrier: "02",
+    mars: "03",
+    avril: "04",
+    mai: "05",
+    juin: "06",
+    juillet: "07",
+    août: "08",
+    aout: "08",
+    septembre: "09",
+    octobre: "10",
+    novembre: "11",
+    décembre: "12",
+    decembre: "12"
+  };
+
+  const monthMatch = text.match(
+    /\b(janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)\s+(20\d{2})\b/i
   );
 
-  if (periodSelect?.value) return periodSelect.value;
+  if (monthMatch) {
+    const month = months[monthMatch[1].toLowerCase()];
+    return `${month}/${monthMatch[2]}`;
+  }
 
-  const text = document.body.innerText || "";
-  const match = text.match(/\b(0[1-9]|1[0-2])\/20\d{2}\b/);
-
-  return match ? match[0] : "";
+  return "";
 }
 
 function readPerformanceImportedSources() {
