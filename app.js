@@ -25525,4 +25525,278 @@ function deleteDecision(id) {
   window.deosFocusInlineFormTop = focusInlineForm;
   window.deosFocusModalTop = focusModalTop;
 })();
+// ============================================================================
+// V5.30Q — PERFORMANCE : résumé compact des sources importées
+// ============================================================================
 
+function ensurePerformanceSourcesSummaryStyle() {
+  if (document.getElementById("performanceSourcesSummaryStyle")) return;
+
+  const style = document.createElement("style");
+  style.id = "performanceSourcesSummaryStyle";
+  style.textContent = `
+    .perf-sources-summary {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      margin-left: 8px;
+    }
+
+    .perf-sources-summary-btn {
+      border: 1px solid #d7dfeb;
+      background: #eef2f7;
+      color: #111827;
+      border-radius: 12px;
+      padding: 9px 14px;
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .perf-sources-summary-btn:hover {
+      background: #e5eaf1;
+    }
+
+    .perf-sources-summary-panel {
+      display: none;
+      position: absolute;
+      right: 0;
+      top: calc(100% + 8px);
+      width: min(430px, 88vw);
+      background: #fff;
+      border: 1px solid #d7dfeb;
+      border-radius: 14px;
+      padding: 10px;
+      box-shadow: 0 10px 30px rgba(15,23,42,.16);
+      z-index: 9999;
+    }
+
+    .perf-sources-summary.open .perf-sources-summary-panel {
+      display: block;
+    }
+
+    .perf-source-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 9px 8px;
+      border-bottom: 1px solid #edf0f4;
+    }
+
+    .perf-source-row:last-child {
+      border-bottom: 0;
+    }
+
+    .perf-source-name {
+      font-weight: 700;
+      font-size: 13px;
+    }
+
+    .perf-source-detail {
+      color: #64748b;
+      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    .perf-source-status {
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .perf-source-status.ok { color: #16794b; }
+    .perf-source-status.missing { color: #667085; }
+
+    .perf-sources-summary-title {
+      font-weight: 800;
+      padding: 4px 8px 9px;
+      border-bottom: 1px solid #edf0f4;
+      margin-bottom: 2px;
+    }
+  `;
+
+  document.head.appendChild(style);
+}
+
+function getPerformanceSelectedPeriod() {
+  const selects = [...document.querySelectorAll("select")];
+
+  const periodSelect = selects.find(select =>
+    /période/i.test(
+      select.previousElementSibling?.textContent || select.getAttribute("aria-label") || ""
+    )
+  );
+
+  if (periodSelect?.value) return periodSelect.value;
+
+  const text = document.body.innerText || "";
+  const match = text.match(/\b(0[1-9]|1[0-2])\/20\d{2}\b/);
+
+  return match ? match[0] : "";
+}
+
+function readPerformanceImportedSources() {
+  const expectedSources = [
+    { key: "GPO", label: "GPO" },
+    { key: "CGTAB", label: "CGTAB" },
+    { key: "G&P", label: "G&P / Finance" },
+    { key: "Z GEMED", label: "Z GEMED" },
+    { key: "GA", label: "GA" },
+    { key: "T-Bag", label: "T-Bag" }
+  ];
+
+  const bodyText = document.body.innerText || "";
+  const period = getPerformanceSelectedPeriod();
+
+  return expectedSources.map(source => {
+    let found = false;
+    let details = "";
+
+    const patterns = {
+      "GPO": /Source\s*:\s*GPO PDF[\s\S]{0,350}/i,
+      "CGTAB": /Source\s*:\s*CGTAB[\s\S]{0,350}/i,
+      "G&P": /Source\s*:\s*(?:G&P|Finance)[\s\S]{0,350}/i,
+      "Z GEMED": /Source\s*:\s*Z GEMED[\s\S]{0,350}/i,
+      "GA": /Source\s*:\s*GA\b[\s\S]{0,350}/i,
+      "T-Bag": /Source\s*:\s*T-?Bag[\s\S]{0,350}/i
+    };
+
+    const match = bodyText.match(patterns[source.key]);
+
+    if (match) {
+      const block = match[0];
+
+      // Si une période est sélectionnée, on privilégie un import correspondant.
+      found = !period || block.includes(period);
+
+      const kpi = block.match(/(\d+)\s+indicateur\(s\)|(\d+)\s+KPI/i);
+      const date = block.match(/\b\d{2}\/\d{2}\/20\d{2}(?:\s+\d{2}:\d{2}(?::\d{2})?)?/);
+
+      const parts = [];
+      if (period && found) parts.push(period);
+      if (kpi) parts.push(`${kpi[1] || kpi[2]} KPI`);
+      if (date) parts.push(date[0]);
+
+      details = parts.join(" · ");
+    }
+
+    return {
+      ...source,
+      found,
+      details
+    };
+  });
+}
+
+function renderPerformanceSourcesSummary() {
+  ensurePerformanceSourcesSummaryStyle();
+
+  // Retire une ancienne version du composant avant recalcul.
+  document.getElementById("performanceSourcesSummary")?.remove();
+
+  const importButton = [...document.querySelectorAll("button, a")]
+    .find(el => /Importer des données/i.test(el.textContent || ""));
+
+  if (!importButton) return;
+
+  const sources = readPerformanceImportedSources();
+  const currentCount = sources.filter(s => s.found).length;
+  const missingCount = sources.length - currentCount;
+
+  const wrapper = document.createElement("div");
+  wrapper.id = "performanceSourcesSummary";
+  wrapper.className = "perf-sources-summary";
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "perf-sources-summary-btn";
+
+  button.textContent =
+    `Sources : ${currentCount}/${sources.length} à jour` +
+    (missingCount ? ` · ${missingCount} manquante${missingCount > 1 ? "s" : ""}` : "") +
+    " ▾";
+
+  const panel = document.createElement("div");
+  panel.className = "perf-sources-summary-panel";
+
+  panel.innerHTML = `
+    <div class="perf-sources-summary-title">Sources de la période</div>
+    ${sources.map(source => `
+      <div class="perf-source-row">
+        <div>
+          <div class="perf-source-name">${source.label}</div>
+          <div class="perf-source-detail">
+            ${source.found
+              ? (source.details || "Import disponible")
+              : "Aucun import pour cette période"}
+          </div>
+        </div>
+        <div class="perf-source-status ${source.found ? "ok" : "missing"}">
+          ${source.found ? "✓ À jour" : "○ Non importé"}
+        </div>
+      </div>
+    `).join("")}
+  `;
+
+  wrapper.appendChild(button);
+  wrapper.appendChild(panel);
+
+  // Placement juste à côté du bouton Importer des données.
+  importButton.insertAdjacentElement("afterend", wrapper);
+
+  button.addEventListener("click", event => {
+    event.stopPropagation();
+    wrapper.classList.toggle("open");
+  });
+
+  panel.addEventListener("click", event => event.stopPropagation());
+
+  document.addEventListener("click", event => {
+  if (!wrapper.contains(event.target)) {
+    wrapper.classList.remove("open");
+  }
+});
+}
+// ============================================================================
+// V5.30Q — Activation automatique du résumé des sources dans Performance
+// ============================================================================
+
+(function initPerformanceSourcesSummaryObserver() {
+
+  function tryRenderPerformanceSourcesSummary() {
+    // Ne rien faire si le composant est déjà affiché
+    if (document.getElementById("performanceSourcesSummary")) return;
+
+    // Vérifie que nous sommes bien sur un écran contenant
+    // le bouton "Importer des données"
+    const importButton = [...document.querySelectorAll("button, a")]
+      .find(el => /Importer des données/i.test(el.textContent || ""));
+
+    if (!importButton) return;
+
+    renderPerformanceSourcesSummary();
+  }
+
+  const observer = new MutationObserver(() => {
+    requestAnimationFrame(tryRenderPerformanceSourcesSummary);
+  });
+
+  function startObserver() {
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+
+    // Premier contrôle au chargement
+    tryRenderPerformanceSourcesSummary();
+  }
+
+  if (document.body) {
+    startObserver();
+  } else {
+    document.addEventListener("DOMContentLoaded", startObserver, { once: true });
+  }
+
+})();
