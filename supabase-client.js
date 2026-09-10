@@ -318,21 +318,43 @@
       }
 
       try {
-        // session.user est deja fourni par Supabase apres getSession/signInWithPassword.
-        // Ne pas refaire getUser() evite une requete auth reseau et un risque de blocage.
-        if (!this.user) {
-          this.connectionStatus = "session_expired";
-          this.lastError = createRemoteError("AUTH_USER_MISSING", "Session presente mais utilisateur absent.");
-          return this.getStateSnapshot();
-        }
-        await this.refreshContext();
-        this.connectionStatus = "authenticated";
-      } catch (error) {
-        this.connectionStatus = "error";
-        this.lastError = createRemoteError(error.code || "AUTH_APPLY_FAILED", error.message || "Initialisation auth impossible.");
-      }
-      return this.getStateSnapshot();
-    }
+  // session.user est deja fourni par Supabase apres getSession/signInWithPassword.
+  // L'authentification ne doit pas attendre le chargement du profil/workspace.
+  if (!this.user) {
+    this.connectionStatus = "session_expired";
+    this.lastError = createRemoteError(
+      "AUTH_USER_MISSING",
+      "Session presente mais utilisateur absent."
+    );
+    return this.getStateSnapshot();
+  }
+
+  // La session Supabase est valide : DEOS est connecté immédiatement.
+  this.connectionStatus = "authenticated";
+
+  // Le contexte distant est chargé ensuite sans bloquer l'authentification.
+  Promise.resolve()
+    .then(() => this.refreshContext())
+    .then(() => {
+      this.lastError = null;
+      this.emit("CONTEXT_REFRESHED");
+    })
+    .catch(error => {
+      // Une erreur de contexte ne doit pas invalider une session Auth valide.
+      this.lastError = createRemoteError(
+        error.code || "REMOTE_CONTEXT_REFRESH_FAILED",
+        error.message || "Chargement du contexte distant impossible."
+      );
+      this.emit("CONTEXT_REFRESH_FAILED");
+    });
+
+} catch (error) {
+  this.connectionStatus = "error";
+  this.lastError = createRemoteError(
+    error.code || "AUTH_APPLY_FAILED",
+    error.message || "Initialisation auth impossible."
+  );
+}
 
     async refreshContext() {
       if (!this.client || !this.user) {
