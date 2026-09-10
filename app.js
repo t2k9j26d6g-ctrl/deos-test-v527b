@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30P3";
+const DEOS_VERSION = "V5.30P4";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -25678,71 +25678,121 @@ function getPerformanceSelectedPeriod() {
 
 function readPerformanceImportedSources() {
   const expectedSources = [
-    {
-      key: "GPO",
-      label: "GPO",
-      pattern: /Source\s*:\s*GPO(?:\s+PDF)?[\s\S]{0,500}/i
-    },
-    {
-      key: "CGTAB",
-      label: "CGTAB",
-      pattern: /Source\s*:\s*CGTAB[\s\S]{0,500}/i
-    },
-    {
-      key: "Z_GEMED",
-      label: "Z GEMED",
-      pattern: /Source\s*:\s*Z\s*GEMED[\s\S]{0,500}/i
-    },
-    {
-      key: "SUIVI_GA",
-      label: "Suivi GA",
-      pattern: /Source\s*:\s*(?:Suivi\s+GA|SUIVI_GA)[\s\S]{0,500}/i
-    },
-    {
-      key: "T_BAG",
-      label: "T-Bag",
-      pattern: /Source\s*:\s*T-?Bag[\s\S]{0,500}/i
-    },
-    {
-      key: "GA_DETAIL",
-      label: "GA détail agrégé",
-      pattern: /Source\s*:\s*(?:GA\s+d[ée]tail\s+agr[ée]g[ée]|GA_DETAIL_AGGREGATED)[\s\S]{0,500}/i
-    }
+    { key: "GPO", label: "GPO" },
+    { key: "CGTAB", label: "CGTAB" },
+    { key: "Z_GEMED", label: "Z GEMED" },
+    { key: "SUIVI_GA", label: "Suivi GA" },
+    { key: "T_BAG", label: "T-Bag" },
+    { key: "GA_DETAIL", label: "GA détail agrégé" }
   ];
 
-  const bodyText = document.body.innerText || "";
-  const period = getPerformanceSelectedPeriod();
+  const selectedPeriod = getPerformanceSelectedPeriod();
 
-  const periodLabels = {
-    "01": "Janvier",
-    "02": "Février",
-    "03": "Mars",
-    "04": "Avril",
-    "05": "Mai",
-    "06": "Juin",
-    "07": "Juillet",
-    "08": "Août",
-    "09": "Septembre",
-    "10": "Octobre",
-    "11": "Novembre",
-    "12": "Décembre"
-  };
+  let imports = [];
 
-  let periodText = "";
+  try {
+    const raw = localStorage.getItem("deos_performance_imports");
+    const parsed = raw ? JSON.parse(raw) : [];
+    imports = Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    console.warn("[DEOS] Lecture deos_performance_imports impossible", error);
+    imports = [];
+  }
 
-  const periodMatch = String(period || "").match(
-    /^(0[1-9]|1[0-2])\/(20\d{2})$/
-  );
+  function normalizeSource(value) {
+    const source = String(value || "")
+      .trim()
+      .toUpperCase()
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ");
 
-  if (periodMatch) {
-    periodText =
-      `${periodLabels[periodMatch[1]]} ${periodMatch[2]}`;
+    if (source.includes("GPO")) return "GPO";
+    if (source.includes("CGTAB")) return "CGTAB";
+    if (source.includes("Z GEMED")) return "Z_GEMED";
+
+    if (
+      source.includes("GA DETAIL") ||
+      source.includes("GA DÉTAIL") ||
+      source.includes("GA DETAIL AGREG") ||
+      source.includes("GA DÉTAIL AGRÉG")
+    ) return "GA_DETAIL";
+
+    if (
+      source.includes("SUIVI GA") ||
+      source === "SUIVI GA"
+    ) return "SUIVI_GA";
+
+    if (
+      source.includes("T BAG") ||
+      source.includes("TBAG")
+    ) return "T_BAG";
+
+    return source;
+  }
+
+  function normalizePeriod(value) {
+    const text = String(value || "").trim();
+
+    const numeric = text.match(/\b(0[1-9]|1[0-2])\/(20\d{2})\b/);
+    if (numeric) return `${numeric[1]}/${numeric[2]}`;
+
+    const iso = text.match(/\b(20\d{2})-(0[1-9]|1[0-2])\b/);
+    if (iso) return `${iso[2]}/${iso[1]}`;
+
+    const months = {
+      JANVIER: "01",
+      FEVRIER: "02",
+      "FÉVRIER": "02",
+      MARS: "03",
+      AVRIL: "04",
+      MAI: "05",
+      JUIN: "06",
+      JUILLET: "07",
+      AOUT: "08",
+      "AOÛT": "08",
+      SEPTEMBRE: "09",
+      OCTOBRE: "10",
+      NOVEMBRE: "11",
+      DECEMBRE: "12",
+      "DÉCEMBRE": "12"
+    };
+
+    const written = text
+      .toUpperCase()
+      .match(/(JANVIER|F[ÉE]VRIER|MARS|AVRIL|MAI|JUIN|JUILLET|AO[ÛU]T|SEPTEMBRE|OCTOBRE|NOVEMBRE|D[ÉE]CEMBRE)\s+(20\d{2})/);
+
+    if (written) {
+      return `${months[written[1]]}/${written[2]}`;
+    }
+
+    return "";
   }
 
   return expectedSources.map(source => {
-    const match = bodyText.match(source.pattern);
 
-    if (!match) {
+    const matchingImports = imports.filter(item => {
+      const sourceValue =
+        item.sourceType ||
+        item.source ||
+        item.type ||
+        item.sourceName ||
+        "";
+
+      const periodValue =
+        item.period ||
+        item.periodKey ||
+        item.month ||
+        item.monthYear ||
+        "";
+
+      return (
+        normalizeSource(sourceValue) === source.key &&
+        (!selectedPeriod ||
+          normalizePeriod(periodValue) === selectedPeriod)
+      );
+    });
+
+    if (!matchingImports.length) {
       return {
         ...source,
         found: false,
@@ -25750,46 +25800,43 @@ function readPerformanceImportedSources() {
       };
     }
 
-    const block = match[0];
+    // Le plus récent en priorité
+    matchingImports.sort((a, b) => {
+      const da = new Date(a.importDate || a.date || a.createdAt || 0).getTime();
+      const db = new Date(b.importDate || b.date || b.createdAt || 0).getTime();
+      return db - da;
+    });
 
-    // Accepte aussi bien "08/2026" que "Août 2026".
-    const samePeriod =
-      !period ||
-      block.includes(period) ||
-      (periodText && block.toLowerCase().includes(periodText.toLowerCase()));
+    const latest = matchingImports[0];
 
-    if (!samePeriod) {
-      return {
-        ...source,
-        found: false,
-        details: ""
-      };
+    const kpiCount =
+      latest.importedCount ??
+      latest.updatedCount ??
+      latest.metricCount ??
+      latest.kpiCount ??
+      null;
+
+    const date =
+      latest.importDate ||
+      latest.date ||
+      latest.createdAt ||
+      "";
+
+    const parts = [];
+
+    if (selectedPeriod) parts.push(selectedPeriod);
+    if (kpiCount !== null && kpiCount !== "") {
+      parts.push(`${kpiCount} KPI`);
     }
-
-    const kpiMatch =
-      block.match(/(\d+)\s+indicateur\(s\)/i) ||
-      block.match(/(\d+)\s+KPI/i);
-
-    const dateMatch = block.match(
-      /\b\d{2}\/\d{2}\/20\d{2}(?:\s+\d{2}:\d{2}(?::\d{2})?)?/
-    );
-
-    const details = [];
-
-    if (periodText) details.push(periodText);
-    else if (period) details.push(period);
-
-    if (kpiMatch) details.push(`${kpiMatch[1]} KPI`);
-    if (dateMatch) details.push(dateMatch[0]);
+    if (date) parts.push(String(date));
 
     return {
       ...source,
       found: true,
-      details: details.join(" · ")
+      details: parts.join(" · ")
     };
   });
 }
-
 function renderPerformanceSourcesSummary() {
   ensurePerformanceSourcesSummaryStyle();
 
