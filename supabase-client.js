@@ -355,7 +355,8 @@
     error.message || "Initialisation auth impossible."
   );
 }
-
+  return this.getStateSnapshot();
+}
     async refreshContext() {
       if (!this.client || !this.user) {
         this.profile = null;
