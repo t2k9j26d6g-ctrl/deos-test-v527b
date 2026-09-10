@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30P1";
+const DEOS_VERSION = "V5.30P2";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
