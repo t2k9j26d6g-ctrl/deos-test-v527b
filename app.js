@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30P2";
+const DEOS_VERSION = "V5.30P1";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -25678,53 +25678,114 @@ function getPerformanceSelectedPeriod() {
 
 function readPerformanceImportedSources() {
   const expectedSources = [
-    { key: "GPO", label: "GPO" },
-    { key: "CGTAB", label: "CGTAB" },
-    { key: "G&P", label: "G&P / Finance" },
-    { key: "Z GEMED", label: "Z GEMED" },
-    { key: "GA", label: "GA" },
-    { key: "T-Bag", label: "T-Bag" }
+    {
+      key: "GPO",
+      label: "GPO",
+      pattern: /Source\s*:\s*GPO(?:\s+PDF)?[\s\S]{0,500}/i
+    },
+    {
+      key: "CGTAB",
+      label: "CGTAB",
+      pattern: /Source\s*:\s*CGTAB[\s\S]{0,500}/i
+    },
+    {
+      key: "Z_GEMED",
+      label: "Z GEMED",
+      pattern: /Source\s*:\s*Z\s*GEMED[\s\S]{0,500}/i
+    },
+    {
+      key: "SUIVI_GA",
+      label: "Suivi GA",
+      pattern: /Source\s*:\s*(?:Suivi\s+GA|SUIVI_GA)[\s\S]{0,500}/i
+    },
+    {
+      key: "T_BAG",
+      label: "T-Bag",
+      pattern: /Source\s*:\s*T-?Bag[\s\S]{0,500}/i
+    },
+    {
+      key: "GA_DETAIL",
+      label: "GA détail agrégé",
+      pattern: /Source\s*:\s*(?:GA\s+d[ée]tail\s+agr[ée]g[ée]|GA_DETAIL_AGGREGATED)[\s\S]{0,500}/i
+    }
   ];
 
   const bodyText = document.body.innerText || "";
   const period = getPerformanceSelectedPeriod();
 
+  const periodLabels = {
+    "01": "Janvier",
+    "02": "Février",
+    "03": "Mars",
+    "04": "Avril",
+    "05": "Mai",
+    "06": "Juin",
+    "07": "Juillet",
+    "08": "Août",
+    "09": "Septembre",
+    "10": "Octobre",
+    "11": "Novembre",
+    "12": "Décembre"
+  };
+
+  let periodText = "";
+
+  const periodMatch = String(period || "").match(
+    /^(0[1-9]|1[0-2])\/(20\d{2})$/
+  );
+
+  if (periodMatch) {
+    periodText =
+      `${periodLabels[periodMatch[1]]} ${periodMatch[2]}`;
+  }
+
   return expectedSources.map(source => {
-    let found = false;
-    let details = "";
+    const match = bodyText.match(source.pattern);
 
-    const patterns = {
-      "GPO": /Source\s*:\s*GPO PDF[\s\S]{0,350}/i,
-      "CGTAB": /Source\s*:\s*CGTAB[\s\S]{0,350}/i,
-      "G&P": /Source\s*:\s*(?:G&P|Finance)[\s\S]{0,350}/i,
-      "Z GEMED": /Source\s*:\s*Z GEMED[\s\S]{0,350}/i,
-      "GA": /Source\s*:\s*GA\b[\s\S]{0,350}/i,
-      "T-Bag": /Source\s*:\s*T-?Bag[\s\S]{0,350}/i
-    };
-
-    const match = bodyText.match(patterns[source.key]);
-
-    if (match) {
-      const block = match[0];
-
-      // Si une période est sélectionnée, on privilégie un import correspondant.
-      found = !period || block.includes(period);
-
-      const kpi = block.match(/(\d+)\s+indicateur\(s\)|(\d+)\s+KPI/i);
-      const date = block.match(/\b\d{2}\/\d{2}\/20\d{2}(?:\s+\d{2}:\d{2}(?::\d{2})?)?/);
-
-      const parts = [];
-      if (period && found) parts.push(period);
-      if (kpi) parts.push(`${kpi[1] || kpi[2]} KPI`);
-      if (date) parts.push(date[0]);
-
-      details = parts.join(" · ");
+    if (!match) {
+      return {
+        ...source,
+        found: false,
+        details: ""
+      };
     }
+
+    const block = match[0];
+
+    // Accepte aussi bien "08/2026" que "Août 2026".
+    const samePeriod =
+      !period ||
+      block.includes(period) ||
+      (periodText && block.toLowerCase().includes(periodText.toLowerCase()));
+
+    if (!samePeriod) {
+      return {
+        ...source,
+        found: false,
+        details: ""
+      };
+    }
+
+    const kpiMatch =
+      block.match(/(\d+)\s+indicateur\(s\)/i) ||
+      block.match(/(\d+)\s+KPI/i);
+
+    const dateMatch = block.match(
+      /\b\d{2}\/\d{2}\/20\d{2}(?:\s+\d{2}:\d{2}(?::\d{2})?)?/
+    );
+
+    const details = [];
+
+    if (periodText) details.push(periodText);
+    else if (period) details.push(period);
+
+    if (kpiMatch) details.push(`${kpiMatch[1]} KPI`);
+    if (dateMatch) details.push(dateMatch[0]);
 
     return {
       ...source,
-      found,
-      details
+      found: true,
+      details: details.join(" · ")
     };
   });
 }
