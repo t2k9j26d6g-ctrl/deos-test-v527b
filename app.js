@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30P6";
+const DEOS_VERSION = "V5.30Q";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -992,6 +992,8 @@ function appHtml(html) {
   renderRemoteAuthOverlay();
   renderRemoteUserContext();
   renderRemoteStartupOverlay();
+  // V5.30Q — réinjection légère du résumé Performance après chaque rendu de vue.
+  if (currentView === "performance") requestAnimationFrame(() => { try { renderPerformanceSourcesSummary(); } catch (error) { console.warn("[DEOS][Performance] Résumé Sources indisponible", error); } });
   // V5.21F — les dialogues Liens doivent pouvoir apparaître sur toutes les vues,
   // notamment après une restauration de session sur Safari/iPad.
   renderLinksSyncPreviewOverlay();
@@ -17275,14 +17277,26 @@ function readLinkForm(existing = {}) {
   return { ...existing, name, url: normalizedUrl, category, description: document.getElementById("lnDescription").value.trim(), status: document.getElementById("lnStatus").value, favorite: document.getElementById("lnFavorite").checked, icon: document.getElementById("lnIcon").value.trim() || suggestLinkIcon(`${name} ${url} ${category}`), updatedAt: isoToday() };
 }
 
+function runLinkSyncSafely(task, context = "link") {
+  try {
+    return typeof task === "function" ? task() : null;
+  } catch (error) {
+    // V5.30Q — une panne Cloud ne doit jamais bloquer l'enregistrement local.
+    console.warn(`[DEOS][Liens] Synchronisation différée (${context})`, error);
+    try { showDeosToast("Lien enregistré localement · synchronisation distante différée.", "info", 2600); } catch (_) {}
+    return null;
+  }
+}
+
 function addLink() {
   const link = readLinkForm({ id: newId("link"), order: Date.now(), createdAt: isoToday() });
   if (!link) return;
   state.links.push(normalizeEntity("links", link));
   persist("links");
-  linksHybridRepository.queueUpsert(byId("links", link.id), "create");
+  runLinkSyncSafely(() => linksHybridRepository.queueUpsert(byId("links", link.id), "create"), "create");
   addActivity("🔗 Lien utile", link.name, link.url, link.id);
   linkEditId = "";
+  try { showDeosToast("Lien créé.", "success"); } catch (_) {}
   renderLinks();
 }
 
@@ -17293,9 +17307,10 @@ function saveLink(id) {
   if (!link) return;
   state.links[i] = normalizeEntity("links", link);
   persist("links");
-  linksHybridRepository.queueUpsert(state.links[i], "update");
+  runLinkSyncSafely(() => linksHybridRepository.queueUpsert(state.links[i], "update"), "update");
   addActivity("🔗 Lien modifié", state.links[i].name, state.links[i].url, id);
   linkEditId = "";
+  try { showDeosToast("Lien mis à jour.", "success"); } catch (_) {}
   renderLinks();
 }
 
@@ -17306,7 +17321,7 @@ function deleteLink(id) {
   const snapshot = cloneLinkBusinessData(state.links[i]);
   state.links.splice(i, 1);
   persist("links");
-  linksHybridRepository.queueDelete(id, snapshot);
+  runLinkSyncSafely(() => linksHybridRepository.queueDelete(id, snapshot), "delete");
   addActivity("🗑️ Lien supprimé", title);
   renderLinks();
 }
@@ -17317,7 +17332,7 @@ function archiveLink(id) {
   link.status = link.status === "archivé" ? "actif" : "archivé";
   link.updatedAt = isoToday();
   persist("links");
-  linksHybridRepository.queueUpsert(link, "archive");
+  runLinkSyncSafely(() => linksHybridRepository.queueUpsert(link, "archive"), "archive");
   addActivity("🗄️ Lien archivé", link.name, link.status, id);
   renderLinks();
 }
@@ -17328,7 +17343,7 @@ function toggleLinkFavorite(id) {
   link.favorite = !link.favorite;
   link.updatedAt = isoToday();
   persist("links");
-  linksHybridRepository.queueUpsert(link, "favorite");
+  runLinkSyncSafely(() => linksHybridRepository.queueUpsert(link, "favorite"), "favorite");
   addActivity("⭐ Favori", link.name, link.favorite ? "Ajouté aux favoris" : "Retiré des favoris", id);
   renderLinks();
 }
@@ -17342,8 +17357,8 @@ function moveLink(id, delta) {
   ordered[index].updatedAt = isoToday();
   ordered[next].updatedAt = isoToday();
   persist("links");
-  linksHybridRepository.queueUpsert(ordered[index], "reorder");
-  linksHybridRepository.queueUpsert(ordered[next], "reorder");
+  runLinkSyncSafely(() => linksHybridRepository.queueUpsert(ordered[index], "reorder"), "reorder");
+  runLinkSyncSafely(() => linksHybridRepository.queueUpsert(ordered[next], "reorder"), "reorder");
   renderLinks();
 }
 
@@ -25622,58 +25637,27 @@ function ensurePerformanceSourcesSummaryStyle() {
 }
 
 function getPerformanceSelectedPeriod() {
-  // 1. Si le filtre contient réellement une période MM/YYYY, on l'utilise.
-  const selects = [...document.querySelectorAll("select")];
-
-  for (const select of selects) {
-    const value = String(select.value || "").trim();
-
-    if (/^(0[1-9]|1[0-2])\/20\d{2}$/.test(value)) {
-      return value;
-    }
-
-    const selectedText =
-      String(select.options?.[select.selectedIndex]?.textContent || "").trim();
-
-    const directPeriod = selectedText.match(/\b(0[1-9]|1[0-2])\/20\d{2}\b/);
-    if (directPeriod) return directPeriod[0];
+  // V5.30Q — la période de référence est d'abord la période Performance réellement ouverte.
+  // Le filtre "Période : toutes" ne doit jamais faire perdre le mois affiché.
+  if (performanceDashboardFilters && performanceDashboardFilters.period && performanceDashboardFilters.period !== "all") {
+    return String(performanceDashboardFilters.period).trim();
   }
 
-  // 2. Cherche une période MM/YYYY déjà affichée dans la page.
-  const text = document.body.innerText || "";
+  const selected = typeof perfSelected === "function" ? perfSelected() : null;
+  if (selected && Number(selected.month) >= 1 && Number(selected.month) <= 12 && Number(selected.year)) {
+    return performancePeriodKey(selected);
+  }
 
+  const text = document.body?.innerText || "";
   const numericPeriod = text.match(/\b(0[1-9]|1[0-2])\/20\d{2}\b/);
   if (numericPeriod) return numericPeriod[0];
 
-  // 3. Sinon, utilise le mois écrit en français :
-  // "Août 2026" -> "08/2026"
   const months = {
-    janvier: "01",
-    février: "02",
-    fevrier: "02",
-    mars: "03",
-    avril: "04",
-    mai: "05",
-    juin: "06",
-    juillet: "07",
-    août: "08",
-    aout: "08",
-    septembre: "09",
-    octobre: "10",
-    novembre: "11",
-    décembre: "12",
-    decembre: "12"
+    janvier: "01", février: "02", fevrier: "02", mars: "03", avril: "04", mai: "05", juin: "06",
+    juillet: "07", août: "08", aout: "08", septembre: "09", octobre: "10", novembre: "11", décembre: "12", decembre: "12"
   };
-
-  const monthMatch = text.match(
-    /\b(janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)\s+(20\d{2})\b/i
-  );
-
-  if (monthMatch) {
-    const month = months[monthMatch[1].toLowerCase()];
-    return `${month}/${monthMatch[2]}`;
-  }
-
+  const monthMatch = text.match(/\b(janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)\s+(20\d{2})\b/i);
+  if (monthMatch) return `${months[monthMatch[1].toLowerCase()]}/${monthMatch[2]}`;
   return "";
 }
 
@@ -25689,16 +25673,22 @@ function readPerformanceImportedSources() {
 
   const selectedPeriod = getPerformanceSelectedPeriod();
 
-  let imports = [];
+  // V5.30Q — l'état DEOS est prioritaire, complété par le localStorage en mode local.
+  const importsById = new Map();
+  const appendImports = list => ensureArray(list).forEach(item => {
+    if (!item || typeof item !== "object") return;
+    const key = String(item.id || `${item.sourceType || item.source || "source"}|${item.sourceFile || ""}|${item.importDate || ""}|${item.period || ""}`);
+    importsById.set(key, item);
+  });
 
+  appendImports(state.performance_imports);
   try {
     const raw = localStorage.getItem("deos_performance_imports");
-    const parsed = raw ? JSON.parse(raw) : [];
-    imports = Array.isArray(parsed) ? parsed : [];
+    appendImports(raw ? JSON.parse(raw) : []);
   } catch (error) {
     console.warn("[DEOS] Lecture deos_performance_imports impossible", error);
-    imports = [];
   }
+  const imports = [...importsById.values()];
 
   function normalizeSource(value) {
     const source = String(value || "")
