@@ -25703,6 +25703,138 @@ function readPerformanceImportedSources() {
     const source = String(value || "")
       .trim()
       .toUpperCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[_-]+/g, " ")
+      .replace(/\s+/g, " ");
+
+    if (source.includes("GPO")) return "GPO";
+    if (source.includes("CGTAB")) return "CGTAB";
+    if (source.includes("Z GEMED")) return "Z_GEMED";
+    if (source.includes("SUIVI GA")) return "SUIVI_GA";
+    if (source.includes("T BAG") || source.includes("TBAG")) return "T_BAG";
+    if (source.includes("GA DETAIL")) return "GA_DETAIL";
+
+    return source;
+  }
+
+  function normalizePeriod(value, sourceFile = "") {
+    const text = String(value || "").trim();
+
+    let match = text.match(/\b(0[1-9]|1[0-2])\/(20\d{2})\b/);
+    if (match) return `${match[1]}/${match[2]}`;
+
+    match = text.match(/\b(20\d{2})-(0[1-9]|1[0-2])\b/);
+    if (match) return `${match[2]}/${match[1]}`;
+
+    // Fallback pour des noms tels que CGTAB 082026.xlsb
+    const file = String(sourceFile || "");
+    match = file.match(/\b(0[1-9]|1[0-2])(20\d{2})\b/);
+
+    if (match) return `${match[1]}/${match[2]}`;
+
+    return "";
+  }
+
+  return expectedSources.map(source => {
+    const candidates = imports.filter(item => {
+      const itemSource = normalizeSource(
+        item.sourceType ||
+        item.source ||
+        item.type ||
+        item.sourceName ||
+        ""
+      );
+
+      const itemPeriod = normalizePeriod(
+        item.period,
+        item.sourceFile
+      );
+
+      return (
+        itemSource === source.key &&
+        (!selectedPeriod || itemPeriod === selectedPeriod)
+      );
+    });
+
+    if (!candidates.length) {
+      return {
+        ...source,
+        found: false,
+        status: "missing",
+        details: ""
+      };
+    }
+
+    // Le plus récent en premier.
+    candidates.sort((a, b) => {
+      const parseFrenchDate = value => {
+        const m = String(value || "").match(
+          /(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/
+        );
+
+        if (!m) return 0;
+
+        return new Date(
+          Number(m[3]),
+          Number(m[2]) - 1,
+          Number(m[1]),
+          Number(m[4]),
+          Number(m[5]),
+          Number(m[6])
+        ).getTime();
+      };
+
+      return parseFrenchDate(b.importDate) - parseFrenchDate(a.importDate);
+    });
+
+    const latest = candidates[0];
+
+    // Un import à 0 peut simplement signifier "déjà à jour".
+    const bestCount = Math.max(
+      ...candidates.map(item =>
+        Number(
+          item.detectedCount ||
+          item.importedCount ||
+          (Array.isArray(item.indicators) ? item.indicators.length : 0) ||
+          0
+        )
+      )
+    );
+
+    const valid = candidates.some(item =>
+      String(item.status || "").toLowerCase().includes("valid")
+    );
+
+    // Cas particulier : trace validée mais métadonnées KPI incomplètes.
+    const partial = valid && bestCount === 0;
+
+    const details = [];
+
+    if (selectedPeriod) details.push(selectedPeriod);
+
+    if (bestCount > 0) {
+      details.push(`${bestCount} KPI`);
+    }
+
+    if (latest.importDate) {
+      details.push(latest.importDate);
+    }
+
+    return {
+      ...source,
+      found: valid && !partial,
+      partial,
+      status: partial ? "partial" : "ok",
+      details: details.join(" · ")
+    };
+  });
+}
+
+  function normalizeSource(value) {
+    const source = String(value || "")
+      .trim()
+      .toUpperCase()
       .replace(/[_-]+/g, " ")
       .replace(/\s+/g, " ");
 
@@ -25849,8 +25981,9 @@ function renderPerformanceSourcesSummary() {
   if (!importButton) return;
 
   const sources = readPerformanceImportedSources();
-  const currentCount = sources.filter(s => s.found).length;
-  const missingCount = sources.length - currentCount;
+  const currentCount = sources.filter(s => s.status === "ok").length;
+const partialCount = sources.filter(s => s.status === "partial").length;
+const missingCount = sources.filter(s => s.status === "missing").length;
 
   const wrapper = document.createElement("div");
   wrapper.id = "performanceSourcesSummary";
@@ -25861,9 +25994,9 @@ function renderPerformanceSourcesSummary() {
   button.className = "perf-sources-summary-btn";
 
   button.textContent =
-    `Sources : ${currentCount}/${sources.length} à jour` +
-    (missingCount ? ` · ${missingCount} manquante${missingCount > 1 ? "s" : ""}` : "") +
-    " ▾";
+  `Sources : ${currentCount}/${sources.length} à jour` +
+  (partialCount ? ` · ${partialCount} à vérifier` : "") +
+  " ▾";
 
   const panel = document.createElement("div");
   panel.className = "perf-sources-summary-panel";
