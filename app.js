@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30P5";
+const DEOS_VERSION = "V5.30P6";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -25607,6 +25607,7 @@ function ensurePerformanceSourcesSummaryStyle() {
     }
 
     .perf-source-status.ok { color: #16794b; }
+    .perf-source-status.partial { color: #92400e; }
     .perf-source-status.missing { color: #667085; }
 
     .perf-sources-summary-title {
@@ -25830,145 +25831,6 @@ function readPerformanceImportedSources() {
     };
   });
 }
-
-  function normalizeSource(value) {
-    const source = String(value || "")
-      .trim()
-      .toUpperCase()
-      .replace(/[_-]+/g, " ")
-      .replace(/\s+/g, " ");
-
-    if (source.includes("GPO")) return "GPO";
-    if (source.includes("CGTAB")) return "CGTAB";
-    if (source.includes("Z GEMED")) return "Z_GEMED";
-
-    if (
-      source.includes("GA DETAIL") ||
-      source.includes("GA DÉTAIL") ||
-      source.includes("GA DETAIL AGREG") ||
-      source.includes("GA DÉTAIL AGRÉG")
-    ) return "GA_DETAIL";
-
-    if (
-      source.includes("SUIVI GA") ||
-      source === "SUIVI GA"
-    ) return "SUIVI_GA";
-
-    if (
-      source.includes("T BAG") ||
-      source.includes("TBAG")
-    ) return "T_BAG";
-
-    return source;
-  }
-
-  function normalizePeriod(value) {
-    const text = String(value || "").trim();
-
-    const numeric = text.match(/\b(0[1-9]|1[0-2])\/(20\d{2})\b/);
-    if (numeric) return `${numeric[1]}/${numeric[2]}`;
-
-    const iso = text.match(/\b(20\d{2})-(0[1-9]|1[0-2])\b/);
-    if (iso) return `${iso[2]}/${iso[1]}`;
-
-    const months = {
-      JANVIER: "01",
-      FEVRIER: "02",
-      "FÉVRIER": "02",
-      MARS: "03",
-      AVRIL: "04",
-      MAI: "05",
-      JUIN: "06",
-      JUILLET: "07",
-      AOUT: "08",
-      "AOÛT": "08",
-      SEPTEMBRE: "09",
-      OCTOBRE: "10",
-      NOVEMBRE: "11",
-      DECEMBRE: "12",
-      "DÉCEMBRE": "12"
-    };
-
-    const written = text
-      .toUpperCase()
-      .match(/(JANVIER|F[ÉE]VRIER|MARS|AVRIL|MAI|JUIN|JUILLET|AO[ÛU]T|SEPTEMBRE|OCTOBRE|NOVEMBRE|D[ÉE]CEMBRE)\s+(20\d{2})/);
-
-    if (written) {
-      return `${months[written[1]]}/${written[2]}`;
-    }
-
-    return "";
-  }
-
-  return expectedSources.map(source => {
-
-    const matchingImports = imports.filter(item => {
-      const sourceValue =
-        item.sourceType ||
-        item.source ||
-        item.type ||
-        item.sourceName ||
-        "";
-
-      const periodValue =
-        item.period ||
-        item.periodKey ||
-        item.month ||
-        item.monthYear ||
-        "";
-
-      return (
-        normalizeSource(sourceValue) === source.key &&
-        (!selectedPeriod ||
-          normalizePeriod(periodValue) === selectedPeriod)
-      );
-    });
-
-    if (!matchingImports.length) {
-      return {
-        ...source,
-        found: false,
-        details: ""
-      };
-    }
-
-    // Le plus récent en priorité
-    matchingImports.sort((a, b) => {
-      const da = new Date(a.importDate || a.date || a.createdAt || 0).getTime();
-      const db = new Date(b.importDate || b.date || b.createdAt || 0).getTime();
-      return db - da;
-    });
-
-    const latest = matchingImports[0];
-
-    const kpiCount =
-      latest.importedCount ??
-      latest.updatedCount ??
-      latest.metricCount ??
-      latest.kpiCount ??
-      null;
-
-    const date =
-      latest.importDate ||
-      latest.date ||
-      latest.createdAt ||
-      "";
-
-    const parts = [];
-
-    if (selectedPeriod) parts.push(selectedPeriod);
-    if (kpiCount !== null && kpiCount !== "") {
-      parts.push(`${kpiCount} KPI`);
-    }
-    if (date) parts.push(String(date));
-
-    return {
-      ...source,
-      found: true,
-      details: parts.join(" · ")
-    };
-  });
-}
 function renderPerformanceSourcesSummary() {
   ensurePerformanceSourcesSummaryStyle();
 
@@ -25982,8 +25844,8 @@ function renderPerformanceSourcesSummary() {
 
   const sources = readPerformanceImportedSources();
   const currentCount = sources.filter(s => s.status === "ok").length;
-const partialCount = sources.filter(s => s.status === "partial").length;
-const missingCount = sources.filter(s => s.status === "missing").length;
+  const partialCount = sources.filter(s => s.status === "partial").length;
+  const missingCount = sources.filter(s => s.status === "missing").length;
 
   const wrapper = document.createElement("div");
   wrapper.id = "performanceSourcesSummary";
@@ -25994,9 +25856,9 @@ const missingCount = sources.filter(s => s.status === "missing").length;
   button.className = "perf-sources-summary-btn";
 
   button.textContent =
-  `Sources : ${currentCount}/${sources.length} à jour` +
-  (partialCount ? ` · ${partialCount} à vérifier` : "") +
-  " ▾";
+    `Sources : ${currentCount}/${sources.length} à jour` +
+    (partialCount ? ` · ${partialCount} à vérifier` : "") +
+    " ▾";
 
   const panel = document.createElement("div");
   panel.className = "perf-sources-summary-panel";
@@ -26008,13 +25870,15 @@ const missingCount = sources.filter(s => s.status === "missing").length;
         <div>
           <div class="perf-source-name">${source.label}</div>
           <div class="perf-source-detail">
-            ${source.found
+            ${source.status === "ok"
               ? (source.details || "Import disponible")
-              : "Aucun import pour cette période"}
+              : source.status === "partial"
+                ? (source.details || "Import présent, métadonnées à vérifier")
+                : "Aucun import pour cette période"}
           </div>
         </div>
-        <div class="perf-source-status ${source.found ? "ok" : "missing"}">
-          ${source.found ? "✓ À jour" : "○ Non importé"}
+        <div class="perf-source-status ${source.status === "ok" ? "ok" : source.status === "partial" ? "partial" : "missing"}">
+          ${source.status === "ok" ? "✓ À jour" : source.status === "partial" ? "⚠ À vérifier" : "○ Non importé"}
         </div>
       </div>
     `).join("")}
