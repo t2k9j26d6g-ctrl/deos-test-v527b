@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q1";
+const DEOS_VERSION = "V5.30Q2";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -22710,6 +22710,194 @@ function clearRemoteBusyWatchdog() {
   deosRemoteBusyWatchdogId = null;
 }
 
+// V5.30Q2 — chemin Auth rapide et résilient.
+// Le SDK Supabase peut authentifier correctement alors que le chargement du contexte
+// (profil/workspace/site) reste bloqué. On ne laisse plus ce chargement bloquer DEOS.
+function ensureRecoveredRemoteAdapter() {
+  if (!deosRemoteAdapter && deosRemoteAuthService && window.DeosSupabaseRemote?.SupabaseRemoteAdapter) {
+    deosRemoteAdapter = new window.DeosSupabaseRemote.SupabaseRemoteAdapter(deosRemoteAuthService, {
+      debug: resolvedRemoteConfig().debug
+    });
+  }
+  return deosRemoteAdapter;
+}
+
+function remoteFastSetSession(session) {
+  if (!deosRemoteAuthService) return;
+  deosRemoteAuthService.session = session || null;
+  deosRemoteAuthService.user = session?.user || null;
+  deosRemoteAuthService.initialized = true;
+  deosRemoteAuthService.connectionStatus = session?.user ? "authenticated" : "signed_out";
+  deosRemoteAuthService.lastError = null;
+}
+
+async function remoteFastHydrateContext(session) {
+  const client = deosRemoteAuthService?.getClient?.() || deosRemoteAuthService?.client || null;
+  const user = session?.user || deosRemoteAuthService?.user || null;
+  if (!client || !user) return deosRemoteAuthService?.getStateSnapshot?.() || {};
+
+  remoteFastSetSession(session);
+
+  try {
+    const [profileResponse, membershipResponse] = await withRemoteTimeout(
+      Promise.all([
+        client.from("profiles").select("id, display_name, created_at, updated_at").eq("id", user.id).maybeSingle(),
+        client.from("workspace_members").select("workspace_id, role, created_at").eq("user_id", user.id).order("created_at", { ascending: true })
+      ]),
+      6000,
+      "REMOTE_CONTEXT_CORE_TIMEOUT",
+      "Contexte utilisateur trop lent."
+    );
+
+    if (!profileResponse?.error) deosRemoteAuthService.profile = profileResponse?.data || null;
+    const memberships = Array.isArray(membershipResponse?.data) ? membershipResponse.data : [];
+
+    const preferenceKey = String(deosRemoteAuthService.workspacePreferenceKey || "deos_remote_workspace_preference");
+    const preferredWorkspaceId = String(localStorage.getItem(preferenceKey) || "");
+    const selectedMembership = memberships.find(item => String(item.workspace_id) === preferredWorkspaceId) || memberships[0] || null;
+
+    if (!selectedMembership) {
+      deosRemoteAuthService.currentWorkspace = null;
+      deosRemoteAuthService.currentSite = null;
+      deosRemoteAuthService.currentRole = "";
+      deosRemoteAuthService.availableWorkspaces = [];
+      return deosRemoteAuthService.getStateSnapshot?.() || {};
+    }
+
+    const workspaceId = selectedMembership.workspace_id;
+    const [workspaceResponse, sitesResponse] = await withRemoteTimeout(
+      Promise.all([
+        client.from("workspaces").select("id, name, created_by, created_at, updated_at").eq("id", workspaceId).maybeSingle(),
+        client.from("sites").select("id, workspace_id, name, code, created_at, updated_at").eq("workspace_id", workspaceId).order("created_at", { ascending: true }).limit(1)
+      ]),
+      6000,
+      "REMOTE_CONTEXT_WORKSPACE_TIMEOUT",
+      "Chargement du workspace trop lent."
+    );
+
+    const workspace = workspaceResponse?.error ? null : (workspaceResponse?.data || null);
+    const site = sitesResponse?.error ? null : (Array.isArray(sitesResponse?.data) ? sitesResponse.data[0] || null : null);
+
+    deosRemoteAuthService.currentWorkspace = workspace;
+    deosRemoteAuthService.currentSite = site;
+    deosRemoteAuthService.currentRole = selectedMembership.role || "";
+    deosRemoteAuthService.availableWorkspaces = workspace ? [{
+      workspaceId: workspace.id,
+      workspaceName: workspace.name || "Workspace",
+      siteName: site?.name || "",
+      role: selectedMembership.role || ""
+    }] : [];
+
+    if (workspace?.id) {
+      try { localStorage.setItem(preferenceKey, String(workspace.id)); } catch (_) {}
+    }
+  } catch (error) {
+    // L'authentification reste valide même si le contexte métier est lent.
+    console.warn("[DEOS Q2] Contexte distant partiel :", error?.message || error);
+  }
+
+  return deosRemoteAuthService.getStateSnapshot?.() || {};
+}
+
+function bindRecoveredRemoteAuthSubscription() {
+  if (!deosRemoteAuthService?.onAuthStateChange || deosRemoteAuthSubscription) return;
+  try {
+    deosRemoteAuthSubscription = deosRemoteAuthService.onAuthStateChange((_event, session, snapshot) => {
+      if (snapshot) updateRemoteRuntime(snapshot);
+      if (session?.user || snapshot?.authenticated) {
+        deosRemoteRuntime.temporaryLocal = false;
+        setTimeout(async () => {
+          try {
+            const effectiveSession = session || deosRemoteAuthService.session || null;
+            const hydrated = await remoteFastHydrateContext(effectiveSession);
+            updateRemoteRuntime(hydrated);
+            ensureRecoveredRemoteAdapter();
+            initializeLinksHybridSync({ skipAutoSync: false });
+            initializeMultiDeviceSyncForAuthenticatedSession({ source: "q2-auth-state" });
+            syncRemoteStartupOverlayState();
+            if (!shouldShowRemoteStartupOverlay()) closeRemoteStartupOverlay();
+            renderRemoteUserContext();
+            setView(currentView || "cockpit");
+          } catch (_) {}
+        }, 0);
+      }
+    });
+  } catch (_) {}
+}
+
+async function recoverRemoteAfterInitTimeout() {
+  const client = deosRemoteAuthService?.getClient?.() || deosRemoteAuthService?.client || null;
+  if (!client) return false;
+
+  ensureRecoveredRemoteAdapter();
+  bindRecoveredRemoteAuthSubscription();
+
+  try {
+    const sessionResult = await withRemoteTimeout(
+      client.auth.getSession(),
+      5000,
+      "REMOTE_FAST_SESSION_TIMEOUT",
+      "Lecture de session trop lente."
+    );
+    if (sessionResult?.error) throw sessionResult.error;
+    const session = sessionResult?.data?.session || null;
+    remoteFastSetSession(session);
+    if (session?.user) {
+      const snapshot = await remoteFastHydrateContext(session);
+      updateRemoteRuntime(snapshot);
+      deosRemoteRuntime.connectionStatus = "authenticated";
+      deosRemoteRuntime.temporaryLocal = false;
+      setRemoteLastOperation("Session distante restaurée (mode rapide Q2).");
+      initializeLinksHybridSync({ skipAutoSync: false });
+      initializeMultiDeviceSyncForAuthenticatedSession({ source: "q2-fast-session" });
+    } else {
+      updateRemoteRuntime(deosRemoteAuthService.getStateSnapshot?.() || {
+        initialized: true,
+        connectionStatus: "signed_out",
+        user: null,
+        lastError: null
+      });
+      deosRemoteRuntime.connectionStatus = "signed_out";
+      deosRemoteRuntime.lastError = "";
+      deosRemoteRuntime.lastErrorCode = "";
+      setRemoteLastOperation("Supabase prêt pour la connexion (mode rapide Q2).");
+    }
+    return true;
+  } catch (error) {
+    console.warn("[DEOS Q2] Récupération rapide impossible :", error?.message || error);
+    return false;
+  }
+}
+
+async function directStartupPasswordSignIn(email, password) {
+  const client = deosRemoteAuthService?.getClient?.() || deosRemoteAuthService?.client || null;
+  if (!client?.auth?.signInWithPassword) return false;
+
+  const result = await withRemoteTimeout(
+    client.auth.signInWithPassword({ email, password }),
+    DEOS_REMOTE_AUTH_TIMEOUT_MS,
+    "REMOTE_DIRECT_AUTH_TIMEOUT",
+    "Connexion Supabase trop longue."
+  );
+  if (result?.error) throw result.error;
+  const session = result?.data?.session || null;
+  if (!session?.user) throw new Error("Session Supabase non reçue.");
+
+  remoteFastSetSession(session);
+  const snapshot = await remoteFastHydrateContext(session);
+  updateRemoteRuntime(snapshot);
+  deosRemoteRuntime.connectionStatus = "authenticated";
+  deosRemoteRuntime.temporaryLocal = false;
+  deosRemoteRuntime.lastError = "";
+  deosRemoteRuntime.lastErrorCode = "";
+  ensureRecoveredRemoteAdapter();
+  bindRecoveredRemoteAuthSubscription();
+  initializeLinksHybridSync({ skipAutoSync: false });
+  initializeMultiDeviceSyncForAuthenticatedSession({ source: "q2-direct-login" });
+  setRemoteLastOperation("Connexion distante réussie (mode rapide Q2).");
+  return true;
+}
+
 async function submitStartupPasswordSignIn() {
   readRemoteStartupDialogValues();
   if (!deosRemoteStartupDialog.email || !deosRemoteStartupDialog.password) {
@@ -22726,17 +22914,28 @@ async function submitStartupPasswordSignIn() {
   armRemoteBusyWatchdog("Connexion");
   if (currentView === "settings") renderSettings(); else setView(currentView || "cockpit");
   try {
-    await withRemoteTimeout(
-      deosRemoteAuthService.signInWithPassword(deosRemoteStartupDialog.email, deosRemoteStartupDialog.password),
-      DEOS_REMOTE_AUTH_TIMEOUT_MS,
-      "REMOTE_AUTH_TIMEOUT",
-      "Connexion trop longue. Vérifiez le réseau puis réessayez."
-    );
+    let signedIn = false;
+    try {
+      signedIn = await directStartupPasswordSignIn(deosRemoteStartupDialog.email, deosRemoteStartupDialog.password);
+    } catch (directError) {
+      console.warn("[DEOS Q2] Connexion directe échouée, repli service Auth :", directError?.message || directError);
+    }
+    if (!signedIn) {
+      await withRemoteTimeout(
+        deosRemoteAuthService.signInWithPassword(deosRemoteStartupDialog.email, deosRemoteStartupDialog.password),
+        DEOS_REMOTE_AUTH_TIMEOUT_MS,
+        "REMOTE_AUTH_TIMEOUT",
+        "Connexion trop longue. Vérifiez le réseau puis réessayez."
+      );
+    }
     deosRemoteRuntime.temporaryLocal = false;
-    updateRemoteStartupDialog({ linksPromptDismissed: false });
+    deosRemoteRuntime.connectionStatus = "authenticated";
+    deosRemoteRuntime.lastError = "";
+    deosRemoteRuntime.lastErrorCode = "";
+    updateRemoteStartupDialog({ linksPromptDismissed: false, busy: false, error: "", message: "" });
     closeRemoteStartupOverlay();
     renderRemoteUserContext();
-    if (currentView === "settings") renderSettings("Connexion distante reussie."); else setView(currentView || "cockpit");
+    if (currentView === "settings") renderSettings("Connexion distante réussie."); else setView(currentView || "cockpit");
   } catch (error) {
     updateRemoteStartupDialog({ busy: false, error: error.message || "Connexion impossible.", message: "" });
     if (currentView === "settings") renderSettings(); else setView(currentView || "cockpit");
@@ -22997,11 +23196,22 @@ async function initializeRemoteServices(options = {}) {
       await maybePromptRemoteLinksRecovery({ silent: true, autoRecover: true });
     }
   } catch (error) {
-    deosRemoteRuntime.connectionStatus = "error";
-    deosRemoteRuntime.lastError = error.message || String(error);
-    deosRemoteRuntime.lastErrorCode = error.code || "REMOTE_INIT_FAILED";
-    updateRemoteStartupDialog({ busy: false, error: deosRemoteRuntime.lastError, message: "" });
-    setRemoteLastOperation("Initialisation distante en echec.", deosRemoteRuntime.lastErrorCode);
+    const timeoutCode = String(error?.code || "");
+    let recovered = false;
+    if (timeoutCode === "REMOTE_INIT_TIMEOUT") {
+      recovered = await recoverRemoteAfterInitTimeout();
+    }
+    if (!recovered) {
+      deosRemoteRuntime.connectionStatus = "error";
+      deosRemoteRuntime.lastError = error.message || String(error);
+      deosRemoteRuntime.lastErrorCode = error.code || "REMOTE_INIT_FAILED";
+      updateRemoteStartupDialog({ busy: false, error: deosRemoteRuntime.lastError, message: "" });
+      setRemoteLastOperation("Initialisation distante en échec.", deosRemoteRuntime.lastErrorCode);
+    } else {
+      deosRemoteRuntime.lastError = "";
+      deosRemoteRuntime.lastErrorCode = "";
+      updateRemoteStartupDialog({ busy: false, error: "", message: "" });
+    }
   }
 
   syncRemoteStartupOverlayState();
