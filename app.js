@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q";
+const DEOS_VERSION = "V5.30Q1";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -891,6 +891,139 @@ function saved(name, fallback) {
   return deosDataService.load(name, fallback);
 }
 
+// -----------------------------------------------------------------------------
+// V5.30Q1 — Pont multi-appareils Priorités / To-Do
+//
+// Le backend actuel ne dispose pas encore d'un pilote Supabase "priorities".
+// Pour ne pas perdre les To-Do saisies sur iPad, on transporte la collection
+// dans UN document système caché, déjà couvert par le pilote Documents.
+// Le document est invisible dans les écrans métier et dans les sélecteurs.
+// Une future migration dédiée pourra remplacer ce pont sans changer les To-Do.
+// -----------------------------------------------------------------------------
+const DEOS_PRIORITY_SYNC_DOC_ID = "deos-system-priorities-sync-v1";
+const DEOS_PRIORITY_SYNC_SOURCE = "DEOS_PRIORITY_SYNC";
+let deosInitialEntityLoad = false;
+let deosPrioritySyncApplyingRemote = false;
+let deosPrioritySyncTimer = null;
+
+function isPrioritySyncTransportDocument(item) {
+  const doc = item && typeof item === "object" ? item : {};
+  return String(doc.id || "") === DEOS_PRIORITY_SYNC_DOC_ID
+    || String(doc.sourceType || "") === DEOS_PRIORITY_SYNC_SOURCE
+    || String(doc.documentType || "") === "system_priority_sync";
+}
+
+function prioritySyncPayloadFromDocument(doc) {
+  if (!isPrioritySyncTransportDocument(doc)) return null;
+  const content = doc?.content;
+  if (!content || typeof content !== "object" || Array.isArray(content)) return null;
+  if (!Array.isArray(content.priorities)) return null;
+  return {
+    schema: Number(content.schema || 1),
+    updatedAt: String(content.updatedAt || doc.updatedAt || ""),
+    priorities: content.priorities
+  };
+}
+
+function saveDocumentsLocalOnly() {
+  const repository = getEntityRepository("documents");
+  if (repository) repository.save(state.documents);
+  else deosDataService.save("documents", state.documents);
+}
+
+function stagePrioritySyncTransport() {
+  if (deosInitialEntityLoad || deosPrioritySyncApplyingRemote) return false;
+  if (!Array.isArray(state.documents) || !Array.isArray(state.priorities)) return false;
+
+  const nowIso = new Date().toISOString();
+  const payload = state.priorities.map(item => normalizeEntity("priorities", item));
+  const index = state.documents.findIndex(isPrioritySyncTransportDocument);
+  const existing = index >= 0 ? state.documents[index] : null;
+  const existingPayload = prioritySyncPayloadFromDocument(existing);
+
+  // Évite de modifier le document (et donc sa version distante) quand la
+  // collection n'a pas réellement changé.
+  if (existingPayload && JSON.stringify(existingPayload.priorities) === JSON.stringify(payload)) return false;
+
+  const next = normalizeEntity("documents", {
+    ...(existing || {}),
+    id: DEOS_PRIORITY_SYNC_DOC_ID,
+    title: "DEOS système — Priorités / To-Do",
+    type: "Système",
+    category: "Système",
+    status: "Actif",
+    owner: identityName(),
+    author: identityName(),
+    version: "SYS1",
+    date: localIsoDate(),
+    updatedAt: nowIso,
+    createdAt: existing?.createdAt || nowIso,
+    summary: "Transport interne multi-appareils des Priorités / To-Do.",
+    tags: ["DEOS_SYSTEM", "PRIORITIES_SYNC"],
+    documentType: "system_priority_sync",
+    sourceType: DEOS_PRIORITY_SYNC_SOURCE,
+    sourceId: DEOS_PRIORITY_SYNC_DOC_ID,
+    hiddenSystem: true,
+    content: {
+      schema: 1,
+      updatedAt: nowIso,
+      device: typeof detectLinksSyncDeviceLabel === "function" ? detectLinksSyncDeviceLabel() : "Navigateur",
+      priorities: payload
+    }
+  });
+
+  if (index >= 0) state.documents[index] = next;
+  else state.documents.unshift(next);
+  saveDocumentsLocalOnly();
+  return true;
+}
+
+function applyPrioritySyncTransportFromDocuments(options = {}) {
+  if (!Array.isArray(state.documents)) return false;
+  const doc = state.documents.find(isPrioritySyncTransportDocument);
+  const payload = prioritySyncPayloadFromDocument(doc);
+  if (!payload) return false;
+
+  const incoming = normalizeCollection("priorities", payload.priorities);
+  const current = normalizeCollection("priorities", state.priorities || []);
+  if (JSON.stringify(current) === JSON.stringify(incoming)) return false;
+
+  deosPrioritySyncApplyingRemote = true;
+  try {
+    state.priorities = incoming;
+    const repository = getEntityRepository("priorities");
+    if (repository) repository.save(state.priorities);
+    else deosDataService.save("priorities", state.priorities);
+  } finally {
+    deosPrioritySyncApplyingRemote = false;
+  }
+
+  if (!options.silent) showDeosToast?.("Priorités / To-Do synchronisées sur cet appareil.", "success");
+  // Le Cockpit peut être rafraîchi sans risque de perdre un formulaire en cours.
+  // Sur la vue Priorités, un auto-sync silencieux ne doit pas effacer une saisie non validée.
+  if (currentView === "cockpit") renderCockpit();
+  if (currentView === "priorities" && !options.silent) renderPriorities();
+  return true;
+}
+
+function schedulePrioritySyncWrite() {
+  if (typeof window === "undefined") return;
+  if (deosPrioritySyncTimer) window.clearTimeout(deosPrioritySyncTimer);
+  deosPrioritySyncTimer = window.setTimeout(async () => {
+    deosPrioritySyncTimer = null;
+    // Hors ligne / local temporaire : le document système reste stocké en
+    // local et sera repris par la synchronisation globale dès reconnexion.
+    if (!multiDeviceConnected?.()) return;
+    if (!deosDocumentsSyncController?.syncNow) return;
+    try {
+      await deosDocumentsSyncController.syncNow({ silent: true, source: "priority-bridge" });
+      applyPrioritySyncTransportFromDocuments({ silent: true, source: "priority-bridge" });
+    } catch (error) {
+      console.warn("[DEOS Priorities Sync] Synchronisation différée", error);
+    }
+  }, 1200);
+}
+
 function persist(name) {
   const repository = getEntityRepository(name);
   if (repository) {
@@ -898,7 +1031,14 @@ function persist(name) {
   } else {
     deosDataService.save(name, state[name]);
   }
-  // V5.30L — toute écriture sur un des 7 objets multi-appareils déclenche
+  // V5.30Q1 — les Priorités / To-Do passent par le document système caché
+  // afin de bénéficier immédiatement du pilote Documents existant.
+  if (name === "priorities" && !deosInitialEntityLoad && !deosPrioritySyncApplyingRemote) {
+    const changed = stagePrioritySyncTransport();
+    if (changed) schedulePrioritySyncWrite();
+  }
+
+  // V5.30L — toute écriture sur un objet multi-appareils déclenche
   // une synchronisation Cloud différée. Le stockage local reste immédiat.
   if (["links", "actions", "projects", "folders", "managers", "decisions", "documents"].includes(name)) {
     scheduleMultiDeviceWriteSync(name);
@@ -1835,10 +1975,19 @@ async function init() {
   applyIdentity();
   actionTitleMigrationMode = true;
   actionTitleMigrationStats = { corrected: 0, examples: [] };
-  for (const name of entities) {
-    state[name] = saved(name, await loadJson(name));
-    persist(name);
+  deosInitialEntityLoad = true;
+  try {
+    for (const name of entities) {
+      state[name] = saved(name, await loadJson(name));
+      persist(name);
+    }
+  } finally {
+    deosInitialEntityLoad = false;
   }
+  // Si cet appareil possède déjà le document de transport (par exemple après
+  // une synchro précédente), les Priorités locales sont restaurées avant le
+  // démarrage des pilotes distants.
+  applyPrioritySyncTransportFromDocuments({ silent: true, source: "startup-local" });
   actionTitleMigrationMode = false;
   if (actionTitleMigrationStats.corrected > 0) {
     console.info("[DEOS Actions] Migration des titres appliquée", {
@@ -8416,7 +8565,8 @@ function addProject() {
 
 function checkboxList(id, items, selectedIds, labelFn) {
   const selected = new Set((selectedIds || []).map(x => String(x)));
-  return `<div id="${id}" class="check-list">${items.map(item => `<label class="check-row"><input type="checkbox" value="${esc(String(item.id))}" ${selected.has(String(item.id)) ? "checked" : ""}> <span>${esc(cleanDisplayLabel(labelFn(item)))}</span></label>`).join("") || `<div class="empty">Aucune donnée disponible.</div>`}</div>`;
+  const visibleItems = ensureArray(items).filter(item => !(item?.hiddenSystem === true || isPrioritySyncTransportDocument(item)));
+  return `<div id="${id}" class="check-list">${visibleItems.map(item => `<label class="check-row"><input type="checkbox" value="${esc(String(item.id))}" ${selected.has(String(item.id)) ? "checked" : ""}> <span>${esc(cleanDisplayLabel(labelFn(item)))}</span></label>`).join("") || `<div class="empty">Aucune donnée disponible.</div>`}</div>`;
 }
 
 function checkedValues(id) {
@@ -16078,6 +16228,7 @@ function documentTypeFilterValue(doc) {
 function documentsFilteredItems() {
   const todayDate = isoToday();
   return state.documents.filter(doc => {
+    if (isPrioritySyncTransportDocument(doc) || doc?.hiddenSystem === true) return false;
     if (documentsFilterState.type !== "all" && documentTypeFilterValue(doc) !== documentsFilterState.type) return false;
     if (documentsFilterState.managerId !== "all" && !getDocumentManagerIds(doc).some(id => sameId(id, documentsFilterState.managerId))) return false;
     if (documentsFilterState.status !== "all" && documentStatusFilterValue(doc) !== documentsFilterState.status) return false;
@@ -21898,6 +22049,9 @@ function createSimpleEntitySyncController(config) {
       if (localChanged) {
         const repository=getEntityRepository(entity); if (repository) repository.save(state[entity]); else deosDataService.save(entity,state[entity]);
       }
+      // V5.30Q1 — une mise à jour distante du document système Priorités doit
+      // immédiatement alimenter state.priorities sur l'appareil courant.
+      if (entity === "documents") applyPrioritySyncTransportFromDocuments({ silent: true, source: "documents-sync" });
       const a=await analyze(); refresh({syncing:false,remoteCount:a.remoteCount,lastSyncAt:new Date().toLocaleString("fr-FR"),lastError:"",state:a.conflicts.length?DEOS_LINKS_SYNC_STATUS.CONFLICT:DEOS_LINKS_SYNC_STATUS.SYNCED});
       if (!options.silent && currentView==="settings") renderSettings(`Synchronisation ${plural} terminée.`);
       if (currentView==="documents" && entity==="documents") renderDocuments();
@@ -21942,7 +22096,7 @@ function scheduleSimpleEntityAutoSync(entity){const c=simpleSyncControllerFor(en
 
 // -----------------------------------------------------------------------------
 // V5.30A — Synchronisation multi-appareils unifiée
-// Active les 7 pilotes métier existants et les orchestre sous une seule commande.
+// Active les 7 pilotes métier existants et orchestre aussi Priorités / To-Do via le pont Documents.
 // Les moteurs de conflit existants restent seuls responsables des arbitrages :
 // aucun écrasement silencieux n'est ajouté par cette couche.
 // -----------------------------------------------------------------------------
@@ -22111,7 +22265,7 @@ function renderMultiDeviceSyncSettingsCardHtml() {
   const connected = multiDeviceConnected();
   const summary = multiDeviceSyncSummary();
   const labelMap = { links:"Liens", actions:"Actions", projects:"Projets", folders:"Dossiers", managers:"Managers", decisions:"Décisions", documents:"Documents" };
-  return `<div id="multiDeviceSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation multi-appareils</h2><p class="muted">V5.30A · un seul workspace pour retrouver automatiquement les 7 objets métier principaux sur PC, iPad et autres navigateurs.</p></div><span class="remote-mode-badge ${connected ? (summary.conflicts ? "red" : "green") : "orange"}">${connected ? (summary.conflicts ? `${summary.conflicts} conflit(s)` : "Cloud connecté") : "Connexion requise"}</span></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Workspace</strong><span>${esc(deosRemoteRuntime.workspace?.name || "--")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchro globale</strong><span>${esc(deosMultiDeviceSyncRuntime.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Conflits</strong><span>${summary.conflicts}</span></div><div class="settings-calendar-summary-item"><strong>Erreurs</strong><span>${summary.errors}</span></div></div><div class="row-actions"><button class="action" type="button" onclick="syncAllMultiDeviceNow({silent:false,source:'manual'})" ${connected && !deosMultiDeviceSyncRuntime.syncing ? "" : "disabled"}>${deosMultiDeviceSyncRuntime.syncing ? "Synchronisation…" : "Synchroniser maintenant"}</button></div>${deosMultiDeviceSyncRuntime.lastError ? `<p class="remote-error-box">${esc(deosMultiDeviceSyncRuntime.lastError)}</p>` : ""}</section><section class="settings-card-block"><h3>Objets synchronisés</h3><div class="settings-calendar-summary">${summary.rows.map(r => `<div class="settings-calendar-summary-item"><strong>${esc(labelMap[r.entity] || r.entity)}</strong><span>${r.conflicts ? `${r.conflicts} conflit(s)` : r.error ? "Erreur" : "Actif"}</span></div>`).join("")}</div><p class="muted">Le stockage local reste conservé. En cas de modifications concurrentes, les moteurs existants signalent un conflit au lieu d'écraser silencieusement les données.</p></section></div></div>`;
+  return `<div id="multiDeviceSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation multi-appareils</h2><p class="muted">V5.30Q1 · un seul workspace pour retrouver automatiquement les objets métier principaux sur PC, iPad et autres navigateurs, y compris Priorités / To-Do via Documents.</p></div><span class="remote-mode-badge ${connected ? (summary.conflicts ? "red" : "green") : "orange"}">${connected ? (summary.conflicts ? `${summary.conflicts} conflit(s)` : "Cloud connecté") : "Connexion requise"}</span></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Workspace</strong><span>${esc(deosRemoteRuntime.workspace?.name || "--")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchro globale</strong><span>${esc(deosMultiDeviceSyncRuntime.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Conflits</strong><span>${summary.conflicts}</span></div><div class="settings-calendar-summary-item"><strong>Erreurs</strong><span>${summary.errors}</span></div></div><div class="row-actions"><button class="action" type="button" onclick="syncAllMultiDeviceNow({silent:false,source:'manual'})" ${connected && !deosMultiDeviceSyncRuntime.syncing ? "" : "disabled"}>${deosMultiDeviceSyncRuntime.syncing ? "Synchronisation…" : "Synchroniser maintenant"}</button></div>${deosMultiDeviceSyncRuntime.lastError ? `<p class="remote-error-box">${esc(deosMultiDeviceSyncRuntime.lastError)}</p>` : ""}</section><section class="settings-card-block"><h3>Objets synchronisés</h3><div class="settings-calendar-summary">${summary.rows.map(r => `<div class="settings-calendar-summary-item"><strong>${esc(labelMap[r.entity] || r.entity)}</strong><span>${r.conflicts ? `${r.conflicts} conflit(s)` : r.error ? "Erreur" : "Actif"}</span></div>`).join("")}</div><p class="muted">Le stockage local reste conservé. En cas de modifications concurrentes, les moteurs existants signalent un conflit au lieu d'écraser silencieusement les données.</p></section></div></div>`;
 }
 
 function mountMultiDeviceSyncSettingsCard() {
