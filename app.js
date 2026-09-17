@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q4";
+const DEOS_VERSION = "V5.30Q3B";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -99,7 +99,7 @@ const GOOGLE_SCOPES = "https://www.googleapis.com/auth/calendar.readonly https:/
 const GOOGLE_CALENDAR_API = "https://www.googleapis.com/calendar/v3";
 const GOOGLE_SYNC_PAST_DAYS = 30;     // jours dans le passé à importer
 const GOOGLE_SYNC_FUTURE_DAYS = 90;   // jours dans le futur à importer
-const GOOGLE_SYNC_INTERVALS = {       // Mapping fréquence configurée · intervalle en ms (V5.6)
+const GOOGLE_SYNC_INTERVALS = {       // Mapping fréquence configurée ? intervalle en ms (V5.6)
   manual: null,      // aucun timer
   "15min": 15 * 60 * 1000,      // 15 minutes
   "hourly": 60 * 60 * 1000,     // 1 heure
@@ -225,8 +225,8 @@ function looksLikeStorageQuotaError(error) {
 function logStorageOperation(scope, operation, key, startedAt, success, extra = "") {
   if (!DEOS_STORAGE_DEBUG) return;
   const duration = Math.max(0, Date.now() - startedAt);
-  const suffix = extra · ` · ${extra}` : "";
-  console.info(`[DEOS Storage] ${scope} ${operation} ${key} · ${success · "ok" : "error"} · ${duration}ms${suffix}`);
+  const suffix = extra ? ` · ${extra}` : "";
+  console.info(`[DEOS Storage] ${scope} ${operation} ${key} · ${success ? "ok" : "error"} · ${duration}ms${suffix}`);
 }
 
 class BrowserStorageAdapter {
@@ -239,7 +239,7 @@ class BrowserStorageAdapter {
     const startedAt = Date.now();
     try {
       const value = this.storageArea.getItem(key);
-      logStorageOperation(this.scopeLabel, "getRaw", key, startedAt, true, `size=${value · value.length : 0}`);
+      logStorageOperation(this.scopeLabel, "getRaw", key, startedAt, true, `size=${value ? value.length : 0}`);
       return value;
     } catch (error) {
       logStorageOperation(this.scopeLabel, "getRaw", key, startedAt, false);
@@ -254,8 +254,8 @@ class BrowserStorageAdapter {
       this.storageArea.setItem(key, rawValue);
       logStorageOperation(this.scopeLabel, "setRaw", key, startedAt, true, `size=${rawValue.length}`);
     } catch (error) {
-      const code = looksLikeStorageQuotaError(error) · "STORAGE_QUOTA_EXCEEDED" : "STORAGE_WRITE_FAILED";
-      const message = looksLikeStorageQuotaError(error) · "Le quota de stockage est dépassé." : "Écriture du stockage impossible.";
+      const code = looksLikeStorageQuotaError(error) ? "STORAGE_QUOTA_EXCEEDED" : "STORAGE_WRITE_FAILED";
+      const message = looksLikeStorageQuotaError(error) ? "Le quota de stockage est dépassé." : "Écriture du stockage impossible.";
       logStorageOperation(this.scopeLabel, "setRaw", key, startedAt, false);
       throw buildStorageError(code, "setRaw", key, message, error);
     }
@@ -280,7 +280,7 @@ class BrowserStorageAdapter {
     const startedAt = Date.now();
     try {
       const all = Object.keys(this.storageArea);
-      const filtered = prefix · all.filter(key => key.startsWith(prefix)) : all;
+      const filtered = prefix ? all.filter(key => key.startsWith(prefix)) : all;
       logStorageOperation(this.scopeLabel, "keys", prefix || "*", startedAt, true, `count=${filtered.length}`);
       return filtered;
     } catch (error) {
@@ -343,7 +343,7 @@ class DeosDataService {
 
   save(key, value, options = {}) {
     const storageKey = this.resolveKey(key);
-    const raw = options.raw === true · String(value ?? "") : JSON.stringify(value);
+    const raw = options.raw === true ? String(value ?? "") : JSON.stringify(value);
     if (options.skipIfUnchanged !== false && this.adapter.getRaw(storageKey) === raw) {
       return { written: false, key: storageKey };
     }
@@ -393,12 +393,12 @@ class DeosDataService {
 }
 
 function createRepository(dataService, config) {
-  const normalize = typeof config.normalize === "function" · config.normalize : value => value;
-  const fallbackFactory = typeof config.fallbackFactory === "function" · config.fallbackFactory : () => config.fallbackValue;
+  const normalize = typeof config.normalize === "function" ? config.normalize : value => value;
+  const fallbackFactory = typeof config.fallbackFactory === "function" ? config.fallbackFactory : () => config.fallbackValue;
   return {
     key: config.key,
     load(defaultValue) {
-      return normalize(dataService.load(config.key, defaultValue !== undefined · defaultValue : fallbackFactory()));
+      return normalize(dataService.load(config.key, defaultValue !== undefined ? defaultValue : fallbackFactory()));
     },
     save(value, options = {}) {
       return dataService.save(config.key, value, options);
@@ -444,7 +444,7 @@ const externalEventsRepository = createRepository(deosDataService, {
 const externalEventEnrichmentsRepository = createRepository(deosDataService, {
   key: "external_event_enrichments",
   fallbackFactory: () => ({}),
-  normalize: value => (value && typeof value === "object" && !Array.isArray(value) · value : {})
+  normalize: value => (value && typeof value === "object" && !Array.isArray(value) ? value : {})
 });
 
 const DEOS_LINKS_SYNC_STATUS = Object.freeze({
@@ -516,7 +516,7 @@ const projectsSyncShadowRepository = createRepository(deosDataService, {
   key: "sync_shadow_projects",
   fallbackFactory: () => ({ syncedAt: "", projects: [] }),
   normalize: value => {
-    const source = value && typeof value === "object" && !Array.isArray(value) · value : {};
+    const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
     return {
       syncedAt: String(source.syncedAt || "").trim(),
       projects: normalizeCollection("projects", ensureArray(source.projects))
@@ -532,7 +532,7 @@ const foldersSyncQueueRepository = createRepository(deosDataService, {
 });
 const foldersSyncShadowRepository = createRepository(deosDataService, {
   key: "sync_shadow_folders", fallbackFactory: () => ({ syncedAt: "", folders: [] }),
-  normalize: value => { const source = value && typeof value === "object" && !Array.isArray(value) · value : {}; return { syncedAt: String(source.syncedAt || "").trim(), folders: normalizeCollection("folders", ensureArray(source.folders)) }; }
+  normalize: value => { const source = value && typeof value === "object" && !Array.isArray(value) ? value : {}; return { syncedAt: String(source.syncedAt || "").trim(), folders: normalizeCollection("folders", ensureArray(source.folders)) }; }
 });
 
 const managersSyncMetaRepository = createRepository(deosDataService, {
@@ -543,17 +543,17 @@ const managersSyncQueueRepository = createRepository(deosDataService, {
 });
 const managersSyncShadowRepository = createRepository(deosDataService, {
   key: "sync_shadow_managers", fallbackFactory: () => ({ syncedAt: "", managers: [] }),
-  normalize: value => { const source = value && typeof value === "object" && !Array.isArray(value) · value : {}; return { syncedAt: String(source.syncedAt || "").trim(), managers: normalizeCollection("managers", ensureArray(source.managers)) }; }
+  normalize: value => { const source = value && typeof value === "object" && !Array.isArray(value) ? value : {}; return { syncedAt: String(source.syncedAt || "").trim(), managers: normalizeCollection("managers", ensureArray(source.managers)) }; }
 });
 
 const managersConflictChoicesRepository = createRepository(deosDataService, {
   key: "sync_conflict_choices_managers",
   fallbackFactory: () => ({}),
   normalize: value => {
-    const source = value && typeof value === "object" && !Array.isArray(value) · value : {};
+    const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
     const out = {};
     Object.entries(source).forEach(([key, raw]) => {
-      const item = raw && typeof raw === "object" && !Array.isArray(raw) · raw : {};
+      const item = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
       const choices = {};
       Object.entries(item.choices || {}).forEach(([field, side]) => {
         // V5.30I — conserver aussi le choix de fusion explicite.
@@ -907,7 +907,7 @@ let deosPrioritySyncApplyingRemote = false;
 let deosPrioritySyncTimer = null;
 
 function isPrioritySyncTransportDocument(item) {
-  const doc = item && typeof item === "object" · item : {};
+  const doc = item && typeof item === "object" ? item : {};
   return String(doc.id || "") === DEOS_PRIORITY_SYNC_DOC_ID
     || String(doc.sourceType || "") === DEOS_PRIORITY_SYNC_SOURCE
     || String(doc.documentType || "") === "system_priority_sync";
@@ -938,7 +938,7 @@ function stagePrioritySyncTransport() {
   const nowIso = new Date().toISOString();
   const payload = state.priorities.map(item => normalizeEntity("priorities", item));
   const index = state.documents.findIndex(isPrioritySyncTransportDocument);
-  const existing = index >= 0 · state.documents[index] : null;
+  const existing = index >= 0 ? state.documents[index] : null;
   const existingPayload = prioritySyncPayloadFromDocument(existing);
 
   // Évite de modifier le document (et donc sa version distante) quand la
@@ -967,7 +967,7 @@ function stagePrioritySyncTransport() {
     content: {
       schema: 1,
       updatedAt: nowIso,
-      device: typeof detectLinksSyncDeviceLabel === "function" · detectLinksSyncDeviceLabel() : "Navigateur",
+      device: typeof detectLinksSyncDeviceLabel === "function" ? detectLinksSyncDeviceLabel() : "Navigateur",
       priorities: payload
     }
   });
@@ -1110,7 +1110,7 @@ function hideVisibleTechnicalIds(html) {
   return String(html)
     .replace(/(<span class="meta">)\s*ID [a-z0-9_-]+(?:\s*[·?]\s*)?([^<]*<\/span>)/gi, (match, start, tail) => {
       const remaining = tail.replace("</span>", "").trim();
-      return remaining · `${start}${remaining}</span>` : "";
+      return remaining ? `${start}${remaining}</span>` : "";
     })
     .replace(/<span class="meta">\s*Entité\s+[a-z0-9_-]+<\/span>/gi, "")
     .replace(/\s*[·?]\s*ID [a-z0-9_-]+/gi, "")
@@ -1120,7 +1120,7 @@ function hideVisibleTechnicalIds(html) {
 
 function appHtml(html) {
   const graphReturnBanner = graphReturnContext && currentView !== "graph"
-    · `<div class="card graph-return-banner"><div><strong>Vue graphique</strong><p class="muted">Contexte conservé (filtres, zoom, sélection).</p></div><div class="row-actions"><button class="secondary" onclick="returnToGraph()">Retour à la vue graphique</button></div></div>`
+    ? `<div class="card graph-return-banner"><div><strong>Vue graphique</strong><p class="muted">Contexte conservé (filtres, zoom, sélection).</p></div><div class="row-actions"><button class="secondary" onclick="returnToGraph()">Retour à la vue graphique</button></div></div>`
     : "";
   document.getElementById("app").innerHTML = hideVisibleTechnicalIds(`${graphReturnBanner}${html}`);
   applyRemoteEnvironmentBadge();
@@ -1159,7 +1159,7 @@ function deosKeys() {
 function deosBackupKeys(payload) {
   if (!payload || typeof payload !== "object" || payload === null) return [];
   const keys = payload.localStorage && typeof payload.localStorage === "object" && !Array.isArray(payload.localStorage)
-    · Object.keys(payload.localStorage).filter(key => typeof key === "string" && key.startsWith("deos_"))
+    ? Object.keys(payload.localStorage).filter(key => typeof key === "string" && key.startsWith("deos_"))
     : [];
   return keys;
 }
@@ -1343,14 +1343,14 @@ function backupStats(payload) {
     if (Array.isArray(data) && data.length > 0) {
       categories.add(key);
     }
-    if (key === "deos_managers") counts.managers = Array.isArray(data) · data.length : 0;
-    if (key === "deos_projects") counts.projects = Array.isArray(data) · data.length : 0;
-    if (key === "deos_actions") counts.actions = Array.isArray(data) · data.length : 0;
-    if (key === "deos_priorities") counts.priorities = Array.isArray(data) · data.length : 0;
-    if (key === "deos_decisions") counts.decisions = Array.isArray(data) · data.length : 0;
-    if (key === "deos_folders") counts.folders = Array.isArray(data) · data.length : 0;
-    if (key === "deos_documents") counts.documents = Array.isArray(data) · data.length : 0;
-    if (key === "deos_journal") counts.journal = Array.isArray(data) · data.length : 0;
+    if (key === "deos_managers") counts.managers = Array.isArray(data) ? data.length : 0;
+    if (key === "deos_projects") counts.projects = Array.isArray(data) ? data.length : 0;
+    if (key === "deos_actions") counts.actions = Array.isArray(data) ? data.length : 0;
+    if (key === "deos_priorities") counts.priorities = Array.isArray(data) ? data.length : 0;
+    if (key === "deos_decisions") counts.decisions = Array.isArray(data) ? data.length : 0;
+    if (key === "deos_folders") counts.folders = Array.isArray(data) ? data.length : 0;
+    if (key === "deos_documents") counts.documents = Array.isArray(data) ? data.length : 0;
+    if (key === "deos_journal") counts.journal = Array.isArray(data) ? data.length : 0;
   }
   return { categoryCount: categories.size, counts };
 }
@@ -1388,7 +1388,7 @@ function prepareRestoreBackup(payload) {
     backupSafetySnapshot = null;
   }
   const message = backupSafetySnapshot
-    · "Sauvegarde de sécurité interne créée. Confirmez la restauration pour appliquer le fichier sélectionné."
+    ? "Sauvegarde de sécurité interne créée. Confirmez la restauration pour appliquer le fichier sélectionné."
     : "Attention: aucune sauvegarde de sécurité interne n'a pu être créée. Confirmez uniquement si vous êtes certain.";
   renderBackupPreviewModal(payload, backupStats(payload), message);
 }
@@ -1530,7 +1530,7 @@ function normalizeLinkedManagerIds(value) {
 }
 
 function getDocumentManagerIds(documentItem) {
-  const doc = documentItem && typeof documentItem === "object" · documentItem : {};
+  const doc = documentItem && typeof documentItem === "object" ? documentItem : {};
   const ids = [
     ...ensureArray(doc.managerIds),
     ...ensureArray(doc.linkedManagerIds),
@@ -1550,7 +1550,7 @@ const MEETING_CONFIDENTIALITY_VALUES = ["normal", "restricted", "confidential"];
 
 function normalizeMeetingConfidentiality(value) {
   const normalized = String(value || "").trim().toLowerCase();
-  return MEETING_CONFIDENTIALITY_VALUES.includes(normalized) · normalized : "normal";
+  return MEETING_CONFIDENTIALITY_VALUES.includes(normalized) ? normalized : "normal";
 }
 
 function meetingConfidentialityLabel(value) {
@@ -1559,14 +1559,14 @@ function meetingConfidentialityLabel(value) {
 
 function meetingConfidentialityBadge(value) {
   const level = normalizeMeetingConfidentiality(value);
-  const css = level === "confidential" · "red" : level === "restricted" · "orange" : "green";
+  const css = level === "confidential" ? "red" : level === "restricted" ? "orange" : "green";
   return `<span class="badge ${css}">${meetingConfidentialityLabel(level)}</span>`;
 }
 
 function normalizeMeetingEnrichment(value = {}, options = {}) {
-  const source = value && typeof value === "object" · value : {};
-  const legacyNotes = options.external === true · source.notes : "";
-  const legacyReport = options.external === true · source.report : "";
+  const source = value && typeof value === "object" ? value : {};
+  const legacyNotes = options.external === true ? source.notes : "";
+  const legacyReport = options.external === true ? source.report : "";
   const normalized = {
     ...source,
     preparation: String(source.preparation ?? ""),
@@ -1581,7 +1581,7 @@ function normalizeMeetingEnrichment(value = {}, options = {}) {
     normalized.linkedActionIds = normalizeLinkedIdArray(source.linkedActionIds ?? source.linkedActions ?? []);
     normalized.linkedDecisionIds = normalizeLinkedIdArray(source.linkedDecisionIds ?? source.linkedDecisions ?? []);
     normalized.linkedDocumentIds = normalizeLinkedIdArray(source.linkedDocumentIds ?? source.linkedDocuments ?? []);
-    const managerSource = ensureArray(source.linkedManagerIds).length · source.linkedManagerIds : source.linkedManagers;
+    const managerSource = ensureArray(source.linkedManagerIds).length ? source.linkedManagerIds : source.linkedManagers;
     normalized.linkedManagerIds = normalizeLinkedManagerIds(ensureArray(managerSource));
   }
   return normalized;
@@ -1609,12 +1609,12 @@ function sameId(a, b) {
 
 function buildDataParitySnapshot() {
   const entitiesSnapshot = Object.fromEntries(entities.map(name => {
-    const rows = Array.isArray(state[name]) · state[name] : [];
+    const rows = Array.isArray(state[name]) ? state[name] : [];
     return [name, {
       count: rows.length,
       ids: rows.map(item => String(item?.id || "")).filter(Boolean).sort(),
       relations: rows.map(item => {
-        const payload = item && typeof item === "object" · item : {};
+        const payload = item && typeof item === "object" ? item : {};
         return {
           id: String(payload.id || ""),
           linkedManagers: ensureArray(payload.linkedManagers || payload.managerIds || []),
@@ -1664,15 +1664,15 @@ window.__deosParity = {
 };
 
 function ensureTimeline(value) {
-  return ensureArray(value).map(item => typeof item === "string" · { id: newId("event"), date: today(), title: item, detail: "" } : { id: item.id || newId("event"), date: item.date || today(), title: item.title || "Événement", detail: item.detail || "" });
+  return ensureArray(value).map(item => typeof item === "string" ? { id: newId("event"), date: today(), title: item, detail: "" } : { id: item.id || newId("event"), date: item.date || today(), title: item.title || "Événement", detail: item.detail || "" });
 }
 
 function ensureNotes(value) {
-  return ensureArray(value).map(item => typeof item === "string" · { id: newId("note"), date: today(), content: item } : { id: item.id || newId("note"), date: item.date || today(), content: item.content || "" });
+  return ensureArray(value).map(item => typeof item === "string" ? { id: newId("note"), date: today(), content: item } : { id: item.id || newId("note"), date: item.date || today(), content: item.content || "" });
 }
 
 function ensureMilestones(value) {
-  return ensureArray(value).map(item => typeof item === "string" · { id: newId("mile"), date: "", title: item, status: "À suivre" } : { id: item.id || newId("mile"), date: item.date || "", title: item.title || "Jalon", status: item.status || "À suivre" });
+  return ensureArray(value).map(item => typeof item === "string" ? { id: newId("mile"), date: "", title: item, status: "À suivre" } : { id: item.id || newId("mile"), date: item.date || "", title: item.title || "Jalon", status: item.status || "À suivre" });
 }
 
 function normalizeMeetingPreparation(item) {
@@ -1683,7 +1683,7 @@ function normalizeMeetingPreparation(item) {
     run: { currentIndex: 0, presentParticipants: [], notes: [], decisions: [], actions: [], postponed: [], startedAt: "", finishedAt: "" }
   };
   const merged = { ...base, ...item, run: { ...base.run, ...(item.run || {}) } };
-  const withIds = list => ensureArray(list).map(x => typeof x === "string" · { id: newId("prep"), text: x } : { ...x, id: x.id || newId("prep") });
+  const withIds = list => ensureArray(list).map(x => typeof x === "string" ? { id: newId("prep"), text: x } : { ...x, id: x.id || newId("prep") });
   return {
     ...merged,
     linkedManagers: ensureArray(merged.linkedManagers),
@@ -1765,7 +1765,7 @@ function cleanActionTitleArtifact(value) {
   const replacementPrefix = original.match(/^[\uFFFD]+[\s.:;\-]*/u);
   if (replacementPrefix) {
     const rest = original.slice(replacementPrefix[0].length).trimStart();
-    return rest · { title: rest, changed: true, reason: "replacement-char-prefix" } : { title: original, changed: false, reason: "replacement-char-empty" };
+    return rest ? { title: rest, changed: true, reason: "replacement-char-prefix" } : { title: original, changed: false, reason: "replacement-char-empty" };
   }
 
   const questionPrefix = original.match(/^(?:\?{1,3}|¿)\s+/u);
@@ -1856,7 +1856,7 @@ function normalizeEntity(name, item) {
       ...base
     };
     const interviewTemplate = normalizeInterviewTemplate(merged.interviewTemplate || merged.reportTemplate || "");
-    const linkedManagers = normalizeLinkedManagerIds(ensureArray(merged.managerIds).length · merged.managerIds : ensureArray(merged.linkedManagers));
+    const linkedManagers = normalizeLinkedManagerIds(ensureArray(merged.managerIds).length ? merged.managerIds : ensureArray(merged.linkedManagers));
     const linkedProjects = normalizeLinkedIdArray(merged.linkedProjects);
     const linkedFolders = normalizeLinkedIdArray(merged.linkedFolders);
     const linkedDecisions = normalizeLinkedIdArray(merged.linkedDecisions);
@@ -1864,9 +1864,9 @@ function normalizeEntity(name, item) {
     const linkedJournal = normalizeLinkedIdArray(merged.linkedJournal);
     const linkedPerformance = normalizeLinkedIdArray(merged.linkedPerformance);
     const linkedMeetingIds = normalizeLinkedIdArray(merged.linkedMeetingIds || merged.linkedMeetings || []);
-    const documentType = merged.documentType || (interviewTemplate · "interview_report" : "document");
+    const documentType = merged.documentType || (interviewTemplate ? "interview_report" : "document");
     const content = normalizeDocumentStructuredContent(merged, interviewTemplate);
-    const status = interviewTemplate · normalizeInterviewStatus(merged.status || "draft") : (merged.status || "Brouillon");
+    const status = interviewTemplate ? normalizeInterviewStatus(merged.status || "draft") : (merged.status || "Brouillon");
     return {
       ...merged,
       tags: ensureArray(merged.tags),
@@ -1896,12 +1896,12 @@ function normalizeEntity(name, item) {
     const hasTime = Object.prototype.hasOwnProperty.call(raw, "time") && String(raw.time || "").trim() !== "";
     const allDay = raw.allDay === true || (!hasStartTime && !hasTime && raw.allDay !== false);
     const description = String(raw.description || raw.notes || raw.detail || "").trim();
-    const linkedManagerIds = normalizeLinkedManagerIds(ensureArray(raw.linkedManagerIds).length · ensureArray(raw.linkedManagerIds) : ensureArray(raw.linkedManagers));
+    const linkedManagerIds = normalizeLinkedManagerIds(ensureArray(raw.linkedManagerIds).length ? ensureArray(raw.linkedManagerIds) : ensureArray(raw.linkedManagers));
     const followUp = normalizeMeetingEnrichment(raw);
     const merged = {
       ...raw,
       date: raw.date || localIsoDate(),
-      startTime: hasStartTime · String(raw.startTime || "").trim() : hasTime · String(raw.time || "").trim() : "",
+      startTime: hasStartTime ? String(raw.startTime || "").trim() : hasTime ? String(raw.time || "").trim() : "",
       endTime: String(raw.endTime || "").trim(),
       title: raw.title || "Rendez-vous",
       type: raw.type || "Autre",
@@ -1944,7 +1944,7 @@ function normalizeEntity(name, item) {
   if (name === "folders") {
     const template = defaults.folders.find(f => f.id === base.id) || {};
     const merged = { name: "", category: "Autre", status: "orange", priorityLevel: "orange", owner: "", ownerId: "", linkedManagers: [], description: "", context: "", objectives: "", expectedResults: "", createdAt: isoToday(), deadline: "", tags: [], directorNotes: "", archived: false, ...template, ...base };
-    const managerSource = ensureArray(merged.linkedManagers).length · merged.linkedManagers : ensureArray(merged.linkedManagerIds);
+    const managerSource = ensureArray(merged.linkedManagers).length ? merged.linkedManagers : ensureArray(merged.linkedManagerIds);
     const { linkedManagerIds: _legacyLinkedManagerIds, ...rest } = merged;
     return { ...rest, linkedManagers: normalizeLinkedManagerIds(ensureArray(managerSource)), tags: ensureArray(merged.tags) };
   }
@@ -1952,7 +1952,7 @@ function normalizeEntity(name, item) {
 }
 
 function normalizeCollection(name, data) {
-  return (Array.isArray(data) · data : []).map(item => normalizeEntity(name, item));
+  return (Array.isArray(data) ? data : []).map(item => normalizeEntity(name, item));
 }
 
 function byId(name, id) {
@@ -2086,16 +2086,16 @@ function renderGraph() {
     const b = layout.positions[edge.to];
     if (!a || !b) return "";
     const active = selected && (edge.from === selected.id || edge.to === selected.id);
-    return `<line class="deos-graph-link ${active · "active" : selected · "dim" : ""}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" />`;
+    return `<line class="deos-graph-link ${active ? "active" : selected ? "dim" : ""}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" />`;
   }).join("");
   const nodesHtml = data.nodes.map(node => {
     const pos = layout.positions[node.id] || { x: 200, y: 200 };
     const isSelected = selected && node.id === selected.id;
     const isDim = selected && !isSelected && !connectedIds.has(node.id);
     const conf = node.confidentiality && node.confidentiality !== "normal"
-      · `<tspan class="node-conf"> · ${esc(meetingConfidentialityLabel(node.confidentiality))}</tspan>`
+      ? `<tspan class="node-conf"> · ${esc(meetingConfidentialityLabel(node.confidentiality))}</tspan>`
       : "";
-    return `<g class="deos-graph-node kind-${esc(node.kind)} ${isSelected · "selected" : ""} ${isDim · "dim" : ""}" data-node-id="${esc(node.id)}" onclick="selectGraphNode('${esc(node.id)}')">
+    return `<g class="deos-graph-node kind-${esc(node.kind)} ${isSelected ? "selected" : ""} ${isDim ? "dim" : ""}" data-node-id="${esc(node.id)}" onclick="selectGraphNode('${esc(node.id)}')">
       <circle cx="${pos.x}" cy="${pos.y}" r="31"></circle>
       <text x="${pos.x}" y="${pos.y - 2}" text-anchor="middle" class="deos-graph-emoji">${esc(node.icon || "•")}</text>
       <text x="${pos.x}" y="${pos.y + 48}" text-anchor="middle" class="deos-graph-label">${esc(node.shortLabel)}</text>
@@ -2108,19 +2108,19 @@ function renderGraph() {
     <div class="deos-graph-toolbar">
       <input value="${esc(graphSearch)}" placeholder="Rechercher (nom, titre, rôle, tag...)" oninput="setGraphSearch(this.value)">
       <select onchange="setGraphTypeFilter(this.value)">
-        <option value="all" ${graphTypeFilter === "all" · "selected" : ""}>Tous les types</option>
-        <option value="core" ${graphTypeFilter === "core" · "selected" : ""}>Dossiers / Projets / Managers</option>
-        <option value="execution" ${graphTypeFilter === "execution" · "selected" : ""}>Actions / Décisions / Priorités</option>
-        <option value="knowledge" ${graphTypeFilter === "knowledge" · "selected" : ""}>Journal / Documents / Performance</option>
-        <option value="meetings" ${graphTypeFilter === "meetings" · "selected" : ""}>Rendez-vous (DEOS + Google)</option>
+        <option value="all" ${graphTypeFilter === "all" ? "selected" : ""}>Tous les types</option>
+        <option value="core" ${graphTypeFilter === "core" ? "selected" : ""}>Dossiers / Projets / Managers</option>
+        <option value="execution" ${graphTypeFilter === "execution" ? "selected" : ""}>Actions / Décisions / Priorités</option>
+        <option value="knowledge" ${graphTypeFilter === "knowledge" ? "selected" : ""}>Journal / Documents / Performance</option>
+        <option value="meetings" ${graphTypeFilter === "meetings" ? "selected" : ""}>Rendez-vous (DEOS + Google)</option>
       </select>
       <select onchange="setGraphDepth(this.value)">
-        <option value="all" ${graphDepth === "all" · "selected" : ""}>Profondeur : tout le graphe</option>
-        <option value="1" ${graphDepth === "1" · "selected" : ""}>Profondeur : 1 lien</option>
-        <option value="2" ${graphDepth === "2" · "selected" : ""}>Profondeur : 2 liens</option>
-        <option value="3" ${graphDepth === "3" · "selected" : ""}>Profondeur : 3 liens</option>
+        <option value="all" ${graphDepth === "all" ? "selected" : ""}>Profondeur : tout le graphe</option>
+        <option value="1" ${graphDepth === "1" ? "selected" : ""}>Profondeur : 1 lien</option>
+        <option value="2" ${graphDepth === "2" ? "selected" : ""}>Profondeur : 2 liens</option>
+        <option value="3" ${graphDepth === "3" ? "selected" : ""}>Profondeur : 3 liens</option>
       </select>
-      <label class="graph-check"><input type="checkbox" ${graphOnlyLinked · "checked" : ""} onchange="setGraphOnlyLinked(this.checked)"> Masquer les nœuds isolés</label>
+      <label class="graph-check"><input type="checkbox" ${graphOnlyLinked ? "checked" : ""} onchange="setGraphOnlyLinked(this.checked)"> Masquer les nœuds isolés</label>
       <button class="secondary" onclick="zoomGraph(1.18)">Zoom +</button>
       <button class="secondary" onclick="zoomGraph(0.85)">Zoom -</button>
       <button class="secondary" onclick="recenterGraph()">Recentrer</button>
@@ -2176,7 +2176,7 @@ function graphKindMeta(kind) {
 function graphShortLabel(value) {
   const text = String(value || "").trim();
   if (!text) return "Sans titre";
-  return text.length > 32 · `${text.slice(0, 29)}...` : text;
+  return text.length > 32 ? `${text.slice(0, 29)}...` : text;
 }
 
 function graphEntitySearchText(item, extra = "") {
@@ -2233,9 +2233,9 @@ function buildDeosGraph(options = {}) {
   state.agenda.forEach(meeting => {
     const confidentiality = normalizeMeetingConfidentiality(meeting.confidentiality || "normal");
     const hidden = confidentiality !== "normal";
-    addNode("agenda_manual", meeting.id, hidden · "Rendez-vous confidentiel" : (meeting.title || "Rendez-vous"), meeting, {
+    addNode("agenda_manual", meeting.id, hidden ? "Rendez-vous confidentiel" : (meeting.title || "Rendez-vous"), meeting, {
       confidentiality,
-      searchText: hidden · "reunion deos confidentielle" : ""
+      searchText: hidden ? "reunion deos confidentielle" : ""
     });
   });
   (state.externalCalendarEvents || []).forEach(event => {
@@ -2244,9 +2244,9 @@ function buildDeosGraph(options = {}) {
     const enrichment = getExternalEventEnrichment(eventKey);
     const confidentiality = normalizeMeetingConfidentiality(enrichment.confidentiality || "normal");
     const hidden = confidentiality !== "normal";
-    addNode("agenda_google", eventKey, hidden · "Rendez-vous Google confidentiel" : (event.title || "Rendez-vous Google"), event, {
+    addNode("agenda_google", eventKey, hidden ? "Rendez-vous Google confidentiel" : (event.title || "Rendez-vous Google"), event, {
       confidentiality,
-      searchText: hidden · "reunion google confidentielle" : (event.calendarName || "")
+      searchText: hidden ? "reunion google confidentielle" : (event.calendarName || "")
     });
   });
 
@@ -2415,10 +2415,10 @@ function layoutDeosGraph(data) {
     col += 1;
   });
 
-  const minX = used.length · Math.min(...used.map(p => p.x)) : 0;
-  const maxX = used.length · Math.max(...used.map(p => p.x)) : 1200;
-  const minY = used.length · Math.min(...used.map(p => p.y)) : 0;
-  const maxY = used.length · Math.max(...used.map(p => p.y)) : 700;
+  const minX = used.length ? Math.min(...used.map(p => p.x)) : 0;
+  const maxX = used.length ? Math.max(...used.map(p => p.x)) : 1200;
+  const minY = used.length ? Math.min(...used.map(p => p.y)) : 0;
+  const maxY = used.length ? Math.max(...used.map(p => p.y)) : 700;
   const width = Math.max(1200, (maxX - minX) + 360);
   const height = Math.max(720, (maxY - minY) + 260);
   return { positions, width, height, minX, maxX, minY, maxY };
@@ -2429,9 +2429,9 @@ function renderGraphDetailPanel(selected, nodesById, data) {
     return `<div class="graph-preview empty"><strong>Aucun nœud sélectionné</strong><span>Cliquez un nœud pour afficher le détail, les relations et les actions d'ouverture.</span></div>`;
   }
   const related = data.edges.filter(edge => edge.from === selected.id || edge.to === selected.id);
-  const neighbors = related.map(edge => nodesById.get(edge.from === selected.id · edge.to : edge.from)).filter(Boolean);
+  const neighbors = related.map(edge => nodesById.get(edge.from === selected.id ? edge.to : edge.from)).filter(Boolean);
   const rows = neighbors.slice(0, 10).map(node => `<div class="item clickable" onclick="selectGraphNode('${esc(node.id)}')"><strong>${esc(node.label)}</strong><span class="muted">${esc(node.kindLabel)}</span></div>`).join("") || `<div class="empty">Aucune relation visible avec les filtres actuels.</div>`;
-  const conf = selected.confidentiality !== "normal" · `<span class="badge orange">${esc(meetingConfidentialityLabel(selected.confidentiality))}</span>` : "";
+  const conf = selected.confidentiality !== "normal" ? `<span class="badge orange">${esc(meetingConfidentialityLabel(selected.confidentiality))}</span>` : "";
   return `<div class="graph-preview"><strong>${esc(selected.label)}</strong><span>${esc(selected.kindLabel)} ${conf}</span><span>${related.length} relation(s) visible(s)</span><div class="row-actions"><button class="action" onclick="openGraphNode('${esc(selected.id)}')">Ouvrir la fiche</button></div></div><div class="card" style="margin-top:10px"><h2>Objets connectés</h2>${rows}</div>`;
 }
 
@@ -2475,7 +2475,7 @@ function captureGraphContext() {
     selectedNodeId: graphSelectedNodeId,
     zoom: graphZoom,
     pan: { ...graphPan },
-    layout: graphLayoutCache · JSON.parse(JSON.stringify(graphLayoutCache)) : null,
+    layout: graphLayoutCache ? JSON.parse(JSON.stringify(graphLayoutCache)) : null,
     signature: graphDataSignature
   };
 }
@@ -2558,7 +2558,7 @@ function resetGraphZoom() {
 
 function graphWheel(event) {
   event.preventDefault();
-  zoomGraph(event.deltaY < 0 · 1.12 : 0.9);
+  zoomGraph(event.deltaY < 0 ? 1.12 : 0.9);
 }
 
 function startGraphPan(event) {
@@ -2590,11 +2590,11 @@ function parseDateValue(value) {
   const fr = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (fr) return new Date(Number(fr[3]), Number(fr[2]) - 1, Number(fr[1]));
   const d = new Date(s);
-  return Number.isNaN(d.getTime()) · null : d;
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 function localIsoDate(date = new Date()) {
-  const d = date instanceof Date · date : new Date(date);
+  const d = date instanceof Date ? date : new Date(date);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
@@ -2622,7 +2622,7 @@ function compareAgendaEvents(a, b) {
   if (dr !== 0) return dr;
   const aAll = agendaIsAllDay(a);
   const bAll = agendaIsAllDay(b);
-  if (aAll !== bAll) return aAll · -1 : 1;
+  if (aAll !== bAll) return aAll ? -1 : 1;
   const at = agendaStartTime(a) || "~"; // empty times sort after normal times
   const bt = agendaStartTime(b) || "~";
   const tcmp = String(at).localeCompare(String(bt));
@@ -2633,10 +2633,10 @@ function compareAgendaEvents(a, b) {
 function meetingLinkIdsForType(item, type, source = "manual") {
   if (!item || typeof item !== "object") return [];
   const map = {
-    folder: source === "google" · ["linkedFolderIds"] : ["linkedFolders", "linkedFolderIds"],
-    project: source === "google" · ["linkedProjectIds"] : ["linkedProjects", "linkedProjectIds"],
-    action: source === "google" · ["linkedActionIds"] : ["linkedActions", "linkedActionIds"],
-    decision: source === "google" · ["linkedDecisionIds"] : ["linkedDecisions", "linkedDecisionIds"],
+    folder: source === "google" ? ["linkedFolderIds"] : ["linkedFolders", "linkedFolderIds"],
+    project: source === "google" ? ["linkedProjectIds"] : ["linkedProjects", "linkedProjectIds"],
+    action: source === "google" ? ["linkedActionIds"] : ["linkedActions", "linkedActionIds"],
+    decision: source === "google" ? ["linkedDecisionIds"] : ["linkedDecisions", "linkedDecisionIds"],
     manager: ["linkedManagerIds", "linkedManagers"]
   };
   const keys = map[type] || [];
@@ -2649,9 +2649,9 @@ function meetingLinkIdsForType(item, type, source = "manual") {
 
 function normalizeMeetingForLinkedRender(item) {
   if (!item) return null;
-  const source = item.source === "google" · "google" : "manual";
+  const source = item.source === "google" ? "google" : "manual";
   const sourceMeetingId = source === "google"
-    · String(item.eventKey || item._key || item.externalId || "")
+    ? String(item.eventKey || item._key || item.externalId || "")
     : String(item.id || "");
   if (!sourceMeetingId) return null;
   return {
@@ -2701,7 +2701,7 @@ function getMeetingsLinkedToObject(type, objectId) {
 }
 
 function linkedMeetingSourceBadge(source) {
-  return source === "google" · `<span class="badge orange">Google</span>` : `<span class="badge green">DEOS</span>`;
+  return source === "google" ? `<span class="badge orange">Google</span>` : `<span class="badge green">DEOS</span>`;
 }
 
 function openLinkedMeetingFromObject(originType, originId, source, meetingId) {
@@ -2729,9 +2729,9 @@ function restoreMeetingOriginContext() {
 
 function linkedMeetingItem(meeting, originType, originId) {
   const timeLabel = meeting.allDay
-    · "Journée entière"
-    : (meeting.startTime · `${esc(meeting.startTime)}${meeting.endTime · " - " + esc(meeting.endTime) : ""}` : "Heure à confirmer");
-  return `<div class="item clickable" onclick="openLinkedMeetingFromObject('${esc(originType)}','${esc(originId)}','${esc(meeting.source)}','${esc(meeting.sourceMeetingId)}')"><strong>${esc(meeting.date || "Sans date")} · ${timeLabel}</strong><span class="muted">${esc(meeting.title)}</span><span class="meta">${linkedMeetingSourceBadge(meeting.source)} ${meetingConfidentialityBadge(meeting.confidentiality)}${meeting.location · " · " + esc(meeting.location) : ""}</span></div>`;
+    ? "Journée entière"
+    : (meeting.startTime ? `${esc(meeting.startTime)}${meeting.endTime ? " - " + esc(meeting.endTime) : ""}` : "Heure à confirmer");
+  return `<div class="item clickable" onclick="openLinkedMeetingFromObject('${esc(originType)}','${esc(originId)}','${esc(meeting.source)}','${esc(meeting.sourceMeetingId)}')"><strong>${esc(meeting.date || "Sans date")} · ${timeLabel}</strong><span class="muted">${esc(meeting.title)}</span><span class="meta">${linkedMeetingSourceBadge(meeting.source)} ${meetingConfidentialityBadge(meeting.confidentiality)}${meeting.location ? " · " + esc(meeting.location) : ""}</span></div>`;
 }
 
 function renderLinkedMeetingsSection(type, objectId) {
@@ -2742,7 +2742,7 @@ function renderLinkedMeetingsSection(type, objectId) {
 
 function parseEntityIdFromCall(source, fnName) {
   const match = String(source || "").match(new RegExp(`${fnName}\\('([^']+)'\\)`));
-  return match · String(match[1]) : "";
+  return match ? String(match[1]) : "";
 }
 
 function injectA5SummaryButtons() {
@@ -2817,11 +2817,11 @@ function cleanupA5PrintClasses() {
 function a5SafeText(value, max = 140) {
   const text = String(value || "").trim();
   if (!text) return "";
-  return text.length > max · `${text.slice(0, Math.max(0, max - 1)).trim()}…` : text;
+  return text.length > max ? `${text.slice(0, Math.max(0, max - 1)).trim()}…` : text;
 }
 
 function a5LevelLabel(level) {
-  return level === "red" · "Critique" : level === "orange" · "Important" : level === "green" · "Normal" : (level || "A suivre");
+  return level === "red" ? "Critique" : level === "orange" ? "Important" : level === "green" ? "Normal" : (level || "A suivre");
 }
 
 function a5MeetingTime(meeting) {
@@ -2830,7 +2830,7 @@ function a5MeetingTime(meeting) {
   const start = String(meeting.startTime || "").trim();
   const end = String(meeting.endTime || "").trim();
   if (!start) return "Heure a confirmer";
-  return end · `${start} - ${end}` : start;
+  return end ? `${start} - ${end}` : start;
 }
 
 function a5Date(value) {
@@ -2857,8 +2857,8 @@ function a5IsUpcoming(value) {
 function a5ActionSort(a, b) {
   const ad = daysUntil(a.due);
   const bd = daysUntil(b.due);
-  const aOver = ad !== null && ad < 0 · 0 : 1;
-  const bOver = bd !== null && bd < 0 · 0 : 1;
+  const aOver = ad !== null && ad < 0 ? 0 : 1;
+  const bOver = bd !== null && bd < 0 ? 0 : 1;
   if (aOver !== bOver) return aOver - bOver;
   const byDue = dateRank(a.due) - dateRank(b.due);
   if (byDue !== 0) return byDue;
@@ -2895,7 +2895,7 @@ function actionRelationsForA5(action) {
   const linkedFolderIds = normalizeLinkedIdArray(ensureArray(action.linkedFolders));
   const linkedProjectIds = normalizeLinkedIdArray(ensureArray(action.linkedProjects));
   const linkedDecisionIds = normalizeLinkedIdArray(ensureArray(action.linkedDecisions));
-  const linkedManagerIds = normalizeLinkedManagerIds(ensureArray(action.linkedManagers).length · action.linkedManagers : ensureArray(action.linkedManagerIds));
+  const linkedManagerIds = normalizeLinkedManagerIds(ensureArray(action.linkedManagers).length ? action.linkedManagers : ensureArray(action.linkedManagerIds));
 
   const folders = state.folders.filter(folder => linkedFolderIds.some(id => sameId(id, folder.id)));
   const projects = state.projects.filter(project => linkedProjectIds.some(id => sameId(id, project.id)) || ensureArray(project.linkedActions).some(id => sameId(id, actionId)));
@@ -2944,7 +2944,7 @@ function decisionRelationsForA5(decision) {
   const linkedFolderIds = normalizeLinkedIdArray(ensureArray(decision.linkedFolders));
   const linkedProjectIds = normalizeLinkedIdArray(ensureArray(decision.linkedProjects));
   const linkedActionIds = normalizeLinkedIdArray(ensureArray(decision.linkedActions));
-  const linkedManagerIds = normalizeLinkedManagerIds(ensureArray(decision.linkedManagers).length · decision.linkedManagers : ensureArray(decision.linkedManagerIds));
+  const linkedManagerIds = normalizeLinkedManagerIds(ensureArray(decision.linkedManagers).length ? decision.linkedManagers : ensureArray(decision.linkedManagerIds));
 
   const folders = state.folders.filter(folder => linkedFolderIds.some(id => sameId(id, folder.id)));
   const projects = state.projects.filter(project => linkedProjectIds.some(id => sameId(id, project.id)) || ensureArray(project.linkedDecisions).some(id => sameId(id, decisionId)));
@@ -2986,7 +2986,7 @@ function decisionRelationsForA5(decision) {
 function a5MeetingDisplay(meeting) {
   const confidentiality = normalizeMeetingConfidentiality(meeting.confidentiality || "normal");
   const restricted = confidentiality === "restricted" || confidentiality === "confidential";
-  const label = restricted · "Rendez-vous restreint ou confidentiel" : (meeting.title || "Rendez-vous");
+  const label = restricted ? "Rendez-vous restreint ou confidentiel" : (meeting.title || "Rendez-vous");
   return {
     label,
     date: a5Date(meeting.date) || String(meeting.date || ""),
@@ -3003,14 +3003,14 @@ function a5Section(title, body) {
 
 function a5List(items, renderItem, emptyText = "") {
   const rows = ensureArray(items).map(renderItem).filter(Boolean);
-  if (!rows.length) return emptyText · `<p class="muted">${esc(emptyText)}</p>` : "";
+  if (!rows.length) return emptyText ? `<p class="muted">${esc(emptyText)}</p>` : "";
   return `<div class="a5-list">${rows.join("")}</div>`;
 }
 
 function projectRelationsForA5(project) {
   const projectId = String(project?.id || "");
   const linkedManagers = new Map();
-  const linkedManagerIds = normalizeLinkedManagerIds(ensureArray(project.linkedManagers).length · project.linkedManagers : ensureArray(project.linkedManagerIds));
+  const linkedManagerIds = normalizeLinkedManagerIds(ensureArray(project.linkedManagers).length ? project.linkedManagers : ensureArray(project.linkedManagerIds));
   linkedManagerIds.forEach(id => {
     const manager = byId("managers", id);
     if (manager) linkedManagers.set(String(manager.id), manager);
@@ -3037,7 +3037,7 @@ function projectRelationsForA5(project) {
 function buildFolderA5Summary(folderId) {
   const folder = byId("folders", folderId);
   if (!folder) return null;
-  const folderManagerIds = normalizeLinkedManagerIds(ensureArray(folder.linkedManagers).length · folder.linkedManagers : ensureArray(folder.linkedManagerIds));
+  const folderManagerIds = normalizeLinkedManagerIds(ensureArray(folder.linkedManagers).length ? folder.linkedManagers : ensureArray(folder.linkedManagerIds));
   const linkedManagers = new Map();
   folderManagerIds.forEach(id => {
     const manager = byId("managers", id);
@@ -3072,11 +3072,11 @@ function buildFolderA5Summary(folderId) {
   const rel = { projects, managers, actions: actionsFromLinks, priorities, decisions, journal, documents, agenda };
   const actionsAll = rel.actions.slice();
   const openActions = actionsAll.filter(a => !a.done);
-  const actionPool = (openActions.length · openActions : actionsAll).slice().sort(a5ActionSort);
+  const actionPool = (openActions.length ? openActions : actionsAll).slice().sort(a5ActionSort);
   const sortedDecisions = rel.decisions.slice().sort(a5DecisionSort);
   const sortedProjects = rel.projects.slice().sort((a, b) => {
-    const ar = (a.status === "red" || a.priorityLevel === "red") · 0 : 1;
-    const br = (b.status === "red" || b.priorityLevel === "red") · 0 : 1;
+    const ar = (a.status === "red" || a.priorityLevel === "red") ? 0 : 1;
+    const br = (b.status === "red" || b.priorityLevel === "red") ? 0 : 1;
     if (ar !== br) return ar - br;
     return dateRank(a.deadline) - dateRank(b.deadline);
   });
@@ -3151,7 +3151,7 @@ function buildFolderA5Summary(folderId) {
       due: a.due || "",
       overdue: (() => {
         const d = daysUntil(a.due);
-        return d !== null && d < 0 · `${Math.abs(d)} j` : "";
+        return d !== null && d < 0 ? `${Math.abs(d)} j` : "";
       })(),
       level: a5LevelLabel(a.level || a.priorityLevel || "orange"),
       done: Boolean(a.done)
@@ -3175,7 +3175,7 @@ function buildProjectA5Summary(projectId) {
   const rel = projectRelationsForA5(project);
   const managerNames = normalizeLinkedIdArray(rel.managers.map(manager => String(manager.name || "").trim()).filter(Boolean));
   const openActions = rel.actions.filter(a => !a.done).sort(a5ActionSort);
-  const actionPool = (openActions.length · openActions : rel.actions.slice().sort(a5ActionSort));
+  const actionPool = (openActions.length ? openActions : rel.actions.slice().sort(a5ActionSort));
   const decisions = rel.decisions.slice().sort(a5DecisionSort);
   const milestones = rel.milestones.slice().sort((a, b) => dateRank(a.date) - dateRank(b.date));
   const meetings = rel.meetings.map(a5MeetingDisplay);
@@ -3239,7 +3239,7 @@ function buildProjectA5Summary(projectId) {
         title: m.title || "Jalon",
         date: m.date || "",
         status: m.status || "A suivre",
-        overdue: d !== null && d < 0 · `${Math.abs(d)} j` : ""
+        overdue: d !== null && d < 0 ? `${Math.abs(d)} j` : ""
       };
     }),
     actions: actionPool.slice(0, 5).map(a => ({
@@ -3249,7 +3249,7 @@ function buildProjectA5Summary(projectId) {
       level: a5LevelLabel(a.level || a.priorityLevel || "orange"),
       overdue: (() => {
         const d = daysUntil(a.due);
-        return d !== null && d < 0 · `${Math.abs(d)} j` : "";
+        return d !== null && d < 0 ? `${Math.abs(d)} j` : "";
       })()
     })),
     decisions: decisions.slice(0, 4).map(d => ({
@@ -3277,21 +3277,21 @@ function buildActionA5Summary(actionId) {
   const notes = a5SafeText(action.notes || action.note || "", 220);
   const risks = normalizeLinkedIdArray([
     a5SafeText(action.risks || action.blockers || "", 140),
-    ...((!action.done && daysUntil(action.due) !== null && daysUntil(action.due) < 0) · ["Action en retard"] : [])
+    ...((!action.done && daysUntil(action.due) !== null && daysUntil(action.due) < 0) ? ["Action en retard"] : [])
   ].filter(Boolean));
   const nextSteps = normalizeLinkedIdArray([
     a5SafeText(action.nextStep || "", 140),
-    action.due · `Échéance : ${a5Date(action.due) || action.due}` : ""
+    action.due ? `Échéance : ${a5Date(action.due) || action.due}` : ""
   ].filter(Boolean));
 
   return {
     type: "action",
     title: action.title || "Action",
     metadata: {
-      status: action.done · "Terminée" : "En cours",
+      status: action.done ? "Terminée" : "En cours",
       priority: a5LevelLabel(action.level || action.priorityLevel || "orange"),
       deadline: action.due || "",
-      progress: Number.isFinite(Number(action.progress)) · Number(action.progress) : null,
+      progress: Number.isFinite(Number(action.progress)) ? Number(action.progress) : null,
       generatedAt: a5DateTimeNow(),
       version: DEOS_VERSION
     },
@@ -3339,7 +3339,7 @@ function buildDecisionA5Summary(decisionId) {
   const meetings = rel.meetings.map(a5MeetingDisplay);
   const notes = ensureArray(decision.directorNotes).map(note => a5SafeText(note.content || "", 140)).filter(Boolean);
   const followUp = normalizeLinkedIdArray([
-    decision.reviewDate · `Réexamen : ${a5Date(decision.reviewDate) || decision.reviewDate}` : "",
+    decision.reviewDate ? `Réexamen : ${a5Date(decision.reviewDate) || decision.reviewDate}` : "",
     a5SafeText(decision.nextStep || "", 140)
   ].filter(Boolean));
 
@@ -3383,7 +3383,7 @@ function buildDecisionA5Summary(decisionId) {
     })),
     actions: rel.actions.map(action => ({
       title: action.title || "Action",
-      status: action.done · "Terminée" : "En cours",
+      status: action.done ? "Terminée" : "En cours",
       due: action.due || ""
     })),
     meetings: meetings.slice(0, 5),
@@ -3403,7 +3403,7 @@ function openA5SummaryPreview(type, sourceId) {
     decision: buildDecisionA5Summary
   };
   const builder = builders[normalizedType];
-  const model = builder · builder(id) : null;
+  const model = builder ? builder(id) : null;
   if (!model) {
     alert("Impossible de générer la synthèse : objet introuvable.");
     return;
@@ -3428,15 +3428,15 @@ function closeA5SummaryPreview() {
 }
 
 function setA5SummaryOrientation(orientation) {
-  const value = orientation === "landscape" · "landscape" : "portrait";
+  const value = orientation === "landscape" ? "landscape" : "portrait";
   a5SummaryDialog.orientation = value;
   renderA5SummaryOverlay();
 }
 
 function a5PrintStyles(orientation) {
-  const pageSize = orientation === "landscape" · "A5 landscape" : "A5 portrait";
-  const pageWidth = orientation === "landscape" · "210mm" : "148mm";
-  const sheetWidth = orientation === "landscape" · "210mm" : "148mm";
+  const pageSize = orientation === "landscape" ? "A5 landscape" : "A5 portrait";
+  const pageWidth = orientation === "landscape" ? "210mm" : "148mm";
+  const sheetWidth = orientation === "landscape" ? "210mm" : "148mm";
   return `
     html,body{margin:0!important;padding:0!important;height:auto!important;width:${pageWidth}!important;min-width:${pageWidth}!important;max-width:${pageWidth}!important;background:#fff!important;color:#0f172a!important;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
     @page{size:${pageSize};margin:0}
@@ -3468,7 +3468,7 @@ function collectA5PrintHeadMarkup(orientation) {
       const href = link.getAttribute("href");
       if (!href) return "";
       const media = link.getAttribute("media");
-      return `<link rel="stylesheet" href="${esc(href)}"${media · ` media="${esc(media)}"` : ""}>`;
+      return `<link rel="stylesheet" href="${esc(href)}"${media ? ` media="${esc(media)}"` : ""}>`;
     })
     .filter(Boolean)
     .join("\n");
@@ -3482,7 +3482,7 @@ function collectA5PrintHeadMarkup(orientation) {
       inlineCss += "\n";
     } catch {}
   });
-  const extracted = inlineCss.trim() · `<style>${inlineCss}</style>` : "";
+  const extracted = inlineCss.trim() ? `<style>${inlineCss}</style>` : "";
   return `${links}\n${styleBlocks}\n${extracted}\n<style>${a5PrintStyles(orientation)}</style>`;
 }
 
@@ -3593,7 +3593,7 @@ function printA5Summary() {
   if (!a5SummaryDialog.open) return;
   const previewRoot = document.querySelector(".a5-summary-modal .a5-print-root");
   if (!previewRoot) return;
-  const orientation = a5SummaryDialog.orientation === "landscape" · "landscape" : "portrait";
+  const orientation = a5SummaryDialog.orientation === "landscape" ? "landscape" : "portrait";
   const clone = previewRoot.cloneNode(true);
   printA5ViaIframe(clone, orientation);
 }
@@ -3606,7 +3606,7 @@ function a5SummaryBadge(label, value) {
 function a5SummaryMetrics(model) {
   const metrics = model.metrics || {};
   const defs = model.type === "folder"
-    · [
+    ? [
       { label: "Projets liés", value: metrics.linkedProjects || 0 },
       { label: "Actions ouvertes", value: metrics.openActions || 0 },
       { label: "Actions en retard", value: metrics.overdueActions || 0 },
@@ -3615,7 +3615,7 @@ function a5SummaryMetrics(model) {
       { label: "Managers liés", value: metrics.linkedManagers || 0 }
     ]
     : model.type === "project"
-      · [
+      ? [
       { label: "Actions ouvertes", value: metrics.openActions || 0 },
       { label: "Actions en retard", value: metrics.overdueActions || 0 },
       { label: "Décisions liées", value: metrics.linkedDecisions || 0 },
@@ -3624,7 +3624,7 @@ function a5SummaryMetrics(model) {
       { label: "Managers liés", value: metrics.linkedManagers || 0 }
       ]
       : model.type === "action"
-        · [
+        ? [
           { label: "Dossiers liés", value: metrics.linkedFolders || 0 },
           { label: "Projets liés", value: metrics.linkedProjects || 0 },
           { label: "Décisions liées", value: metrics.linkedDecisions || 0 },
@@ -3646,44 +3646,44 @@ function a5SummaryMetrics(model) {
 function renderA5SummaryHeader(model, orientation) {
   const m = model.metadata || {};
   const badges = model.type === "folder"
-    · [
+    ? [
       a5SummaryBadge("Catégorie", m.category),
       a5SummaryBadge("Statut", m.status),
       a5SummaryBadge("Priorité", m.priority),
-      a5SummaryBadge("Échéance", m.deadline · (a5Date(m.deadline) || m.deadline) : "")
+      a5SummaryBadge("Échéance", m.deadline ? (a5Date(m.deadline) || m.deadline) : "")
     ]
     : model.type === "project"
-      · [
+      ? [
       a5SummaryBadge("Statut", m.status),
       a5SummaryBadge("Priorité", m.priority),
       a5SummaryBadge("Avancement", `${Number(m.progress || 0)} %`),
-      a5SummaryBadge("Échéance", m.deadline · (a5Date(m.deadline) || m.deadline) : "")
+      a5SummaryBadge("Échéance", m.deadline ? (a5Date(m.deadline) || m.deadline) : "")
       ]
       : model.type === "action"
-        · [
+        ? [
           a5SummaryBadge("Statut", m.status),
           a5SummaryBadge("Priorité", m.priority),
-          a5SummaryBadge("Échéance", m.deadline · (a5Date(m.deadline) || m.deadline) : ""),
-          a5SummaryBadge("Avancement", m.progress === null || m.progress === undefined · "" : `${Number(m.progress || 0)} %`)
+          a5SummaryBadge("Échéance", m.deadline ? (a5Date(m.deadline) || m.deadline) : ""),
+          a5SummaryBadge("Avancement", m.progress === null || m.progress === undefined ? "" : `${Number(m.progress || 0)} %`)
         ]
         : [
           a5SummaryBadge("Statut", m.status),
           a5SummaryBadge("Priorité", m.priority),
-          a5SummaryBadge("Date de décision", m.decisionDate · (a5Date(m.decisionDate) || m.decisionDate) : ""),
-          a5SummaryBadge("Échéance", m.deadline · (a5Date(m.deadline) || m.deadline) : "")
+          a5SummaryBadge("Date de décision", m.decisionDate ? (a5Date(m.decisionDate) || m.decisionDate) : ""),
+          a5SummaryBadge("Échéance", m.deadline ? (a5Date(m.deadline) || m.deadline) : "")
         ];
   const badgeHtml = badges.filter(Boolean).join("");
-  const generatedAt = m.generatedAt · `Généré le ${m.generatedAt}` : "";
+  const generatedAt = m.generatedAt ? `Généré le ${m.generatedAt}` : "";
   return `
     <header class="a5-header a5-summary-head">
       <div class="a5-summary-kicker-row">
-        <p class="a5-summary-kicker">${model.type === "folder" · "DOSSIER" : model.type === "project" · "PROJET" : model.type === "action" · "ACTION" : "DÉCISION"}</p>
+        <p class="a5-summary-kicker">${model.type === "folder" ? "DOSSIER" : model.type === "project" ? "PROJET" : model.type === "action" ? "ACTION" : "DÉCISION"}</p>
         <p class="a5-summary-version">DEOS ${esc(DEOS_VERSION)}</p>
       </div>
       <h1 class="a5-summary-title">${esc(model.title || "Synthèse")}</h1>
       <div class="a5-summary-meta-badges">${badgeHtml}</div>
-      <div class="a5-summary-metrics ${orientation === "landscape" · "is-landscape" : "is-portrait"}">${a5SummaryMetrics(model)}</div>
-      ${generatedAt · `<p class="a5-summary-generated-at">${esc(generatedAt)}</p>` : ""}
+      <div class="a5-summary-metrics ${orientation === "landscape" ? "is-landscape" : "is-portrait"}">${a5SummaryMetrics(model)}</div>
+      ${generatedAt ? `<p class="a5-summary-generated-at">${esc(generatedAt)}</p>` : ""}
       <div class="a5-summary-divider"></div>
     </header>
   `;
@@ -3693,14 +3693,14 @@ function renderA5SummaryFolder(model) {
   const context = model.context || {};
   const managerNames = ensureArray(model.managerNames).filter(Boolean);
   const contextBody = [
-    context.description · `<p><strong>Description:</strong> ${esc(a5SafeText(context.description, 300))}</p>` : "",
-    context.context · `<p><strong>Contexte:</strong> ${esc(a5SafeText(context.context, 260))}</p>` : "",
-    context.objectives · `<p><strong>Objectifs:</strong> ${esc(a5SafeText(context.objectives, 220))}</p>` : "",
-    context.expectedResults · `<p><strong>Resultats attendus:</strong> ${esc(a5SafeText(context.expectedResults, 220))}</p>` : ""
+    context.description ? `<p><strong>Description:</strong> ${esc(a5SafeText(context.description, 300))}</p>` : "",
+    context.context ? `<p><strong>Contexte:</strong> ${esc(a5SafeText(context.context, 260))}</p>` : "",
+    context.objectives ? `<p><strong>Objectifs:</strong> ${esc(a5SafeText(context.objectives, 220))}</p>` : "",
+    context.expectedResults ? `<p><strong>Resultats attendus:</strong> ${esc(a5SafeText(context.expectedResults, 220))}</p>` : ""
   ].join("");
-  const projectsBody = a5List(model.projects, p => `<article class="a5-item"><strong>${esc(p.name)}</strong><p>${esc(p.status)} · ${esc(String(p.progress))}%${p.deadline · " · Echeance " + esc(a5Date(p.deadline) || p.deadline) : ""}</p>${p.risk · `<p class="muted">Risque: ${esc(p.risk)}</p>` : ""}</article>`);
-  const actionsBody = a5List(model.actions, a => `<article class="a5-item"><strong>${esc(a5SafeText(a.title, 90))}</strong><p>${esc(a.owner || "Responsable a definir")} · ${esc(a.level)}${a.due · " · " + esc(a5Date(a.due) || a.due) : ""}${a.overdue · " · Retard " + esc(a.overdue) : ""}</p></article>`);
-  const decisionsBody = a5List(model.decisions, d => `<article class="a5-item"><strong>${esc(a5SafeText(d.title, 90))}</strong><p>${esc(d.status)}${d.date · " · " + esc(a5Date(d.date) || d.date) : ""}${d.owner · " · " + esc(d.owner) : ""}</p></article>`);
+  const projectsBody = a5List(model.projects, p => `<article class="a5-item"><strong>${esc(p.name)}</strong><p>${esc(p.status)} · ${esc(String(p.progress))}%${p.deadline ? " · Echeance " + esc(a5Date(p.deadline) || p.deadline) : ""}</p>${p.risk ? `<p class="muted">Risque: ${esc(p.risk)}</p>` : ""}</article>`);
+  const actionsBody = a5List(model.actions, a => `<article class="a5-item"><strong>${esc(a5SafeText(a.title, 90))}</strong><p>${esc(a.owner || "Responsable a definir")} · ${esc(a.level)}${a.due ? " · " + esc(a5Date(a.due) || a.due) : ""}${a.overdue ? " · Retard " + esc(a.overdue) : ""}</p></article>`);
+  const decisionsBody = a5List(model.decisions, d => `<article class="a5-item"><strong>${esc(a5SafeText(d.title, 90))}</strong><p>${esc(d.status)}${d.date ? " · " + esc(a5Date(d.date) || d.date) : ""}${d.owner ? " · " + esc(d.owner) : ""}</p></article>`);
   const managersBody = a5List(managerNames, name => `<article class="a5-item"><p>${esc(name)}</p></article>`, "Aucun manager associé");
   const risksBody = a5List(model.risks, r => `<article class="a5-item"><p>${esc(r)}</p></article>`);
   const nextBody = a5List(model.nextSteps, n => `<article class="a5-item"><p>${esc(n)}</p></article>`, "Aucune donnée renseignée.");
@@ -3721,14 +3721,14 @@ function renderA5SummaryProject(model) {
   const objective = model.objectiveBlock || {};
   const managerNames = ensureArray(model.managerNames).filter(Boolean);
   const objectiveBody = [
-    objective.description · `<p><strong>Description:</strong> ${esc(a5SafeText(objective.description, 260))}</p>` : "",
-    objective.context · `<p><strong>Contexte:</strong> ${esc(a5SafeText(objective.context, 220))}</p>` : "",
-    objective.objective · `<p><strong>Objectif:</strong> ${esc(a5SafeText(objective.objective, 220))}</p>` : "",
-    objective.expectedResults · `<p><strong>Resultats attendus:</strong> ${esc(a5SafeText(objective.expectedResults, 200))}</p>` : ""
+    objective.description ? `<p><strong>Description:</strong> ${esc(a5SafeText(objective.description, 260))}</p>` : "",
+    objective.context ? `<p><strong>Contexte:</strong> ${esc(a5SafeText(objective.context, 220))}</p>` : "",
+    objective.objective ? `<p><strong>Objectif:</strong> ${esc(a5SafeText(objective.objective, 220))}</p>` : "",
+    objective.expectedResults ? `<p><strong>Resultats attendus:</strong> ${esc(a5SafeText(objective.expectedResults, 200))}</p>` : ""
   ].join("");
-  const milestonesBody = a5List(model.milestones, m => `<article class="a5-item"><strong>${esc(a5SafeText(m.title, 90))}</strong><p>${m.date · esc(a5Date(m.date) || m.date) : "Sans date"} · ${esc(m.status)}${m.overdue · " · Retard " + esc(m.overdue) : ""}</p></article>`);
-  const actionsBody = a5List(model.actions, a => `<article class="a5-item"><strong>${esc(a5SafeText(a.title, 90))}</strong><p>${esc(a.owner || "Responsable a definir")} · ${esc(a.level)}${a.due · " · " + esc(a5Date(a.due) || a.due) : ""}${a.overdue · " · Retard " + esc(a.overdue) : ""}</p></article>`);
-  const decisionsBody = a5List(model.decisions, d => `<article class="a5-item"><strong>${esc(a5SafeText(d.title, 90))}</strong><p>${esc(d.status)}${d.date · " · " + esc(a5Date(d.date) || d.date) : ""} · ${esc(d.importance)}${d.owner · " · " + esc(d.owner) : ""}</p></article>`);
+  const milestonesBody = a5List(model.milestones, m => `<article class="a5-item"><strong>${esc(a5SafeText(m.title, 90))}</strong><p>${m.date ? esc(a5Date(m.date) || m.date) : "Sans date"} · ${esc(m.status)}${m.overdue ? " · Retard " + esc(m.overdue) : ""}</p></article>`);
+  const actionsBody = a5List(model.actions, a => `<article class="a5-item"><strong>${esc(a5SafeText(a.title, 90))}</strong><p>${esc(a.owner || "Responsable a definir")} · ${esc(a.level)}${a.due ? " · " + esc(a5Date(a.due) || a.due) : ""}${a.overdue ? " · Retard " + esc(a.overdue) : ""}</p></article>`);
+  const decisionsBody = a5List(model.decisions, d => `<article class="a5-item"><strong>${esc(a5SafeText(d.title, 90))}</strong><p>${esc(d.status)}${d.date ? " · " + esc(a5Date(d.date) || d.date) : ""} · ${esc(d.importance)}${d.owner ? " · " + esc(d.owner) : ""}</p></article>`);
   const managersBody = a5List(managerNames, name => `<article class="a5-item"><p>${esc(name)}</p></article>`, "Aucun manager associé");
   const risksBody = a5List(model.risks, r => `<article class="a5-item"><p>${esc(r)}</p></article>`);
   const meetingsBody = a5List(model.meetings, m => `<article class="a5-item"><strong>${esc(m.label)}</strong><p>${esc(m.date)} · ${esc(m.time)} ${meetingConfidentialityBadge(m.confidentiality)}</p></article>`);
@@ -3749,18 +3749,18 @@ function renderA5SummaryAction(model) {
   const body = model.body || {};
   const managerNames = ensureArray(model.managerNames).filter(Boolean);
   const descriptionBody = [
-    body.description · `<p><strong>Description / objectif :</strong> ${esc(body.description)}</p>` : "",
-    body.expectedResults · `<p><strong>Résultat attendu :</strong> ${esc(body.expectedResults)}</p>` : "",
-    body.owner · `<p><strong>Responsable :</strong> ${esc(body.owner)}</p>` : ""
+    body.description ? `<p><strong>Description / objectif :</strong> ${esc(body.description)}</p>` : "",
+    body.expectedResults ? `<p><strong>Résultat attendu :</strong> ${esc(body.expectedResults)}</p>` : "",
+    body.owner ? `<p><strong>Responsable :</strong> ${esc(body.owner)}</p>` : ""
   ].join("");
   const foldersBody = a5List(model.folders, folder => `<article class="a5-item"><strong>${esc(folder.name)}</strong><p>${esc(folder.category || "")} · ${esc(folder.status || "")}</p></article>`, "Aucun dossier lié.");
   const projectsBody = a5List(model.projects, project => `<article class="a5-item"><strong>${esc(project.name)}</strong><p>${esc(project.status)} · ${esc(String(project.progress || 0))}%</p></article>`, "Aucun projet lié.");
-  const decisionsBody = a5List(model.decisions, decision => `<article class="a5-item"><strong>${esc(decision.title)}</strong><p>${esc(decision.status)}${decision.date · " · " + esc(a5Date(decision.date) || decision.date) : ""}</p></article>`, "Aucune décision liée.");
+  const decisionsBody = a5List(model.decisions, decision => `<article class="a5-item"><strong>${esc(decision.title)}</strong><p>${esc(decision.status)}${decision.date ? " · " + esc(a5Date(decision.date) || decision.date) : ""}</p></article>`, "Aucune décision liée.");
   const managersBody = a5List(managerNames, name => `<article class="a5-item"><p>${esc(name)}</p></article>`, "Aucun manager associé");
   const meetingsBody = a5List(model.meetings, meeting => `<article class="a5-item"><strong>${esc(meeting.label)}</strong><p>${esc(meeting.date)} · ${esc(meeting.time)} ${meetingConfidentialityBadge(meeting.confidentiality)}</p></article>`, "Aucun rendez-vous lié.");
   const risksBody = a5List(model.risks, risk => `<article class="a5-item"><p>${esc(risk)}</p></article>`, "Aucun blocage ou risque.");
   const nextBody = a5List(model.nextSteps, step => `<article class="a5-item"><p>${esc(step)}</p></article>`, "Aucune donnée renseignée.");
-  const notesBody = body.notes · `<p>${esc(body.notes)}</p>` : `<p class="muted">Aucune donnée renseignée.</p>`;
+  const notesBody = body.notes ? `<p>${esc(body.notes)}</p>` : `<p class="muted">Aucune donnée renseignée.</p>`;
   return `
     ${a5Section("Description", descriptionBody || `<p class="muted">Aucune donnée renseignée.</p>`) }
     ${a5Section("MANAGERS ASSOCIÉS", managersBody)}
@@ -3778,16 +3778,16 @@ function renderA5SummaryDecision(model) {
   const body = model.body || {};
   const managerNames = ensureArray(model.managerNames).filter(Boolean);
   const mainBody = [
-    body.decisionText · `<p><strong>Décision prise :</strong> ${esc(body.decisionText)}</p>` : "",
-    body.context · `<p><strong>Contexte :</strong> ${esc(body.context)}</p>` : "",
-    body.rationale · `<p><strong>Motifs / justification :</strong> ${esc(body.rationale)}</p>` : "",
-    body.impacts · `<p><strong>Impacts attendus :</strong> ${esc(body.impacts)}</p>` : "",
-    body.owner · `<p><strong>Responsable / décideur :</strong> ${esc(body.owner)}</p>` : "",
-    body.risks · `<p><strong>Risques :</strong> ${esc(body.risks)}</p>` : ""
+    body.decisionText ? `<p><strong>Décision prise :</strong> ${esc(body.decisionText)}</p>` : "",
+    body.context ? `<p><strong>Contexte :</strong> ${esc(body.context)}</p>` : "",
+    body.rationale ? `<p><strong>Motifs / justification :</strong> ${esc(body.rationale)}</p>` : "",
+    body.impacts ? `<p><strong>Impacts attendus :</strong> ${esc(body.impacts)}</p>` : "",
+    body.owner ? `<p><strong>Responsable / décideur :</strong> ${esc(body.owner)}</p>` : "",
+    body.risks ? `<p><strong>Risques :</strong> ${esc(body.risks)}</p>` : ""
   ].join("");
   const foldersBody = a5List(model.folders, folder => `<article class="a5-item"><strong>${esc(folder.name)}</strong><p>${esc(folder.category || "")} · ${esc(folder.status || "")}</p></article>`, "Aucun dossier lié.");
   const projectsBody = a5List(model.projects, project => `<article class="a5-item"><strong>${esc(project.name)}</strong><p>${esc(project.status)} · ${esc(String(project.progress || 0))}%</p></article>`, "Aucun projet lié.");
-  const actionsBody = a5List(model.actions, action => `<article class="a5-item"><strong>${esc(action.title)}</strong><p>${esc(action.status)}${action.due · " · " + esc(a5Date(action.due) || action.due) : ""}</p></article>`, "Aucune action liée.");
+  const actionsBody = a5List(model.actions, action => `<article class="a5-item"><strong>${esc(action.title)}</strong><p>${esc(action.status)}${action.due ? " · " + esc(a5Date(action.due) || action.due) : ""}</p></article>`, "Aucune action liée.");
   const managersBody = a5List(managerNames, name => `<article class="a5-item"><p>${esc(name)}</p></article>`, "Aucun manager associé");
   const meetingsBody = a5List(model.meetings, meeting => `<article class="a5-item"><strong>${esc(meeting.label)}</strong><p>${esc(meeting.date)} · ${esc(meeting.time)} ${meetingConfidentialityBadge(meeting.confidentiality)}</p></article>`, "Aucun rendez-vous lié.");
   const followUpBody = a5List(model.followUp, row => `<article class="a5-item"><p>${esc(row)}</p></article>`, "Aucune donnée renseignée.");
@@ -3808,20 +3808,20 @@ function renderA5SummaryDecision(model) {
 function renderA5SummaryModal() {
   if (!a5SummaryDialog.open || !a5SummaryDialog.model) return "";
   const model = a5SummaryDialog.model;
-  const orientation = a5SummaryDialog.orientation === "landscape" · "landscape" : "portrait";
+  const orientation = a5SummaryDialog.orientation === "landscape" ? "landscape" : "portrait";
   const body = model.type === "folder"
-    · renderA5SummaryFolder(model)
+    ? renderA5SummaryFolder(model)
     : model.type === "project"
-      · renderA5SummaryProject(model)
+      ? renderA5SummaryProject(model)
       : model.type === "action"
-        · renderA5SummaryAction(model)
+        ? renderA5SummaryAction(model)
         : renderA5SummaryDecision(model);
   const typeLabel = model.type === "folder"
-    · "Dossier"
+    ? "Dossier"
     : model.type === "project"
-      · "Projet"
+      ? "Projet"
       : model.type === "action"
-        · "Action"
+        ? "Action"
         : "Décision";
   return `<div class="modal-backdrop a5-summary-modal" onclick="closeA5SummaryPreview()">
     <div class="modal-panel a5-summary-panel" onclick="event.stopPropagation()">
@@ -3831,8 +3831,8 @@ function renderA5SummaryModal() {
       </div>
       <div class="a5-summary-toolbar no-print">
         <div class="a5-orientation-switch" role="group" aria-label="Orientation">
-          <button type="button" class="secondary ${orientation === "portrait" · "active-filter" : ""}" onclick="setA5SummaryOrientation('portrait')">Portrait</button>
-          <button type="button" class="secondary ${orientation === "landscape" · "active-filter" : ""}" onclick="setA5SummaryOrientation('landscape')">Paysage</button>
+          <button type="button" class="secondary ${orientation === "portrait" ? "active-filter" : ""}" onclick="setA5SummaryOrientation('portrait')">Portrait</button>
+          <button type="button" class="secondary ${orientation === "landscape" ? "active-filter" : ""}" onclick="setA5SummaryOrientation('landscape')">Paysage</button>
         </div>
         <div class="row-actions">
           <button type="button" class="action" onclick="printA5Summary()">Imprimer / Exporter en PDF</button>
@@ -3842,7 +3842,7 @@ function renderA5SummaryModal() {
       <div class="a5-print-root ${orientation}">
         <article class="a5-summary-sheet ${orientation}">
           ${renderA5SummaryHeader(model, orientation)}
-          <div class="a5-content ${orientation === "landscape" · "two-columns" : "one-column"}">${body}</div>
+          <div class="a5-content ${orientation === "landscape" ? "two-columns" : "one-column"}">${body}</div>
           <footer class="a5-footer">Document interne DEOS</footer>
         </article>
       </div>
@@ -3916,7 +3916,7 @@ function ensureActionModalHooks() {
 }
 
 function actionEditableManagerIds(action) {
-  return normalizeLinkedManagerIds(ensureArray(action?.linkedManagers).length · action.linkedManagers : ensureArray(action?.linkedManagerIds));
+  return normalizeLinkedManagerIds(ensureArray(action?.linkedManagers).length ? action.linkedManagers : ensureArray(action?.linkedManagerIds));
 }
 
 function actionRenderRelatedMeetings(action) {
@@ -3935,10 +3935,10 @@ function actionEditModalBody(action) {
   const notesValue = action.notes || action.note || "";
   const risksValue = action.risks || action.blockers || "";
   const nextStepValue = action.nextStep || action.next || "";
-  const progressValue = hasProgressField · Number(action.progress || 0) : 0;
+  const progressValue = hasProgressField ? Number(action.progress || 0) : 0;
   const relatedManagersHtml = hasManagersField
-    · `<div><label>Managers associés</label>${checkboxList("eaManagers", state.managers, managerIds, m => `${m.name} · ${m.role || ""}`)}</div>`
-    : `<div><label>Managers associés</label>${a5List(relations.managers, manager => `<article class="a5-item"><p>${esc(manager.name || "Manager")}${manager.role · " · " + esc(manager.role) : ""}</p></article>`, "Aucun manager associé.")}</div>`;
+    ? `<div><label>Managers associés</label>${checkboxList("eaManagers", state.managers, managerIds, m => `${m.name} · ${m.role || ""}`)}</div>`
+    : `<div><label>Managers associés</label>${a5List(relations.managers, manager => `<article class="a5-item"><p>${esc(manager.name || "Manager")}${manager.role ? " · " + esc(manager.role) : ""}</p></article>`, "Aucun manager associé.")}</div>`;
 
   return `
     <div class="form-grid">
@@ -3946,13 +3946,13 @@ function actionEditModalBody(action) {
       <input id="eaLink" value="${esc(action.link || "")}" placeholder="Description / contexte" class="full">
       <input id="eaOwner" value="${esc(action.owner || "")}" placeholder="Responsable">
       <select id="eaLevel">
-        <option value="green" ${action.level === "green" · "selected" : ""}>Normal</option>
-        <option value="orange" ${action.level === "orange" || !action.level · "selected" : ""}>Important</option>
-        <option value="red" ${action.level === "red" · "selected" : ""}>Critique</option>
+        <option value="green" ${action.level === "green" ? "selected" : ""}>Normal</option>
+        <option value="orange" ${action.level === "orange" || !action.level ? "selected" : ""}>Important</option>
+        <option value="red" ${action.level === "red" ? "selected" : ""}>Critique</option>
       </select>
       <input id="eaDue" type="date" value="${esc(action.due || "")}" placeholder="Échéance">
-      <label class="check-row"><input id="eaDone" type="checkbox" ${action.done · "checked" : ""}> <span>Action réalisée</span></label>
-      ${hasProgressField · `<input id="eaProgress" type="number" min="0" max="100" value="${Number(progressValue || 0)}" placeholder="Avancement">` : ""}
+      <label class="check-row"><input id="eaDone" type="checkbox" ${action.done ? "checked" : ""}> <span>Action réalisée</span></label>
+      ${hasProgressField ? `<input id="eaProgress" type="number" min="0" max="100" value="${Number(progressValue || 0)}" placeholder="Avancement">` : ""}
     </div>
     <textarea id="eaDescription" placeholder="Description">${esc(descriptionValue)}</textarea>
     <textarea id="eaObjective" placeholder="Objectif">${esc(objectiveValue)}</textarea>
@@ -3981,7 +3981,7 @@ function renderActionEditModal() {
   if (!actionEditDialog.open) return "";
   const action = byId("actions", actionEditDialog.actionId);
   if (!action) return "";
-  const errorHtml = actionEditDialog.error · `<p class="folder-delete-error">${esc(actionEditDialog.error)}</p>` : "";
+  const errorHtml = actionEditDialog.error ? `<p class="folder-delete-error">${esc(actionEditDialog.error)}</p>` : "";
   return `<div class="modal-backdrop action-edit-modal" onclick="closeActionEditModal()"><div class="modal-panel" style="max-height:88vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="modal-head"><h2>Modifier action</h2><button class="icon-close" type="button" onclick="closeActionEditModal()" aria-label="Fermer">×</button></div>${errorHtml}${actionEditModalBody(action)}</div></div>`;
 }
 
@@ -3990,8 +3990,8 @@ function renderActionDeleteModal() {
   const action = byId("actions", actionDeleteDialog.actionId);
   if (!action) return "";
   const relations = actionRelationsForA5(action);
-  const errorHtml = actionDeleteDialog.error · `<p class="folder-delete-error">${esc(actionDeleteDialog.error)}</p>` : "";
-  return `<div class="modal-backdrop action-delete-modal" onclick="closeActionDeleteModal()"><div class="modal-panel" onclick="event.stopPropagation()"><div class="modal-head"><h2>Supprimer l'action</h2><button class="icon-close" type="button" onclick="closeActionDeleteModal()" aria-label="Fermer">×</button></div><p>Confirmer la suppression de <strong>${esc(action.title || "Action")}</strong>.</p><p class="muted">Les liens visibles resteront dans les autres objets, mais cette Action sera retirée de DEOS.</p>${errorHtml}<div class="grid two"><div class="card"><h3>Impacts</h3><p><strong>Dossiers :</strong> ${relations.folders.length}</p><p><strong>Projets :</strong> ${relations.projects.length}</p><p><strong>Décisions :</strong> ${relations.decisions.length}</p><p><strong>Rendez-vous :</strong> ${relations.meetings.length}</p></div><div class="card"><h3>Managers associés</h3><p>${relations.managers.length · esc(relations.managers.map(manager => manager.name).join(" · ")) : "Aucun"}</p></div></div><div class="modal-actions"><button class="danger" type="button" onclick="confirmActionDelete('${esc(action.id)}')">Supprimer définitivement</button><button class="secondary" type="button" onclick="closeActionDeleteModal()">Annuler</button></div></div></div></div>`;
+  const errorHtml = actionDeleteDialog.error ? `<p class="folder-delete-error">${esc(actionDeleteDialog.error)}</p>` : "";
+  return `<div class="modal-backdrop action-delete-modal" onclick="closeActionDeleteModal()"><div class="modal-panel" onclick="event.stopPropagation()"><div class="modal-head"><h2>Supprimer l'action</h2><button class="icon-close" type="button" onclick="closeActionDeleteModal()" aria-label="Fermer">×</button></div><p>Confirmer la suppression de <strong>${esc(action.title || "Action")}</strong>.</p><p class="muted">Les liens visibles resteront dans les autres objets, mais cette Action sera retirée de DEOS.</p>${errorHtml}<div class="grid two"><div class="card"><h3>Impacts</h3><p><strong>Dossiers :</strong> ${relations.folders.length}</p><p><strong>Projets :</strong> ${relations.projects.length}</p><p><strong>Décisions :</strong> ${relations.decisions.length}</p><p><strong>Rendez-vous :</strong> ${relations.meetings.length}</p></div><div class="card"><h3>Managers associés</h3><p>${relations.managers.length ? esc(relations.managers.map(manager => manager.name).join(" · ")) : "Aucun"}</p></div></div><div class="modal-actions"><button class="danger" type="button" onclick="confirmActionDelete('${esc(action.id)}')">Supprimer définitivement</button><button class="secondary" type="button" onclick="closeActionDeleteModal()">Annuler</button></div></div></div></div>`;
 }
 
 function renderActionModalOverlays() {
@@ -4124,7 +4124,7 @@ function toggleAgendaTimeFields() {
 function agendaTimeLabel(a) {
   const start = agendaStartTime(a);
   if (agendaIsAllDay(a)) return "Journée entière";
-  if (start) return `${esc(start)}${a.endTime · " - " + esc(a.endTime) : ""}`;
+  if (start) return `${esc(start)}${a.endTime ? " - " + esc(a.endTime) : ""}`;
   return "Heure à confirmer";
 }
 
@@ -4143,12 +4143,12 @@ function levelRank(level) {
 
 function dateRank(value) {
   const d = parseDateValue(value);
-  return d · d.getTime() : Number.MAX_SAFE_INTEGER;
+  return d ? d.getTime() : Number.MAX_SAFE_INTEGER;
 }
 
 function createdRank(item) {
   const n = String(item.id || "").match(/-([a-z0-9]+)-/);
-  return n · parseInt(n[1], 36) : 0;
+  return n ? parseInt(n[1], 36) : 0;
 }
 
 function linkedActionIds(item) {
@@ -4211,23 +4211,23 @@ function cockpitTodayItems() {
   });
   state.actions.filter(a => !a.done).forEach(a => {
     const due = daysUntil(a.due);
-    const level = a.level || a.priorityLevel || (/critique|urgent/i.test(`${a.title} ${a.link}`) · "red" : "orange");
+    const level = a.level || a.priorityLevel || (/critique|urgent/i.test(`${a.title} ${a.link}`) ? "red" : "orange");
     if ((due !== null && due <= 0) || level === "red") push(cockpitItem({ entity: "actions", id: a.id, type: "Action", title: a.title, level, due: a.due, link: a.link, action: "action" }));
   });
   state.projects.forEach(p => {
     const due = daysUntil(p.deadline);
-    const level = p.status === "red" || p.priorityLevel === "red" · "red" : p.status || p.priorityLevel || "orange";
+    const level = p.status === "red" || p.priorityLevel === "red" ? "red" : p.status || p.priorityLevel || "orange";
     if ((due !== null && due <= 0) || level === "red") push(cockpitItem({ entity: "projects", id: p.id, type: "Projet", title: p.name, level, due: p.deadline, owner: projectOwnerName(p), link: p.next || p.objective }));
   });
   state.decisions.filter(isPendingDecision).forEach(d => {
     const due = daysUntil(d.reviewDate);
-    const level = d.importance === "red" || d.status === "review" · "red" : d.importance || "orange";
+    const level = d.importance === "red" || d.status === "review" ? "red" : d.importance || "orange";
     if ((due !== null && due <= 0) || d.status === "review" || d.status === "applying" || d.nextStep) push(cockpitItem({ entity: "decisions", id: d.id, type: "Décision", title: d.title, level, due: d.reviewDate, owner: d.owner, link: d.nextStep || d.context, detail: decisionStatusLabel(d.status) }));
   });
   state.meetingPreparations.filter(p => !["Prête", "Réalisée", "Compte rendu à finaliser", "Clôturée"].includes(p.status)).forEach(p => {
     const a = byId("agenda", p.agendaId);
     const due = daysUntil(a?.date);
-    if (a && due !== null && due <= 2) push(cockpitItem({ entity: "meetingPreparations", id: p.id, type: "Réunion à préparer", title: a.title, level: due <= 0 · "red" : "orange", due: a.date, time: agendaStartTime(a), owner: p.organizer, link: p.status, detail: p.objectiveMain || a.type }));
+    if (a && due !== null && due <= 2) push(cockpitItem({ entity: "meetingPreparations", id: p.id, type: "Réunion à préparer", title: a.title, level: due <= 0 ? "red" : "orange", due: a.date, time: agendaStartTime(a), owner: p.organizer, link: p.status, detail: p.objectiveMain || a.type }));
   });
   return items.sort((a, b) => levelRank(a.level) - levelRank(b.level) || dateRank(a.due) - dateRank(b.due) || String(a.time).localeCompare(String(b.time)));
 }
@@ -4245,7 +4245,7 @@ function cockpitUpcomingItems() {
   state.decisions.filter(isPendingDecision).forEach(d => push(cockpitItem({ entity: "decisions", id: d.id, type: "Décision", title: d.title, level: d.importance || "orange", due: d.reviewDate, owner: d.owner, link: d.nextStep || d.context, detail: decisionStatusLabel(d.status) })));
   state.meetingPreparations.forEach(p => {
     const a = byId("agenda", p.agendaId);
-    if (a) push(cockpitItem({ entity: "meetingPreparations", id: p.id, type: "Préparation réunion", title: a.title, level: p.status === "À préparer" · "orange" : "green", due: a.date, time: agendaStartTime(a), owner: p.organizer, link: p.status }));
+    if (a) push(cockpitItem({ entity: "meetingPreparations", id: p.id, type: "Préparation réunion", title: a.title, level: p.status === "À préparer" ? "orange" : "green", due: a.date, time: agendaStartTime(a), owner: p.organizer, link: p.status }));
   });
   return items.sort((a, b) => dateRank(a.due) - dateRank(b.due) || String(a.time).localeCompare(String(b.time)) || levelRank(a.level) - levelRank(b.level));
 }
@@ -4262,8 +4262,8 @@ function cockpitAlertItems(todayItems = cockpitTodayItems()) {
   };
   state.actions.filter(a => !a.done && daysUntil(a.due) !== null && daysUntil(a.due) < 0).forEach(a => push(cockpitItem({ entity: "actions", id: a.id, type: "Action", title: a.title, level: "red", due: a.due, link: a.link, detail: "Action en retard", action: "action" })));
   state.projects.filter(p => p.status === "red" || p.priorityLevel === "red").forEach(p => push(cockpitItem({ entity: "projects", id: p.id, type: "Projet", title: p.name, level: "red", due: p.deadline, owner: projectOwnerName(p), link: p.next, detail: "Projet critique" })));
-  state.decisions.filter(isPendingDecision).forEach(d => push(cockpitItem({ entity: "decisions", id: d.id, type: "Décision", title: d.title, level: d.importance === "red" || d.status === "review" · "red" : "orange", due: d.reviewDate, owner: d.owner, link: d.nextStep || d.context, detail: decisionStatusLabel(d.status) })));
-  state.managers.filter(m => m.status === "red" || m.status === "orange").forEach(m => push(cockpitItem({ entity: "managers", id: m.id, type: "Manager", title: m.name, level: m.status, due: m.nextMeeting, owner: m.role, link: m.priority, detail: m.status === "red" · "Manager critique" : "Manager À suivre" })));
+  state.decisions.filter(isPendingDecision).forEach(d => push(cockpitItem({ entity: "decisions", id: d.id, type: "Décision", title: d.title, level: d.importance === "red" || d.status === "review" ? "red" : "orange", due: d.reviewDate, owner: d.owner, link: d.nextStep || d.context, detail: decisionStatusLabel(d.status) })));
+  state.managers.filter(m => m.status === "red" || m.status === "orange").forEach(m => push(cockpitItem({ entity: "managers", id: m.id, type: "Manager", title: m.name, level: m.status, due: m.nextMeeting, owner: m.role, link: m.priority, detail: m.status === "red" ? "Manager critique" : "Manager À suivre" })));
   state.meetingPreparations.filter(p => p.status === "À préparer").forEach(p => {
     const a = byId("agenda", p.agendaId);
     const due = daysUntil(a?.date);
@@ -4271,7 +4271,7 @@ function cockpitAlertItems(todayItems = cockpitTodayItems()) {
   });
   cockpitUpcomingItems().forEach(item => {
     if (item.entity === "agenda") return;
-    if (daysUntil(item.due) !== null && daysUntil(item.due) > 0 && daysUntil(item.due) <= 7) push({ ...item, level: item.level === "red" · "red" : "orange", detail: "Échéance à 7 jours" });
+    if (daysUntil(item.due) !== null && daysUntil(item.due) > 0 && daysUntil(item.due) <= 7) push({ ...item, level: item.level === "red" ? "red" : "orange", detail: "Échéance à 7 jours" });
   });
   return alerts.sort((a, b) => levelRank(a.level) - levelRank(b.level) || dateRank(a.due) - dateRank(b.due));
 }
@@ -4291,7 +4291,7 @@ function cockpitMetrics(todayItems, alertItems, upcomingItems) {
 }
 
 function setCockpitFocus(focus) {
-  cockpitFocus = cockpitFocus === focus · "" : focus;
+  cockpitFocus = cockpitFocus === focus ? "" : focus;
   renderCockpit();
 }
 
@@ -4358,7 +4358,7 @@ function cockpitFolders() {
     const stats = folderStats(f);
     const due = daysUntil(stats.nextDue || f.deadline);
     return f.status === "red" || f.priorityLevel === "red" || stats.overdueActions > 0 || (due !== null && due <= 7);
-  }).sort((a, b) => levelRank(a.status === "red" · "red" : a.priorityLevel) - levelRank(b.status === "red" · "red" : b.priorityLevel) || dateRank(folderStats(a).nextDue || a.deadline) - dateRank(folderStats(b).nextDue || b.deadline)).slice(0, 3);
+  }).sort((a, b) => levelRank(a.status === "red" ? "red" : a.priorityLevel) - levelRank(b.status === "red" ? "red" : b.priorityLevel) || dateRank(folderStats(a).nextDue || a.deadline) - dateRank(folderStats(b).nextDue || b.deadline)).slice(0, 3);
 }
 
 function cockpitAlerts() {
@@ -4366,10 +4366,10 @@ function cockpitAlerts() {
   const push = (type, id, title, detail, level = "orange") => {
     if (!alerts.some(a => a.type === type && a.id === id)) alerts.push({ type, id, title, detail, level });
   };
-  cockpitProjects().forEach(p => push("projects", p.id, p.name, p.status === "red" · "Projet critique" : "Projet à sécuriser", p.status));
+  cockpitProjects().forEach(p => push("projects", p.id, p.name, p.status === "red" ? "Projet critique" : "Projet à sécuriser", p.status));
   state.actions.filter(a => !a.done && daysUntil(a.due) !== null && daysUntil(a.due) < 0).forEach(a => push("actions", a.id, a.title, "Action en retard", "red"));
   state.managers.filter(m => m.status === "red").forEach(m => push("managers", m.id, m.name, "Manager critique", "red"));
-  cockpitDecisions().forEach(d => push("decisions", d.id, d.title, d.status === "review" · "Décision à réexaminer" : "Décision À suivre", d.importance === "red" · "red" : "orange"));
+  cockpitDecisions().forEach(d => push("decisions", d.id, d.title, d.status === "review" ? "Décision à réexaminer" : "Décision À suivre", d.importance === "red" ? "red" : "orange"));
   state.documents.filter(d => /validation|à valider|a valider/i.test(d.status || "")).forEach(d => push("documents", d.id, d.title, "Document en attente de validation", "orange"));
   return alerts;
 }
@@ -4379,7 +4379,7 @@ function getCockpitAgenda(range = agendaFilter) {
   const todayIso = localIsoDate();
   const tomorrowIso = localIsoAddDays(1);
   const weekIso = localIsoAddDays(7);
-  const normalizedRange = ["today", "tomorrow", "week", "all"].includes(range) · range : "today";
+  const normalizedRange = ["today", "tomorrow", "week", "all"].includes(range) ? range : "today";
   const inRange = item => {
     const date = String(item?.date || "");
     if (!date) return normalizedRange === "all";
@@ -4390,7 +4390,7 @@ function getCockpitAgenda(range = agendaFilter) {
   };
   const manual = state.agenda.filter(inRange).map(item => ({ ...item }));
   const external = settings.showInAgenda
-    · (state.externalCalendarEvents || []).filter(inRange).map(item => ({ ...item, _external: true }))
+    ? (state.externalCalendarEvents || []).filter(inRange).map(item => ({ ...item, _external: true }))
     : [];
   return [...manual, ...external].sort(compareAgendaEvents);
 }
@@ -4409,8 +4409,8 @@ function getProjectsAtRisk() {
     });
     return explicitRisk || Boolean(riskText) || blocked || overdue || overdueMilestone;
   }).sort((a, b) => {
-    const aRed = a.status === "red" || a.priorityLevel === "red" · 0 : 1;
-    const bRed = b.status === "red" || b.priorityLevel === "red" · 0 : 1;
+    const aRed = a.status === "red" || a.priorityLevel === "red" ? 0 : 1;
+    const bRed = b.status === "red" || b.priorityLevel === "red" ? 0 : 1;
     return aRed - bRed || dateRank(a.deadline) - dateRank(b.deadline) || Number(a.progress || 0) - Number(b.progress || 0);
   });
 }
@@ -4431,7 +4431,7 @@ function getTodayOperationalItems() {
 
   state.actions.filter(action => !action.done).forEach(action => {
     const delay = daysUntil(action.due);
-    const level = action.level || action.priorityLevel || (/critique|urgent/i.test(`${action.title || ""} ${action.link || ""}`) · "red" : "orange");
+    const level = action.level || action.priorityLevel || (/critique|urgent/i.test(`${action.title || ""} ${action.link || ""}`) ? "red" : "orange");
     if (delay !== null && delay < 0) {
       push({ key: `action:${action.id}`, entity: "actions", id: action.id, type: "Action", title: action.title, level: "red", owner: action.owner || "", due: action.due, detail: `En retard de ${Math.abs(delay)} j`, completion: "action" });
       return;
@@ -4444,14 +4444,14 @@ function getTodayOperationalItems() {
   getActivePriorities().forEach(priority => {
     const delay = daysUntil(priority.due);
     if (priority.level === "red" && delay !== null && delay <= 0) {
-      push({ key: `priority:${priority.id}`, entity: "priorities", id: priority.id, type: "Priorite", title: priority.title, level: "red", owner: priority.owner || "", due: priority.due, detail: delay < 0 · `Echeance depassee de ${Math.abs(delay)} j` : "Critique a traiter aujourd'hui", completion: "priority" });
+      push({ key: `priority:${priority.id}`, entity: "priorities", id: priority.id, type: "Priorite", title: priority.title, level: "red", owner: priority.owner || "", due: priority.due, detail: delay < 0 ? `Echeance depassee de ${Math.abs(delay)} j` : "Critique a traiter aujourd'hui", completion: "priority" });
     }
   });
 
   state.decisions.filter(isPendingDecision).forEach(decision => {
     const delay = daysUntil(decision.reviewDate);
     if (decision.status === "review" || (delay !== null && delay <= 0)) {
-      push({ key: `decision:${decision.id}`, entity: "decisions", id: decision.id, type: "Decision", title: decision.title, level: decision.importance === "red" · "red" : "orange", owner: decision.owner || "", due: decision.reviewDate, detail: decision.status === "review" · "Arbitrage a mener" : dueLabel(decision.reviewDate), completion: "" });
+      push({ key: `decision:${decision.id}`, entity: "decisions", id: decision.id, type: "Decision", title: decision.title, level: decision.importance === "red" ? "red" : "orange", owner: decision.owner || "", due: decision.reviewDate, detail: decision.status === "review" ? "Arbitrage a mener" : dueLabel(decision.reviewDate), completion: "" });
     }
   });
 
@@ -4459,7 +4459,7 @@ function getTodayOperationalItems() {
     const meeting = byId("agenda", prep.agendaId);
     const delay = daysUntil(meeting?.date);
     if (meeting && delay !== null && delay >= 0 && delay <= 1) {
-      push({ key: `meeting:${prep.id}`, entity: "meetingPreparations", id: prep.id, type: "Preparation", title: meeting.title, level: delay === 0 · "red" : "orange", owner: prep.organizer || "", due: meeting.date, detail: "Preparation urgente", completion: "" });
+      push({ key: `meeting:${prep.id}`, entity: "meetingPreparations", id: prep.id, type: "Preparation", title: meeting.title, level: delay === 0 ? "red" : "orange", owner: prep.organizer || "", due: meeting.date, detail: "Preparation urgente", completion: "" });
     }
   });
 
@@ -4476,8 +4476,8 @@ function getAttentionItems() {
 
   getProjectsAtRisk().forEach(project => {
     const delay = daysUntil(project.deadline);
-    const reason = project.risks || (delay !== null && delay < 0 · `Retard de ${Math.abs(delay)} j` : project.next || "Risque explicite");
-    push({ key: `project:${project.id}`, entity: "projects", id: project.id, type: "Projet", title: project.name, level: project.status === "red" || project.priorityLevel === "red" · "red" : "orange", due: project.deadline, detail: reason, completion: "" });
+    const reason = project.risks || (delay !== null && delay < 0 ? `Retard de ${Math.abs(delay)} j` : project.next || "Risque explicite");
+    push({ key: `project:${project.id}`, entity: "projects", id: project.id, type: "Projet", title: project.name, level: project.status === "red" || project.priorityLevel === "red" ? "red" : "orange", due: project.deadline, detail: reason, completion: "" });
   });
 
   state.actions.filter(action => !action.done).forEach(action => {
@@ -4494,13 +4494,13 @@ function getAttentionItems() {
 
   state.decisions.filter(isPendingDecision).forEach(decision => {
     if (decision.status !== "review") return;
-    push({ key: `decision:${decision.id}`, entity: "decisions", id: decision.id, type: "Decision", title: decision.title, level: decision.importance === "red" · "red" : "orange", due: decision.reviewDate, detail: "Decision a arbitrer", completion: "" });
+    push({ key: `decision:${decision.id}`, entity: "decisions", id: decision.id, type: "Decision", title: decision.title, level: decision.importance === "red" ? "red" : "orange", due: decision.reviewDate, detail: "Decision a arbitrer", completion: "" });
   });
 
   state.managers.forEach(manager => {
     const delay = daysUntil(manager.nextMeeting);
     if (delay === null || delay > 3) return;
-    push({ key: `manager:${manager.id}`, entity: "managers", id: manager.id, type: "Manager", title: manager.name, level: delay < 0 || manager.status === "red" · "red" : "orange", due: manager.nextMeeting, detail: delay < 0 · "Entretien depasse" : "Entretien proche", completion: "" });
+    push({ key: `manager:${manager.id}`, entity: "managers", id: manager.id, type: "Manager", title: manager.name, level: delay < 0 || manager.status === "red" ? "red" : "orange", due: manager.nextMeeting, detail: delay < 0 ? "Entretien depasse" : "Entretien proche", completion: "" });
   });
 
   return items.sort((a, b) => levelRank(a.level) - levelRank(b.level) || dateRank(a.due) - dateRank(b.due)).slice(0, 5);
@@ -4552,56 +4552,56 @@ function closeCockpitQuickCreateIfNeeded(type) {
 
 function cockpitOperationalRow(item) {
   const completeButton = item.completion === "action"
-    · `<button class="secondary" type="button" onclick="completeCockpitAction('${esc(item.id)}')">Terminer</button>`
+    ? `<button class="secondary" type="button" onclick="completeCockpitAction('${esc(item.id)}')">Terminer</button>`
     : item.completion === "priority"
-      · `<button class="secondary" type="button" onclick="completeCockpitPriority('${esc(item.id)}')">Terminer</button>`
+      ? `<button class="secondary" type="button" onclick="completeCockpitPriority('${esc(item.id)}')">Terminer</button>`
       : "";
   const openButton = item.entity === "actions"
-    · `openAction('${esc(item.id)}')`
+    ? `openAction('${esc(item.id)}')`
     : item.entity === "decisions"
-      · `openDecision('${esc(item.id)}')`
+      ? `openDecision('${esc(item.id)}')`
       : item.entity === "projects"
-        · `openProject('${esc(item.id)}')`
+        ? `openProject('${esc(item.id)}')`
         : item.entity === "managers"
-          · `openManager('${esc(item.id)}')`
+          ? `openManager('${esc(item.id)}')`
           : item.entity === "meetingPreparations"
-            · `openMeetingPreparation('${esc(item.id)}')`
+            ? `openMeetingPreparation('${esc(item.id)}')`
             : `setView('${esc(item.entity)}')`;
-  return `<div class="item row cockpit-ops-item alert-${esc(item.level)}"><div><strong>${esc(item.type)} · ${esc(item.title)}</strong><span class="muted">${esc(levelLabel(item.level))} · ${esc(item.detail || dueLabel(item.due))}${item.owner · " · " + esc(item.owner) : ""}</span><span class="meta">${esc(item.due · dueLabel(item.due) : "Sans échéance")}</span></div><div class="row-actions">${completeButton}<button class="secondary" type="button" onclick="${openButton}">Ouvrir</button></div></div>`;
+  return `<div class="item row cockpit-ops-item alert-${esc(item.level)}"><div><strong>${esc(item.type)} · ${esc(item.title)}</strong><span class="muted">${esc(levelLabel(item.level))} · ${esc(item.detail || dueLabel(item.due))}${item.owner ? " · " + esc(item.owner) : ""}</span><span class="meta">${esc(item.due ? dueLabel(item.due) : "Sans échéance")}</span></div><div class="row-actions">${completeButton}<button class="secondary" type="button" onclick="${openButton}">Ouvrir</button></div></div>`;
 }
 
 function cockpitPriorityRow(priority) {
-  return `<div class="item row"><div><strong>${icons[priority.level] || "🎯"} ${esc(priority.title)}</strong><span class="muted">${esc(levelLabel(priority.level))}${priority.owner · " · " + esc(priority.owner) : ""}${priority.due · " · " + esc(priority.due) : ""}</span><span class="meta">Etat : Active</span></div><div class="row-actions"><button class="secondary" type="button" onclick="completeCockpitPriority('${esc(priority.id)}')">Terminer</button><button class="secondary" type="button" onclick="setView('priorities')">Ouvrir</button></div></div>`;
+  return `<div class="item row"><div><strong>${icons[priority.level] || "🎯"} ${esc(priority.title)}</strong><span class="muted">${esc(levelLabel(priority.level))}${priority.owner ? " · " + esc(priority.owner) : ""}${priority.due ? " · " + esc(priority.due) : ""}</span><span class="meta">Etat : Active</span></div><div class="row-actions"><button class="secondary" type="button" onclick="completeCockpitPriority('${esc(priority.id)}')">Terminer</button><button class="secondary" type="button" onclick="setView('priorities')">Ouvrir</button></div></div>`;
 }
 
 function cockpitProjectRiskRow(project) {
   const delay = daysUntil(project.deadline);
-  const riskText = project.risks || (delay !== null && delay < 0 · `Retard de ${Math.abs(delay)} j` : "Risque a suivre");
-  return `<div class="item row"><div><strong>${icons[project.status] || "📁"} ${esc(project.name)}</strong><span class="muted">${esc(riskText)}</span><span class="meta">Avancement ${esc(String(Number(project.progress || 0)))}%${project.deadline · " · Echéance " + esc(project.deadline) : ""}</span></div><div class="row-actions"><button class="secondary" type="button" onclick="openProject('${esc(project.id)}')">Ouvrir</button></div></div>`;
+  const riskText = project.risks || (delay !== null && delay < 0 ? `Retard de ${Math.abs(delay)} j` : "Risque a suivre");
+  return `<div class="item row"><div><strong>${icons[project.status] || "📁"} ${esc(project.name)}</strong><span class="muted">${esc(riskText)}</span><span class="meta">Avancement ${esc(String(Number(project.progress || 0)))}%${project.deadline ? " · Echéance " + esc(project.deadline) : ""}</span></div><div class="row-actions"><button class="secondary" type="button" onclick="openProject('${esc(project.id)}')">Ouvrir</button></div></div>`;
 }
 
 function cockpitAgendaSourceBadge(item) {
   return item._external
-    · `<span class="gc-badge" title="Importé depuis Google Calendar">Google</span>`
+    ? `<span class="gc-badge" title="Importé depuis Google Calendar">Google</span>`
     : `<span class="source-badge">DEOS</span>`;
 }
 
 function cockpitAgendaLine(item) {
   const external = Boolean(item._external);
   const key = item._key || `google_${item.externalId || item.id || "event"}`;
-  const enrichment = external · getExternalEventEnrichment(key) : null;
-  const confidentiality = normalizeMeetingConfidentiality(external · enrichment.confidentiality : item.confidentiality || "normal");
+  const enrichment = external ? getExternalEventEnrichment(key) : null;
+  const confidentiality = normalizeMeetingConfidentiality(external ? enrichment.confidentiality : item.confidentiality || "normal");
   const restricted = confidentiality === "restricted" || confidentiality === "confidential";
-  const allDay = external · Boolean(item.allDay) : agendaIsAllDay(item);
+  const allDay = external ? Boolean(item.allDay) : agendaIsAllDay(item);
   const start = agendaStartTime(item);
-  const time = allDay · "Journee entiere" : (start · `${start}${item.endTime · " - " + item.endTime : ""}` : "Heure a confirmer");
-  const links = !external && !restricted · agendaLinkedNames(item) : "";
+  const time = allDay ? "Journee entiere" : (start ? `${start}${item.endTime ? " - " + item.endTime : ""}` : "Heure a confirmer");
+  const links = !external && !restricted ? agendaLinkedNames(item) : "";
   const summary = external
-    · esc(item.calendarName || "Google Calendar")
+    ? esc(item.calendarName || "Google Calendar")
     : esc(item.type || "Rendez-vous");
-  const extra = restricted · "" : `${item.location · " · " + esc(item.location) : ""}${links · " · " + esc(links) : ""}`;
+  const extra = restricted ? "" : `${item.location ? " · " + esc(item.location) : ""}${links ? " · " + esc(links) : ""}`;
   const openAction = external
-    · `openExternalEventModal('${esc(key)}')`
+    ? `openExternalEventModal('${esc(key)}')`
     : `editAgenda('${esc(item.id)}')`;
   return `<div class="agenda-line cockpit-agenda-line clickable" onclick="${openAction}"><strong>${esc(item.date || "Sans date")} · ${esc(time)}</strong><span>${esc(item.title || "Rendez-vous")}${cockpitAgendaSourceBadge(item)}<small>${summary}${extra}</small>${meetingConfidentialityBadge(confidentiality)}</span><div class="row-actions"><button class="secondary" type="button" onclick="event.stopPropagation();${openAction}">Détails</button></div></div>`;
 }
@@ -4667,10 +4667,10 @@ function renderCockpit() {
       <div class="card cockpit-rightpanel">
         <div class="row"><h2>Agenda</h2><button class="action" type="button" onclick="openAgendaModal()">+ Nouveau rendez-vous</button></div>
         <div class="agenda-filters">
-          <button class="secondary ${agendaFilter === "today" · "active-filter" : ""}" type="button" onclick="setAgendaFilter('today')">Aujourd'hui</button>
-          <button class="secondary ${agendaFilter === "tomorrow" · "active-filter" : ""}" type="button" onclick="setAgendaFilter('tomorrow')">Demain</button>
-          <button class="secondary ${agendaFilter === "week" · "active-filter" : ""}" type="button" onclick="setAgendaFilter('week')">7 jours</button>
-          <button class="secondary ${agendaFilter === "all" · "active-filter" : ""}" type="button" onclick="setAgendaFilter('all')">Tous</button>
+          <button class="secondary ${agendaFilter === "today" ? "active-filter" : ""}" type="button" onclick="setAgendaFilter('today')">Aujourd'hui</button>
+          <button class="secondary ${agendaFilter === "tomorrow" ? "active-filter" : ""}" type="button" onclick="setAgendaFilter('tomorrow')">Demain</button>
+          <button class="secondary ${agendaFilter === "week" ? "active-filter" : ""}" type="button" onclick="setAgendaFilter('week')">7 jours</button>
+          <button class="secondary ${agendaFilter === "all" ? "active-filter" : ""}" type="button" onclick="setAgendaFilter('all')">Tous</button>
         </div>
         <div class="agenda-compact cockpit-agenda-compact">
           <div class="agenda-section">
@@ -4690,7 +4690,7 @@ function openCockpitEntity(entity, id) {
   if (entity === "performance_imports") return renderPerformance();
   if (entity === "meetingPreparations") {
     const prep = byId("meetingPreparations", id);
-    return prep · openMeetingPreparation(prep.agendaId) : renderCockpit();
+    return prep ? openMeetingPreparation(prep.agendaId) : renderCockpit();
   }
   if (entity === "projects") return openProject(id);
   if (entity === "decisions") return openDecision(id);
@@ -4711,7 +4711,7 @@ function openCockpitLinked(itemKey, target) {
   const source = byId(entity, id);
   if (!source) return openCockpitEntity(entity, id);
   if (target === "manager") {
-    const manager = source.ownerId · byId("managers", source.ownerId) : relatedManagerFromText(`${source.owner || ""} ${source.link || ""} ${source.title || ""} ${source.name || ""}`);
+    const manager = source.ownerId ? byId("managers", source.ownerId) : relatedManagerFromText(`${source.owner || ""} ${source.link || ""} ${source.title || ""} ${source.name || ""}`);
     if (manager) return openManager(manager.id);
   }
   const project = relatedProjectFromText(`${source.link || ""} ${source.title || ""} ${source.name || ""}`);
@@ -4750,17 +4750,17 @@ function completeCockpitAction(id) {
 }
 
 function cockpitPriorityItem(p) {
-  return `<div class="item row"><div><strong>${icons[p.level] || "🎯"} ${esc(p.title)}</strong><span class="muted">${esc(p.due || "Pas d'échéance")}${p.link · " · " + esc(p.link) : ""}${p.owner · " · " + esc(p.owner) : ""}</span></div><div class="row-actions"><button class="secondary" onclick="completeCockpitPriority('${p.id}')">Terminer</button><button class="secondary" onclick="openLinkedFromPriority('${p.id}')">Ouvrir</button></div></div>`;
+  return `<div class="item row"><div><strong>${icons[p.level] || "🎯"} ${esc(p.title)}</strong><span class="muted">${esc(p.due || "Pas d'échéance")}${p.link ? " · " + esc(p.link) : ""}${p.owner ? " · " + esc(p.owner) : ""}</span></div><div class="row-actions"><button class="secondary" onclick="completeCockpitPriority('${p.id}')">Terminer</button><button class="secondary" onclick="openLinkedFromPriority('${p.id}')">Ouvrir</button></div></div>`;
 }
 
 function cockpitActionItem(a) {
   const due = daysUntil(a.due);
-  const label = due === null · "Critique sans échéance" : due < 0 · `En retard de ${Math.abs(due)} j` : due === 0 · "Aujourd'hui" : `Dans ${due} j`;
-  return `<div class="item row"><div><strong>${a.done · "☑️" : "⬜"} ${esc(a.title)}</strong><span class="muted">${esc(label)}${a.link · " · " + esc(a.link) : ""}</span></div><div class="row-actions"><button class="secondary" onclick="completeCockpitAction('${a.id}')">Terminer</button><button class="secondary" onclick="openCockpitEntity('actions','${a.id}')">Ouvrir</button></div></div>`;
+  const label = due === null ? "Critique sans échéance" : due < 0 ? `En retard de ${Math.abs(due)} j` : due === 0 ? "Aujourd'hui" : `Dans ${due} j`;
+  return `<div class="item row"><div><strong>${a.done ? "☑️" : "⬜"} ${esc(a.title)}</strong><span class="muted">${esc(label)}${a.link ? " · " + esc(a.link) : ""}</span></div><div class="row-actions"><button class="secondary" onclick="completeCockpitAction('${a.id}')">Terminer</button><button class="secondary" onclick="openCockpitEntity('actions','${a.id}')">Ouvrir</button></div></div>`;
 }
 
 function cockpitAlertItem(a) {
-  return `<div class="item clickable alert-${esc(a.level)}" onclick="openCockpitEntity('${a.type}','${a.id}')"><strong>${a.level === "red" · "🔴" : "🟠"} ${esc(a.title)}</strong><span class="muted">${esc(a.detail)}</span><span class="meta">${esc(a.type)}</span></div>`;
+  return `<div class="item clickable alert-${esc(a.level)}" onclick="openCockpitEntity('${a.type}','${a.id}')"><strong>${a.level === "red" ? "🔴" : "🟠"} ${esc(a.title)}</strong><span class="muted">${esc(a.detail)}</span><span class="meta">${esc(a.type)}</span></div>`;
 }
 
 function cockpitProjectItem(p) {
@@ -4768,12 +4768,12 @@ function cockpitProjectItem(p) {
 }
 
 function cockpitDecisionItem(d) {
-  return `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${d.importance === "red" · "🔴" : "📌"} ${esc(d.title)}</strong><span class="muted">${esc(decisionStatusLabel(d.status))}${d.reviewDate · " · Réexamen " + esc(d.reviewDate) : ""}</span></div>`;
+  return `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${d.importance === "red" ? "🔴" : "📌"} ${esc(d.title)}</strong><span class="muted">${esc(decisionStatusLabel(d.status))}${d.reviewDate ? " · Réexamen " + esc(d.reviewDate) : ""}</span></div>`;
 }
 
 function cockpitFolderItem(f) {
   const stats = folderStats(f);
-  return `<div class="item clickable" onclick="openFolder('${f.id}')"><strong>${f.status === "red" || f.priorityLevel === "red" · "🔴" : "📁"} ${esc(f.name)}</strong><span class="muted">${esc(f.category)} · ${stats.openActions} action(s) ouverte(s) · ${stats.overdueActions} retard(s)</span><span class="meta">Échéance ${esc(stats.nextDue || f.deadline || "Non définie")}</span></div>`;
+  return `<div class="item clickable" onclick="openFolder('${f.id}')"><strong>${f.status === "red" || f.priorityLevel === "red" ? "🔴" : "📁"} ${esc(f.name)}</strong><span class="muted">${esc(f.category)} · ${stats.openActions} action(s) ouverte(s) · ${stats.overdueActions} retard(s)</span><span class="meta">Échéance ${esc(stats.nextDue || f.deadline || "Non définie")}</span></div>`;
 }
 
 function openActivityTarget(id) {
@@ -4786,15 +4786,15 @@ function activityDeletedFolderHint(a) {
   if (!a || !a.entityId) return "";
   const hasTarget = entities.some(name => name !== "activity" && byId(name, a.entityId));
   if (hasTarget) return "";
-  return /dossier/i.test(String(a.type || "")) · " · Dossier supprimé" : "";
+  return /dossier/i.test(String(a.type || "")) ? " · Dossier supprimé" : "";
 }
 
 function cockpitActivityItem(a) {
-  return `<div class="item ${a.entityId · "clickable" : ""}" ${a.entityId · `onclick="openActivityTarget('${a.entityId}')"` : ""}><strong>${esc(a.type)} · ${esc(a.title)}</strong><span class="muted">${esc(a.date || "")}${a.detail · " · " + esc(a.detail) : ""}</span><span class="meta">ID ${esc(a.id)}${a.entityId · " · Entité " + esc(a.entityId) : ""}${esc(activityDeletedFolderHint(a))}</span></div>`;
+  return `<div class="item ${a.entityId ? "clickable" : ""}" ${a.entityId ? `onclick="openActivityTarget('${a.entityId}')"` : ""}><strong>${esc(a.type)} · ${esc(a.title)}</strong><span class="muted">${esc(a.date || "")}${a.detail ? " · " + esc(a.detail) : ""}</span><span class="meta">ID ${esc(a.id)}${a.entityId ? " ? Entité " + esc(a.entityId) : ""}${esc(activityDeletedFolderHint(a))}</span></div>`;
 }
 
 function cockpitKpi(label, value, focus, tone = "") {
-  return `<button class="kpi ${tone} ${cockpitFocus === focus · "active-kpi" : ""}" onclick="setCockpitFocus('${focus}')"><strong>${value}</strong><span>${esc(label)}</span></button>`;
+  return `<button class="kpi ${tone} ${cockpitFocus === focus ? "active-kpi" : ""}" onclick="setCockpitFocus('${focus}')"><strong>${value}</strong><span>${esc(label)}</span></button>`;
 }
 
 function cockpitItemLevel(item) {
@@ -4806,26 +4806,26 @@ function cockpitItemLevel(item) {
 function cockpitDashboardItem(item) {
   const level = cockpitItemLevel(item);
   const source = byId(item.entity, item.id);
-  const project = item.entity !== "projects" · relatedProjectFromText(`${item.link || ""} ${item.title || ""}`) : null;
-  const manager = item.entity === "projects" && source?.ownerId · byId("managers", source.ownerId) : relatedManagerFromText(`${item.owner || ""} ${item.link || ""}`);
+  const project = item.entity !== "projects" ? relatedProjectFromText(`${item.link || ""} ${item.title || ""}`) : null;
+  const manager = item.entity === "projects" && source?.ownerId ? byId("managers", source.ownerId) : relatedManagerFromText(`${item.owner || ""} ${item.link || ""}`);
   const canComplete = item.action === "action" || item.action === "priority";
   return `<div class="item cockpit-item alert-${level}">
     <div>
       <strong><span class="type-pill ${level}">${esc(item.type)}</span> ${esc(item.title)}</strong>
-      <span class="muted">${esc(levelLabel(item.level))} · ${esc(dueLabel(item.due))}${item.time · " · " + esc(item.time) : ""}</span>
-      <span class="meta">${item.owner · "Responsable : " + esc(item.owner) : ""}${item.owner && item.link · " · " : ""}${item.link · esc(item.link) : ""}</span>
+      <span class="muted">${esc(levelLabel(item.level))} · ${esc(dueLabel(item.due))}${item.time ? " · " + esc(item.time) : ""}</span>
+      <span class="meta">${item.owner ? "Responsable : " + esc(item.owner) : ""}${item.owner && item.link ? " · " : ""}${item.link ? esc(item.link) : ""}</span>
     </div>
     <div class="row-actions cockpit-actions">
-      ${canComplete · `<button class="secondary" onclick="${item.action === "action" · "completeCockpitAction" : "completeCockpitPriority"}('${esc(item.id)}')">Terminer</button>` : ""}
-      ${manager · `<button class="secondary" onclick="openManager('${esc(manager.id)}')">Manager</button>` : ""}
-      ${project · `<button class="secondary" onclick="openProject('${esc(project.id)}')">Projet</button>` : ""}
+      ${canComplete ? `<button class="secondary" onclick="${item.action === "action" ? "completeCockpitAction" : "completeCockpitPriority"}('${esc(item.id)}')">Terminer</button>` : ""}
+      ${manager ? `<button class="secondary" onclick="openManager('${esc(manager.id)}')">Manager</button>` : ""}
+      ${project ? `<button class="secondary" onclick="openProject('${esc(project.id)}')">Projet</button>` : ""}
       <button class="secondary" onclick="openCockpitEntity('${esc(item.entity)}','${esc(item.id)}')">Ouvrir</button>
     </div>
   </div>`;
 }
 
 function cockpitDeadlineItem(item) {
-  return `<div class="deadline-row clickable" onclick="openCockpitEntity('${esc(item.entity)}','${esc(item.id)}')"><strong>${esc(item.due || "Date à préciser")}${item.time · " · " + esc(item.time) : ""}</strong><span>${esc(item.type)} · ${esc(item.title)}</span><small>${item.owner · esc(item.owner) : esc(item.link || "")}</small></div>`;
+  return `<div class="deadline-row clickable" onclick="openCockpitEntity('${esc(item.entity)}','${esc(item.id)}')"><strong>${esc(item.due || "Date à préciser")}${item.time ? " · " + esc(item.time) : ""}</strong><span>${esc(item.type)} · ${esc(item.title)}</span><small>${item.owner ? esc(item.owner) : esc(item.link || "")}</small></div>`;
 }
 
 function cockpitFocusPanel(items) {
@@ -4834,7 +4834,7 @@ function cockpitFocusPanel(items) {
 }
 
 function cockpitMoreButton(count, focus) {
-  return count > 0 · `<button class="secondary cockpit-more" onclick="setCockpitFocus('${focus}')">Voir les ${count} autres</button>` : "";
+  return count > 0 ? `<button class="secondary cockpit-more" onclick="setCockpitFocus('${focus}')">Voir les ${count} autres</button>` : "";
 }
 
 function cockpitFavoriteLinks() {
@@ -4844,7 +4844,7 @@ function cockpitFavoriteLinks() {
   if (!favorites.length) {
     return `<div class="favorite-strip"><span class="empty compact-empty">Aucun favori — ajoutez-en depuis Liens utiles.</span><button class="secondary quick-link" onclick="setView('links')">Voir tous les liens</button></div>`;
   }
-  return `<div class="favorite-strip">${visible.map(link => `<button class="secondary quick-link" onclick="openExternalLink('${esc(link.id)}')"><span>${esc(link.icon || "🔗")}</span>${esc(link.name || "Lien")}</button>`).join("")}<button class="secondary quick-link" onclick="setView('links')">${hidden · `Voir les ${hidden} autres` : "Voir tous les liens"}</button></div>`;
+  return `<div class="favorite-strip">${visible.map(link => `<button class="secondary quick-link" onclick="openExternalLink('${esc(link.id)}')"><span>${esc(link.icon || "🔗")}</span>${esc(link.name || "Lien")}</button>`).join("")}<button class="secondary quick-link" onclick="setView('links')">${hidden ? `Voir les ${hidden} autres` : "Voir tous les liens"}</button></div>`;
 }
 
 function futureMeetings() {
@@ -4900,7 +4900,7 @@ function agendaItems() {
   }
   
   const external = settings.showInAgenda
-    · externalAfterFilter.map(e => ({ ...e, _external: true }))
+    ? externalAfterFilter.map(e => ({ ...e, _external: true }))
     : [];
   console.log("[DEOS AGENDA TRACE] Step 3 - external events mapped:", external.length);
   console.log("[DEOS AGENDA TRACE] google events after filter:", external.length);
@@ -4925,7 +4925,7 @@ function agendaTodayItems() {
   const settings = getCalendarConnectionSettings();
   const manual = state.agenda.filter(a => a.date === localIsoDate());
   const external = settings.showTodayInCockpit
-    · (state.externalCalendarEvents || []).filter(a => a.date === localIsoDate()).map(e => ({ ...e, _external: true }))
+    ? (state.externalCalendarEvents || []).filter(a => a.date === localIsoDate()).map(e => ({ ...e, _external: true }))
     : [];
   return [...manual, ...external].slice().sort(compareAgendaEvents);
 }
@@ -4944,7 +4944,7 @@ function setAgendaFilter(filter) {
 }
 
 function agendaLinkedNames(a) {
-  const managerIds = normalizeLinkedManagerIds(ensureArray(a?.linkedManagerIds).length · a.linkedManagerIds : ensureArray(a?.linkedManagers));
+  const managerIds = normalizeLinkedManagerIds(ensureArray(a?.linkedManagerIds).length ? a.linkedManagerIds : ensureArray(a?.linkedManagers));
   const managers = state.managers.filter(m => managerIds.includes(String(m.id))).map(m => m.name);
   const projects = state.projects.filter(p => (a.linkedProjects || []).includes(p.id)).map(p => p.name);
   const folders = state.folders.filter(f => (a.linkedFolders || []).includes(f.id)).map(f => f.name);
@@ -4970,7 +4970,7 @@ function deosLinkBadgesHtml(items) {
 
 function agendaLinkedBadges(a) {
   const item = a || {};
-  const managerIds = normalizeLinkedManagerIds(ensureArray(item.linkedManagerIds).length · item.linkedManagerIds : ensureArray(item.linkedManagers));
+  const managerIds = normalizeLinkedManagerIds(ensureArray(item.linkedManagerIds).length ? item.linkedManagerIds : ensureArray(item.linkedManagers));
   const actionIds = normalizeLinkedIdArray([...(item.linkedActionIds || []), ...(item.linkedActions || [])]);
   const decisionIds = normalizeLinkedIdArray([...(item.linkedDecisionIds || []), ...(item.linkedDecisions || [])]);
   const documentIds = state.documents
@@ -4983,7 +4983,7 @@ function agendaLinkedBadges(a) {
   state.actions.filter(action => actionIds.includes(String(action.id))).forEach(action => badges.push(deosLinkBadge("action", action.title)));
   state.decisions.filter(decision => decisionIds.includes(String(decision.id))).forEach(decision => badges.push(deosLinkBadge("decision", decision.title)));
   state.documents.filter(document => documentIds.includes(String(document.id))).forEach(document => badges.push(deosLinkBadge("document", document.title)));
-  return badges.length · `<div class="deos-link-summary">${deosLinkBadgesHtml(badges)}</div>` : "";
+  return badges.length ? `<div class="deos-link-summary">${deosLinkBadgesHtml(badges)}</div>` : "";
 }
 
 function externalEventLinkedBadges(enrichment) {
@@ -5013,7 +5013,7 @@ function externalEventLinkedBadges(enrichment) {
 
 function singleLinkedId(ids = []) {
   const normalized = normalizeLinkedIdArray(ids);
-  return normalized.length === 1 · normalized[0] : "";
+  return normalized.length === 1 ? normalized[0] : "";
 }
 
 function meetingSourceData(source, meetingRef) {
@@ -5024,7 +5024,7 @@ function meetingSourceData(source, meetingRef) {
       source,
       meetingRef: String(meeting.id),
       title: String(meeting.title || "Rendez-vous"),
-      linkedManagerIds: normalizeLinkedManagerIds(ensureArray(meeting.linkedManagerIds).length · meeting.linkedManagerIds : ensureArray(meeting.linkedManagers)),
+      linkedManagerIds: normalizeLinkedManagerIds(ensureArray(meeting.linkedManagerIds).length ? meeting.linkedManagerIds : ensureArray(meeting.linkedManagers)),
       linkedProjectIds: normalizeLinkedIdArray(ensureArray(meeting.linkedProjects)),
       linkedFolderIds: normalizeLinkedIdArray(ensureArray(meeting.linkedFolders))
     };
@@ -5052,7 +5052,7 @@ function meetingCreateStateKey(source, meetingRef) {
 
 function activeMeetingCreateState(source, meetingRef) {
   const key = meetingCreateStateKey(source, meetingRef);
-  return meetingCreateState && meetingCreateState.key === key · meetingCreateState : null;
+  return meetingCreateState && meetingCreateState.key === key ? meetingCreateState : null;
 }
 
 function startCreateFromMeeting(source, meetingRef, objectType) {
@@ -5070,7 +5070,7 @@ function startCreateFromMeeting(source, meetingRef, objectType) {
   };
   renderCockpit();
   queueMeetingCreateReveal(source, meetingRef, objectType, {
-    modalScrollTop: activeModalPanel · activeModalPanel.scrollTop : null,
+    modalScrollTop: activeModalPanel ? activeModalPanel.scrollTop : null,
     windowScrollX: window.scrollX,
     windowScrollY: window.scrollY
   });
@@ -5098,9 +5098,9 @@ function queueMeetingCreateReveal(source, meetingRef, objectType, options = {}) 
   pendingMeetingCreateReveal = {
     key: meetingCreateStateKey(source, meetingRef),
     objectType: String(objectType || ""),
-    modalScrollTop: Number.isFinite(options.modalScrollTop) · options.modalScrollTop : null,
-    windowScrollX: Number.isFinite(options.windowScrollX) · options.windowScrollX : window.scrollX,
-    windowScrollY: Number.isFinite(options.windowScrollY) · options.windowScrollY : window.scrollY
+    modalScrollTop: Number.isFinite(options.modalScrollTop) ? options.modalScrollTop : null,
+    windowScrollX: Number.isFinite(options.windowScrollX) ? options.windowScrollX : window.scrollX,
+    windowScrollY: Number.isFinite(options.windowScrollY) ? options.windowScrollY : window.scrollY
   };
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
@@ -5145,17 +5145,17 @@ function revealMeetingCreateForm() {
 function renderMeetingCreationForm(source, meetingRef, objectType, data) {
   if (objectType === "action") {
     const suggestedOwnerId = singleLinkedId(data.linkedManagerIds);
-    const suggestedOwner = suggestedOwnerId · (byId("managers", suggestedOwnerId)?.name || "") : "";
-    const suggestedProjectIds = singleLinkedId(data.linkedProjectIds) · [singleLinkedId(data.linkedProjectIds)] : [];
-    const suggestedFolderIds = singleLinkedId(data.linkedFolderIds) · [singleLinkedId(data.linkedFolderIds)] : [];
-    const suggestedManagerIds = suggestedOwnerId · [suggestedOwnerId] : [];
+    const suggestedOwner = suggestedOwnerId ? (byId("managers", suggestedOwnerId)?.name || "") : "";
+    const suggestedProjectIds = singleLinkedId(data.linkedProjectIds) ? [singleLinkedId(data.linkedProjectIds)] : [];
+    const suggestedFolderIds = singleLinkedId(data.linkedFolderIds) ? [singleLinkedId(data.linkedFolderIds)] : [];
+    const suggestedManagerIds = suggestedOwnerId ? [suggestedOwnerId] : [];
     return `<div class="card" data-meeting-create-form="action"><h3>Nouvelle action</h3><p class="muted">Créée depuis le rendez-vous : ${esc(data.title)}</p><div class="form-grid"><input id="meetingCreateActionTitle" data-meeting-create-title="action" placeholder="Titre de l'action (obligatoire)"><input id="meetingCreateActionContext" value="Créée depuis le rendez-vous : ${esc(data.title)}" placeholder="Contexte"><input id="meetingCreateActionDue" type="date"><input id="meetingCreateActionOwner" value="${esc(suggestedOwner)}" placeholder="Responsable"><select id="meetingCreateActionLevel"><option value="green">Normal</option><option value="orange" selected>Important</option><option value="red">Critique</option></select></div><div class="grid three manager-links"><div><label>Managers proposés</label>${checkboxList("meetingCreateActionManagers", state.managers, suggestedManagerIds, m => `${m.name} · ${m.role || ""}`)}</div><div><label>Projets proposés</label>${checkboxList("meetingCreateActionProjects", state.projects, suggestedProjectIds, p => p.name)}</div><div><label>Dossiers proposés</label>${folderSelect("meetingCreateActionFolders", suggestedFolderIds)}</div></div><div class="modal-actions"><button type="button" class="action" onclick="saveCreateFromMeeting('${esc(source)}','${esc(String(meetingRef))}','action')">Enregistrer</button><button type="button" class="secondary" onclick="cancelCreateFromMeeting('${esc(source)}','${esc(String(meetingRef))}')">Annuler</button></div></div>`;
   }
   const suggestedManagerId = singleLinkedId(data.linkedManagerIds);
-  const suggestedOwner = suggestedManagerId · (byId("managers", suggestedManagerId)?.name || "") : "";
-  const suggestedProjectIds = singleLinkedId(data.linkedProjectIds) · [singleLinkedId(data.linkedProjectIds)] : [];
-  const suggestedFolderIds = singleLinkedId(data.linkedFolderIds) · [singleLinkedId(data.linkedFolderIds)] : [];
-  const suggestedManagerIds = suggestedManagerId · [suggestedManagerId] : [];
+  const suggestedOwner = suggestedManagerId ? (byId("managers", suggestedManagerId)?.name || "") : "";
+  const suggestedProjectIds = singleLinkedId(data.linkedProjectIds) ? [singleLinkedId(data.linkedProjectIds)] : [];
+  const suggestedFolderIds = singleLinkedId(data.linkedFolderIds) ? [singleLinkedId(data.linkedFolderIds)] : [];
+  const suggestedManagerIds = suggestedManagerId ? [suggestedManagerId] : [];
   return `<div class="card" data-meeting-create-form="decision"><h3>Nouvelle décision</h3><p class="muted">Créée depuis le rendez-vous : ${esc(data.title)}</p><div class="form-grid"><input id="meetingCreateDecisionTitle" data-meeting-create-title="decision" placeholder="Titre de la décision (obligatoire)"><input id="meetingCreateDecisionContext" value="Créée depuis le rendez-vous : ${esc(data.title)}" placeholder="Contexte"><input id="meetingCreateDecisionDate" type="date" value="${esc(isoToday())}"><input id="meetingCreateDecisionOwner" value="${esc(suggestedOwner)}" placeholder="Responsable"><select id="meetingCreateDecisionStatus"><option value="decided" selected>Décidée</option><option value="applying">En cours d'application</option><option value="review">À réexaminer</option><option value="applied">Appliquée</option></select><select id="meetingCreateDecisionImportance"><option value="green">Normal</option><option value="orange" selected>Important</option><option value="red">Critique</option></select></div><div class="grid three manager-links"><div><label>Managers proposés</label>${checkboxList("meetingCreateDecisionManagers", state.managers, suggestedManagerIds, m => `${m.name} · ${m.role || ""}`)}</div><div><label>Projets proposés</label>${checkboxList("meetingCreateDecisionProjects", state.projects, suggestedProjectIds, p => p.name)}</div><div><label>Dossiers proposés</label>${folderSelect("meetingCreateDecisionFolders", suggestedFolderIds)}</div></div><div class="modal-actions"><button type="button" class="action" onclick="saveCreateFromMeeting('${esc(source)}','${esc(String(meetingRef))}','decision')">Enregistrer</button><button type="button" class="secondary" onclick="cancelCreateFromMeeting('${esc(source)}','${esc(String(meetingRef))}')">Annuler</button></div></div>`;
 }
 
@@ -5165,9 +5165,9 @@ function renderCreateFromMeetingSection(source, meetingRef) {
   const current = activeMeetingCreateState(source, meetingRef);
   const openType = current?.objectType || "";
   const success = current?.success
-    · `<div class="settings-confirm">${esc(current.success)} <button type="button" class="secondary" onclick="openCreatedObjectFromMeeting('${esc(source)}','${esc(String(meetingRef))}')">${current.createdObjectType === "action" · "Ouvrir l'action" : "Ouvrir la décision"}</button></div>`
+    ? `<div class="settings-confirm">${esc(current.success)} <button type="button" class="secondary" onclick="openCreatedObjectFromMeeting('${esc(source)}','${esc(String(meetingRef))}')">${current.createdObjectType === "action" ? "Ouvrir l'action" : "Ouvrir la décision"}</button></div>`
     : "";
-  return `<div class="card settings-card" data-meeting-create-key="${esc(meetingCreateStateKey(source, meetingRef))}"><h2>Créer depuis ce rendez-vous</h2><div class="row-actions"><button type="button" class="secondary" onclick="startCreateFromMeeting('${esc(source)}','${esc(String(meetingRef))}','action')">+ Nouvelle action</button><button type="button" class="secondary" onclick="startCreateFromMeeting('${esc(source)}','${esc(String(meetingRef))}','decision')">+ Nouvelle décision</button></div>${success}${openType · renderMeetingCreationForm(source, meetingRef, openType, data) : ""}</div>`;
+  return `<div class="card settings-card" data-meeting-create-key="${esc(meetingCreateStateKey(source, meetingRef))}"><h2>Créer depuis ce rendez-vous</h2><div class="row-actions"><button type="button" class="secondary" onclick="startCreateFromMeeting('${esc(source)}','${esc(String(meetingRef))}','action')">+ Nouvelle action</button><button type="button" class="secondary" onclick="startCreateFromMeeting('${esc(source)}','${esc(String(meetingRef))}','decision')">+ Nouvelle décision</button></div>${success}${openType ? renderMeetingCreationForm(source, meetingRef, openType, data) : ""}</div>`;
 }
 
 function normalizeMeetingLinkIds(item, id, keyPrimary, keyLegacy) {
@@ -5214,8 +5214,8 @@ function createActionFromMeeting(source, meetingRef, payload) {
   };
   const snapshot = {
     actions: state.actions.slice(),
-    externalEnrichments: source === "google" · JSON.parse(JSON.stringify(state.externalEventEnrichments || {})) : null,
-    agendaMeetingId: source === "manual" · String(meetingRef) : "",
+    externalEnrichments: source === "google" ? JSON.parse(JSON.stringify(state.externalEventEnrichments || {})) : null,
+    agendaMeetingId: source === "manual" ? String(meetingRef) : "",
     agendaMeeting: null
   };
 
@@ -5277,8 +5277,8 @@ function createDecisionFromMeeting(source, meetingRef, payload) {
   };
   const snapshot = {
     decisions: state.decisions.slice(),
-    externalEnrichments: source === "google" · JSON.parse(JSON.stringify(state.externalEventEnrichments || {})) : null,
-    agendaMeetingId: source === "manual" · String(meetingRef) : "",
+    externalEnrichments: source === "google" ? JSON.parse(JSON.stringify(state.externalEventEnrichments || {})) : null,
+    agendaMeetingId: source === "manual" ? String(meetingRef) : "",
     agendaMeeting: null
   };
 
@@ -5385,23 +5385,23 @@ function agendaItem(a) {
   // Événement externe (Google Calendar) — lecture seule
   if (a._external) {
     const start = agendaStartTime(a);
-    const time = a.allDay · "Journée entière" : (start · `${esc(start)}${a.endTime · " - " + esc(a.endTime) : ""}` : "Heure à confirmer");
+    const time = a.allDay ? "Journée entière" : (start ? `${esc(start)}${a.endTime ? " - " + esc(a.endTime) : ""}` : "Heure à confirmer");
     const providerBadge = `<span class="gc-badge" title="Importé depuis Google Calendar">🗓️ Google</span>`;
     const enrichment = getExternalEventEnrichment(a._key || `google_${a.externalId}`);
     const confidentiality = meetingConfidentialityBadge(enrichment.confidentiality || "normal");
-    return `<div class="agenda-line agenda-line-external"><strong>${time}</strong><span>${a.date !== localIsoDate() · `<em>${esc(a.date)}</em>` : ""}${esc(a.title)}${providerBadge}<small>${esc(a.calendarName || "Google Calendar")}${a.location · " · " + esc(a.location) : ""}</small>${confidentiality}</span><div class="row-actions"><button class="secondary" onclick="openExternalEventModal('${esc(a._key || a.externalId)}')">Détails</button></div></div>`;
+    return `<div class="agenda-line agenda-line-external"><strong>${time}</strong><span>${a.date !== localIsoDate() ? `<em>${esc(a.date)}</em>` : ""}${esc(a.title)}${providerBadge}<small>${esc(a.calendarName || "Google Calendar")}${a.location ? " · " + esc(a.location) : ""}</small>${confidentiality}</span><div class="row-actions"><button class="secondary" onclick="openExternalEventModal('${esc(a._key || a.externalId)}')">Détails</button></div></div>`;
   }
   // Événement manuel DEOS
   const start = agendaStartTime(a);
-  const time = agendaIsAllDay(a) · "Journée entière" : (start · `${esc(start)}${a.endTime · " - " + esc(a.endTime) : ""}` : "Heure à confirmer");
+  const time = agendaIsAllDay(a) ? "Journée entière" : (start ? `${esc(start)}${a.endTime ? " - " + esc(a.endTime) : ""}` : "Heure à confirmer");
   const links = agendaLinkedNames(a);
   const prep = meetingPrepForAgenda(a.id);
   const status = prep?.status || "À préparer";
   const subjectCount = ensureArray(prep?.ideas).length + ensureArray(prep?.agendaTopics).length;
-  const subjectBadge = subjectCount · ` · <span class="subject-count">🧩 ${subjectCount}</span>` : "";
-  const alert = daysUntil(a.date) !== null && daysUntil(a.date) >= 0 && daysUntil(a.date) <= 2 && status === "À préparer" · `<small class="prep-alert">Réunion à préparer sous 48 h</small>` : "";
+  const subjectBadge = subjectCount ? ` · <span class="subject-count">🧩 ${subjectCount}</span>` : "";
+  const alert = daysUntil(a.date) !== null && daysUntil(a.date) >= 0 && daysUntil(a.date) <= 2 && status === "À préparer" ? `<small class="prep-alert">Réunion à préparer sous 48 h</small>` : "";
   const confidentiality = meetingConfidentialityBadge(a.confidentiality || "normal");
-  return `<div class="agenda-line"><strong>${time}</strong><span>${a.date !== localIsoDate() · `<em>${esc(a.date)}</em>` : ""}${esc(a.title)}<small>${esc(a.type || "Autre")}${a.location · " · " + esc(a.location) : ""}${links · " · " + esc(links) : ""} · ${esc(status)}${subjectBadge}</small>${confidentiality}${agendaLinkedBadges(a)}${alert}</span><div class="row-actions"><button class="secondary" onclick="openMeetingSubjectModal('${a.id}')">+ Sujet</button><button class="secondary" onclick="openMeetingPreparation('${a.id}')">Préparer</button><button class="secondary" onclick="editAgenda('${a.id}')">Modifier</button><button class="secondary" onclick="startReport('agenda','${a.id}')">Compte rendu</button><button class="danger" onclick="deleteAgenda('${a.id}')">Supprimer</button></div></div>`;
+  return `<div class="agenda-line"><strong>${time}</strong><span>${a.date !== localIsoDate() ? `<em>${esc(a.date)}</em>` : ""}${esc(a.title)}<small>${esc(a.type || "Autre")}${a.location ? " · " + esc(a.location) : ""}${links ? " · " + esc(links) : ""} · ${esc(status)}${subjectBadge}</small>${confidentiality}${agendaLinkedBadges(a)}${alert}</span><div class="row-actions"><button class="secondary" onclick="openMeetingSubjectModal('${a.id}')">+ Sujet</button><button class="secondary" onclick="openMeetingPreparation('${a.id}')">Préparer</button><button class="secondary" onclick="editAgenda('${a.id}')">Modifier</button><button class="secondary" onclick="startReport('agenda','${a.id}')">Compte rendu</button><button class="danger" onclick="deleteAgenda('${a.id}')">Supprimer</button></div></div>`;
 }
 
 function agendaCompact() {
@@ -5414,8 +5414,8 @@ function agendaCompact() {
 function agendaLinkedList(items) {
   return items.slice().sort(compareAgendaEvents).map(a => {
     const start = agendaStartTime(a);
-    const timeLabel = agendaIsAllDay(a) · "Journée entière" : (start · start : "Heure à confirmer");
-    return `<div class="item clickable" onclick="openMeetingPreparation('${a.id}')"><strong>${esc(a.date || "")} · ${esc(timeLabel)}${a.endTime · " - " + esc(a.endTime) : ""}</strong><span class="muted">${esc(a.title)} · ${esc(a.type || "Autre")} · ${esc(meetingPrepForAgenda(a.id)?.status || "À préparer")}</span>${a.location · `<span class="meta">${esc(a.location)}</span>` : ""}</div>`;
+    const timeLabel = agendaIsAllDay(a) ? "Journée entière" : (start ? start : "Heure à confirmer");
+    return `<div class="item clickable" onclick="openMeetingPreparation('${a.id}')"><strong>${esc(a.date || "")} · ${esc(timeLabel)}${a.endTime ? " - " + esc(a.endTime) : ""}</strong><span class="muted">${esc(a.title)} · ${esc(a.type || "Autre")} · ${esc(meetingPrepForAgenda(a.id)?.status || "À préparer")}</span>${a.location ? `<span class="meta">${esc(a.location)}</span>` : ""}</div>`;
   }).join("") || `<div class="empty">Aucun rendez-vous lié.</div>`;
 }
 
@@ -5426,13 +5426,13 @@ function managerAgendaList(m) {
 function managerMeetingPreparationsList(m) {
   const linked = state.meetingPreparations.filter(p => {
     const agenda = byId("agenda", p.agendaId);
-    const agendaManagerIds = normalizeLinkedManagerIds(ensureArray(agenda?.linkedManagerIds).length · agenda.linkedManagerIds : ensureArray(agenda?.linkedManagers));
+    const agendaManagerIds = normalizeLinkedManagerIds(ensureArray(agenda?.linkedManagerIds).length ? agenda.linkedManagerIds : ensureArray(agenda?.linkedManagers));
     return (p.linkedManagers || []).includes(m.id) || agendaManagerIds.includes(String(m.id));
   });
   return linked.map(p => {
     const a = byId("agenda", p.agendaId) || {};
     const start = agendaStartTime(a);
-    const timeLabel = agendaIsAllDay(a) · "Journée entière" : (start · start : "Heure à confirmer");
+    const timeLabel = agendaIsAllDay(a) ? "Journée entière" : (start ? start : "Heure à confirmer");
     return `<div class="item clickable" onclick="openMeetingPreparation('${esc(p.agendaId)}')"><strong>${esc(a.date || "")} · ${esc(timeLabel)} · ${esc(a.title || "Réunion")}</strong><span class="muted">${esc(a.type || "Réunion")} · ${esc(p.status || "À préparer")}</span><span class="meta">${esc(p.objectiveMain || a.notes || "")}</span></div>`;
   }).join("") || `<div class="empty">Aucune préparation de réunion liée.</div>`;
 }
@@ -5446,7 +5446,7 @@ function projectMeetingPreparationsList(project) {
   return linked.map(p => {
     const a = byId("agenda", p.agendaId) || {};
     const start = agendaStartTime(a);
-    const timeLabel = agendaIsAllDay(a) · "Journée entière" : (start · start : "Heure à confirmer");
+    const timeLabel = agendaIsAllDay(a) ? "Journée entière" : (start ? start : "Heure à confirmer");
     return `<div class="item clickable" onclick="openMeetingPreparation('${esc(p.agendaId)}')"><strong>${esc(a.date || "")} · ${esc(timeLabel)} · ${esc(a.title || "Réunion")}</strong><span class="muted">${esc(a.type || "Réunion")} · ${esc(p.status || "À préparer")}</span><span class="meta">${esc(p.objectiveMain || a.notes || "")}</span></div>`;
   }).join("") || `<div class="empty">Aucune préparation de réunion liée.</div>`;
 }
@@ -5455,9 +5455,9 @@ function openAgendaModal(id = "") {
   agendaEditId = id;
   agendaModalOpen = true;
   meetingCreateState = null;
-  const selected = id · byId("agenda", id) : null;
+  const selected = id ? byId("agenda", id) : null;
   console.log("[DEOS MANAGER DEBUG] manual open modal managers list", state.managers.map(m => ({ id: m.id, idType: typeof m.id, name: m.name })));
-  console.log("[DEOS MANAGER DEBUG] manual open modal event manager ids", normalizeLinkedManagerIds(ensureArray(selected?.linkedManagerIds).length · selected.linkedManagerIds : ensureArray(selected?.linkedManagers)));
+  console.log("[DEOS MANAGER DEBUG] manual open modal event manager ids", normalizeLinkedManagerIds(ensureArray(selected?.linkedManagerIds).length ? selected.linkedManagerIds : ensureArray(selected?.linkedManagers)));
   renderCockpit();
   toggleAgendaTimeFields();
   renderAgendaFormSelectedBadges();
@@ -5473,20 +5473,20 @@ function closeAgendaModal() {
 }
 
 function agendaForm() {
-  const a = agendaEditId · byId("agenda", agendaEditId) : null;
+  const a = agendaEditId ? byId("agenda", agendaEditId) : null;
   const followUp = normalizeMeetingEnrichment(a || {});
-  const selectedManagerIds = normalizeLinkedManagerIds(ensureArray(a?.linkedManagerIds).length · a.linkedManagerIds : ensureArray(a?.linkedManagers));
+  const selectedManagerIds = normalizeLinkedManagerIds(ensureArray(a?.linkedManagerIds).length ? a.linkedManagerIds : ensureArray(a?.linkedManagers));
   const dateValue = esc(a?.date || localIsoDate());
-  const allDayChecked = agendaIsAllDay(a) · "checked" : "";
+  const allDayChecked = agendaIsAllDay(a) ? "checked" : "";
   const startValue = esc(a?.startTime || a?.time || "");
   const endValue = esc(a?.endTime || "");
-  return `<div class="agenda-form">${agendaFormError · `<div class="form-error">${esc(agendaFormError)}</div>` : ""}
+  return `<div class="agenda-form">${agendaFormError ? `<div class="form-error">${esc(agendaFormError)}</div>` : ""}
     <div class="form-grid">
       <input id="agDate" type="date" value="${dateValue}">
       <label class="check-row"><input id="agAllDay" type="checkbox" ${allDayChecked} onchange="toggleAgendaTimeFields()"> Journée entière</label>
       <div class="time-row"><input id="agStart" type="time" value="${startValue}"><input id="agEnd" type="time" value="${endValue}"></div>
       <input id="agTitle" value="${esc(a?.title || "")}" placeholder="Titre">
-      <select id="agType"><option ${(!a || a.type === "CODIR") · "selected" : ""}>CODIR</option><option ${a?.type === "Exploitation" · "selected" : ""}>Exploitation</option><option ${a?.type === "RH" · "selected" : ""}>RH</option><option ${a?.type === "Projet" · "selected" : ""}>Projet</option><option ${a?.type === "CSE" · "selected" : ""}>CSE</option><option ${a?.type === "Entretien manager" · "selected" : ""}>Entretien manager</option><option ${a?.type === "Autre" · "selected" : ""}>Autre</option></select>
+      <select id="agType"><option ${(!a || a.type === "CODIR") ? "selected" : ""}>CODIR</option><option ${a?.type === "Exploitation" ? "selected" : ""}>Exploitation</option><option ${a?.type === "RH" ? "selected" : ""}>RH</option><option ${a?.type === "Projet" ? "selected" : ""}>Projet</option><option ${a?.type === "CSE" ? "selected" : ""}>CSE</option><option ${a?.type === "Entretien manager" ? "selected" : ""}>Entretien manager</option><option ${a?.type === "Autre" ? "selected" : ""}>Autre</option></select>
       <input id="agLocation" value="${esc(a?.location || "")}" placeholder="Lieu">
       <textarea id="agNotes" class="full" placeholder="Notes">${esc(a?.notes || a?.detail || "")}</textarea>
     </div>
@@ -5503,16 +5503,16 @@ function agendaForm() {
         <div class="full">
           <label for="agConfidentiality">Confidentialité</label>
           <select id="agConfidentiality">
-            <option value="normal" ${followUp.confidentiality === "normal" · "selected" : ""}>Normal</option>
-            <option value="restricted" ${followUp.confidentiality === "restricted" · "selected" : ""}>Restreint</option>
-            <option value="confidential" ${followUp.confidentiality === "confidential" · "selected" : ""}>Confidentiel</option>
+            <option value="normal" ${followUp.confidentiality === "normal" ? "selected" : ""}>Normal</option>
+            <option value="restricted" ${followUp.confidentiality === "restricted" ? "selected" : ""}>Restreint</option>
+            <option value="confidential" ${followUp.confidentiality === "confidential" ? "selected" : ""}>Confidentiel</option>
           </select>
         </div>
       </div>
-      ${a · meetingFollowUpSummaryHtml(followUp) : ""}
+      ${a ? meetingFollowUpSummaryHtml(followUp) : ""}
     </div>
-    ${a · renderCreateFromMeetingSection("manual", String(a.id)) : ""}
-    <div class="modal-actions"><button class="action" onclick="${a · "saveAgenda()" : "addAgenda()"}">Enregistrer</button>${a · `<button class="secondary" onclick="openMeetingPreparation('${a.id}')">Préparer la réunion</button>` : ""}<button class="secondary" onclick="cancelAgendaEdit()">Annuler</button></div>
+    ${a ? renderCreateFromMeetingSection("manual", String(a.id)) : ""}
+    <div class="modal-actions"><button class="action" onclick="${a ? "saveAgenda()" : "addAgenda()"}">Enregistrer</button>${a ? `<button class="secondary" onclick="openMeetingPreparation('${a.id}')">Préparer la réunion</button>` : ""}<button class="secondary" onclick="cancelAgendaEdit()">Annuler</button></div>
   </div>`;
 }
 
@@ -5539,7 +5539,7 @@ function onAgendaFormSelectionChange(event) {
 function agendaModal() {
   if (!agendaModalOpen) return "";
   const isEdit = Boolean(agendaEditId);
-  return `<div class="modal-backdrop" onclick="closeAgendaModal()"><div class="modal-panel" onclick="event.stopPropagation()"><div class="modal-head"><h2>${isEdit · "Modifier rendez-vous" : "Nouveau rendez-vous"}</h2><button class="icon-close" onclick="closeAgendaModal()" aria-label="Fermer">×</button></div>${agendaForm()}</div></div>`;
+  return `<div class="modal-backdrop" onclick="closeAgendaModal()"><div class="modal-panel" onclick="event.stopPropagation()"><div class="modal-head"><h2>${isEdit ? "Modifier rendez-vous" : "Nouveau rendez-vous"}</h2><button class="icon-close" onclick="closeAgendaModal()" aria-label="Fermer">×</button></div>${agendaForm()}</div></div>`;
 }
 
 function openExternalEventModal(eventRef) {
@@ -5564,7 +5564,7 @@ function externalEventModal() {
   const ev = (state.externalCalendarEvents || []).find(e => e._key === googleExternalEventModalId);
   if (!ev) return "";
   const enrichment = getExternalEventEnrichment(googleExternalEventModalId);
-  const time = ev.allDay · "Journée entière" : `${esc(ev.startTime || "")}${ev.endTime · " - " + esc(ev.endTime) : ""}`;
+  const time = ev.allDay ? "Journée entière" : `${esc(ev.startTime || "")}${ev.endTime ? " - " + esc(ev.endTime) : ""}`;
   
   // Zone Google Calendar (lecture seule)
   const googleSection = `<div style="border-bottom:1px solid #e2e8f0;padding-bottom:16px;margin-bottom:16px">
@@ -5574,11 +5574,11 @@ function externalEventModal() {
       <span style="color:#64748b;font-weight:500">Titre</span><span style="font-weight:500">${esc(ev.title)}</span>
       <span style="color:#64748b">Date</span><span>${esc(ev.date)}</span>
       <span style="color:#64748b">Heure</span><span>${time}</span>
-      ${ev.location · `<span style="color:#64748b">Lieu</span><span>${esc(ev.location)}</span>` : ""}
+      ${ev.location ? `<span style="color:#64748b">Lieu</span><span>${esc(ev.location)}</span>` : ""}
       <span style="color:#64748b">Calendrier</span><span>${esc(ev.calendarName || "Google Calendar")}</span>
       <span style="color:#64748b">Statut</span><span>${esc(ev.status || "confirmé")}</span>
     </div>
-    ${ev.description · `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:12px;color:#475569;white-space:pre-wrap;margin-top:10px">
+    ${ev.description ? `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:12px;color:#475569;white-space:pre-wrap;margin-top:10px">
       <span style="color:#64748b;font-size:11px">Description Google</span><br>${esc(ev.description)}
     </div>` : ""}
   </div>`;
@@ -5598,9 +5598,9 @@ function externalEventModal() {
           <button class="icon-btn" onclick="addExternalEventSubject('${esc(googleExternalEventModalId)}')" title="Ajouter un sujet" style="padding:4px 8px;font-size:11px">+ Ajouter</button>
         </div>
         <div id="subjectsList" style="display:grid;gap:6px;max-height:120px;overflow-y:auto">
-          ${enrichment.subjects && enrichment.subjects.length > 0 · enrichment.subjects.map((s, idx) => `<div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px;font-size:13px;display:flex;gap:8px;align-items:center">
-            <input type="checkbox" ${s.completed · "checked" : ""} onchange="updateExternalEventSubject('${esc(googleExternalEventModalId)}', '${esc(s.id)}', '${esc(s.title)}', '', this.checked)" style="cursor:pointer">
-            <span style="${s.completed · "text-decoration:line-through;color:#94a3b8" : ""}">${esc(s.title)}</span>
+          ${enrichment.subjects && enrichment.subjects.length > 0 ? enrichment.subjects.map((s, idx) => `<div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px;font-size:13px;display:flex;gap:8px;align-items:center">
+            <input type="checkbox" ${s.completed ? "checked" : ""} onchange="updateExternalEventSubject('${esc(googleExternalEventModalId)}', '${esc(s.id)}', '${esc(s.title)}', '', this.checked)" style="cursor:pointer">
+            <span style="${s.completed ? "text-decoration:line-through;color:#94a3b8" : ""}">${esc(s.title)}</span>
             <button class="icon-btn" type="button" onclick="deleteExternalEventSubject('${esc(googleExternalEventModalId)}', '${esc(s.id)}')" title="Supprimer le sujet" aria-label="Supprimer le sujet" style="padding:2px 6px;font-size:12px;margin-left:auto">×</button>
           </div>`).join("") : "<p style=\"color:#94a3b8;font-size:12px;margin:0\">Aucun sujet pour le moment</p>"}
         </div>
@@ -5634,9 +5634,9 @@ function externalEventModal() {
       <div>
         <label style="display:block;font-size:12px;color:#64748b;margin-bottom:4px;font-weight:500">Confidentialité</label>
         <select id="enrichConfidentiality" style="padding:8px;border:1px solid #e2e8f0;border-radius:6px;width:100%;font-size:14px">
-          <option value="normal" ${externalFollowUp.confidentiality === "normal" · "selected" : ""}>Normal</option>
-          <option value="restricted" ${externalFollowUp.confidentiality === "restricted" · "selected" : ""}>Restreint</option>
-          <option value="confidential" ${externalFollowUp.confidentiality === "confidential" · "selected" : ""}>Confidentiel</option>
+          <option value="normal" ${externalFollowUp.confidentiality === "normal" ? "selected" : ""}>Normal</option>
+          <option value="restricted" ${externalFollowUp.confidentiality === "restricted" ? "selected" : ""}>Restreint</option>
+          <option value="confidential" ${externalFollowUp.confidentiality === "confidential" ? "selected" : ""}>Confidentiel</option>
         </select>
         ${meetingFollowUpSummaryHtml(externalFollowUp)}
       </div>
@@ -5648,7 +5648,7 @@ function externalEventModal() {
           <button class="icon-btn" onclick="addExternalEventLink('${esc(googleExternalEventModalId)}')" title="Ajouter un lien" style="padding:4px 8px;font-size:11px">+ Lien</button>
         </div>
         <div id="linksList" style="display:grid;gap:6px;max-height:100px;overflow-y:auto">
-          ${enrichment.links && enrichment.links.length > 0 · enrichment.links.map(l => `<div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px;font-size:12px;display:flex;gap:8px;align-items:center;overflow:hidden">
+          ${enrichment.links && enrichment.links.length > 0 ? enrichment.links.map(l => `<div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px;font-size:12px;display:flex;gap:8px;align-items:center;overflow:hidden">
             <a href="${esc(l.url)}" target="_blank" style="color:#0284c7;text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(l.url)}">${esc(l.name || l.url)}</a>
             <button class="icon-btn" type="button" onclick="deleteExternalEventLink('${esc(googleExternalEventModalId)}', '${esc(l.id)}')" title="Supprimer le lien" aria-label="Supprimer le lien" style="padding:2px 6px;font-size:12px">×</button>
           </div>`).join("") : "<p style=\"color:#94a3b8;font-size:12px;margin:0\">Aucun lien pour le moment</p>"}
@@ -5661,9 +5661,9 @@ function externalEventModal() {
           <label style="font-size:12px;color:#64748b;font-weight:500">Actions liées</label>
         </div>
         <div id="actionsList" style="display:grid;gap:6px;max-height:100px;overflow-y:auto">
-          ${enrichment.linkedActionIds && enrichment.linkedActionIds.length > 0 · enrichment.linkedActionIds.map(actionId => {
+          ${enrichment.linkedActionIds && enrichment.linkedActionIds.length > 0 ? enrichment.linkedActionIds.map(actionId => {
             const action = byId("actions", actionId);
-            return action · `<div style="background:#ecfdf5;border:1px solid #d1fae5;border-radius:6px;padding:8px;font-size:12px;display:flex;gap:8px;align-items:center;overflow:hidden">
+            return action ? `<div style="background:#ecfdf5;border:1px solid #d1fae5;border-radius:6px;padding:8px;font-size:12px;display:flex;gap:8px;align-items:center;overflow:hidden">
               <a href="javascript:openActionModal('${esc(actionId)}')" style="color:#059669;text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(action.title)}</a>
               <button class="icon-btn" type="button" onclick="unlinkActionFromExternalEvent('${esc(googleExternalEventModalId)}', '${esc(actionId)}')" title="Délier l'action" aria-label="Délier l'action" style="padding:2px 6px;font-size:12px">×</button>
             </div>` : "";
@@ -5677,9 +5677,9 @@ function externalEventModal() {
           <label style="font-size:12px;color:#64748b;font-weight:500">Décisions liées</label>
         </div>
         <div id="decisionsList" style="display:grid;gap:6px;max-height:100px;overflow-y:auto">
-          ${enrichment.linkedDecisionIds && enrichment.linkedDecisionIds.length > 0 · enrichment.linkedDecisionIds.map(decisionId => {
+          ${enrichment.linkedDecisionIds && enrichment.linkedDecisionIds.length > 0 ? enrichment.linkedDecisionIds.map(decisionId => {
             const decision = byId("decisions", decisionId);
-            return decision · `<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:8px;font-size:12px;display:flex;gap:8px;align-items:center;overflow:hidden">
+            return decision ? `<div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;padding:8px;font-size:12px;display:flex;gap:8px;align-items:center;overflow:hidden">
               <a href="javascript:openDecisionModal('${esc(decisionId)}')" style="color:#b45309;text-decoration:none;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(decision.title)}</a>
               <button class="icon-btn" type="button" onclick="unlinkDecisionFromExternalEvent('${esc(googleExternalEventModalId)}', '${esc(decisionId)}')" title="Délier la décision" aria-label="Délier la décision" style="padding:2px 6px;font-size:12px">×</button>
             </div>` : "";
@@ -5708,9 +5708,9 @@ function externalEventModal() {
             <button class="icon-btn" type="button" onclick="linkObjectToExternalEvent('folder', document.getElementById('folderSelect').value)" style="padding:6px 12px;font-size:12px;white-space:nowrap">Ajouter</button>
           </div>
           <div style="display:grid;gap:6px">
-            ${enrichment.linkedFolderIds && enrichment.linkedFolderIds.length > 0 · enrichment.linkedFolderIds.map(folderId => {
+            ${enrichment.linkedFolderIds && enrichment.linkedFolderIds.length > 0 ? enrichment.linkedFolderIds.map(folderId => {
               const folder = byId("folders", folderId);
-              return folder · `<div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px;font-size:12px;display:flex;gap:8px;align-items:center;overflow:hidden">
+              return folder ? `<div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px;font-size:12px;display:flex;gap:8px;align-items:center;overflow:hidden">
                 <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(folder.name)}</span>
                 <button class="icon-btn" type="button" onclick="unlinkObjectFromExternalEvent('folder', '${esc(folderId)}')" style="padding:2px 6px;font-size:14px;line-height:1">×</button>
               </div>` : "";
@@ -5731,9 +5731,9 @@ function externalEventModal() {
             <button class="icon-btn" type="button" onclick="linkObjectToExternalEvent('project', document.getElementById('projectSelect').value)" style="padding:6px 12px;font-size:12px;white-space:nowrap">Ajouter</button>
           </div>
           <div style="display:grid;gap:6px">
-            ${enrichment.linkedProjectIds && enrichment.linkedProjectIds.length > 0 · enrichment.linkedProjectIds.map(projectId => {
+            ${enrichment.linkedProjectIds && enrichment.linkedProjectIds.length > 0 ? enrichment.linkedProjectIds.map(projectId => {
               const project = byId("projects", projectId);
-              return project · `<div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px;font-size:12px;display:flex;gap:8px;align-items:center;overflow:hidden">
+              return project ? `<div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px;font-size:12px;display:flex;gap:8px;align-items:center;overflow:hidden">
                 <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(project.name)}</span>
                 <button class="icon-btn" type="button" onclick="unlinkObjectFromExternalEvent('project', '${esc(projectId)}')" style="padding:2px 6px;font-size:14px;line-height:1">×</button>
               </div>` : "";
@@ -5754,9 +5754,9 @@ function externalEventModal() {
             <button class="icon-btn" type="button" onclick="linkObjectToExternalEvent('manager', document.getElementById('managerSelect').value)" style="padding:6px 12px;font-size:12px;white-space:nowrap">Ajouter</button>
           </div>
           <div style="display:grid;gap:6px">
-            ${enrichment.linkedManagerIds && enrichment.linkedManagerIds.length > 0 · enrichment.linkedManagerIds.map(managerId => {
+            ${enrichment.linkedManagerIds && enrichment.linkedManagerIds.length > 0 ? enrichment.linkedManagerIds.map(managerId => {
               const manager = byId("managers", managerId);
-              return manager · `<div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px;font-size:12px;display:flex;gap:8px;align-items:center;overflow:hidden">
+              return manager ? `<div style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;padding:8px;font-size:12px;display:flex;gap:8px;align-items:center;overflow:hidden">
                 <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(manager.name)}</span>
                 <button class="icon-btn" type="button" onclick="unlinkObjectFromExternalEvent('manager', '${esc(managerId)}')" style="padding:2px 6px;font-size:14px;line-height:1">×</button>
               </div>` : "";
@@ -5774,7 +5774,7 @@ function externalEventModal() {
     </div>
     <div style="padding:16px;display:grid;gap:16px">
       ${googleSection}
-      ${enrichment.sourceUnavailable · `<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:12px;font-size:13px;color:#991b1b">
+      ${enrichment.sourceUnavailable ? `<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:12px;font-size:13px;color:#991b1b">
         ℹ️ L'événement Google d'origine n'est plus disponible. Vos enrichissements locaux sont conservés.
       </div>` : ""}
       ${deosSectionHTML}
@@ -5801,7 +5801,7 @@ function meetingSubjectModal() {
   if (meetingSubjectModalAgendaId === null) return "";
   if (meetingSubjectModalAgendaId === "") {
     const meetings = futureMeetings();
-    return `<div class="modal-backdrop" onclick="closeMeetingSubjectModal()"><div class="modal-panel subject-modal" onclick="event.stopPropagation()"><div class="modal-head"><h2>Ajouter un sujet de réunion</h2><button class="icon-close" onclick="closeMeetingSubjectModal()" aria-label="Fermer">×</button></div>${meetings.length · meetingSubjectForm(meetings[0].id, true) : `<div class="empty">Aucune réunion future disponible. Créez d'abord un rendez-vous dans l'agenda.</div><button class="secondary" onclick="closeMeetingSubjectModal()">Fermer</button>`}</div></div>`;
+    return `<div class="modal-backdrop" onclick="closeMeetingSubjectModal()"><div class="modal-panel subject-modal" onclick="event.stopPropagation()"><div class="modal-head"><h2>Ajouter un sujet de réunion</h2><button class="icon-close" onclick="closeMeetingSubjectModal()" aria-label="Fermer">×</button></div>${meetings.length ? meetingSubjectForm(meetings[0].id, true) : `<div class="empty">Aucune réunion future disponible. Créez d'abord un rendez-vous dans l'agenda.</div><button class="secondary" onclick="closeMeetingSubjectModal()">Fermer</button>`}</div></div>`;
   }
   return `<div class="modal-backdrop" onclick="closeMeetingSubjectModal()"><div class="modal-panel subject-modal" onclick="event.stopPropagation()"><div class="modal-head"><h2>Ajouter un sujet de réunion</h2><button class="icon-close" onclick="closeMeetingSubjectModal()" aria-label="Fermer">×</button></div>${meetingSubjectForm(meetingSubjectModalAgendaId, false)}</div></div>`;
 }
@@ -5809,7 +5809,7 @@ function meetingSubjectModal() {
 function meetingSubjectForm(selectedAgendaId = "", showMeetingSelect = false) {
   const meetings = futureMeetings();
   const selected = byId("agenda", selectedAgendaId) || meetings[0] || {};
-  return `<div class="form-grid"><textarea id="msText" class="full" placeholder="Sujet, question ou point à aborder"></textarea>${showMeetingSelect · `<select id="msAgenda" class="full">${meetings.map(a => `<option value="${esc(a.id)}" ${selected.id === a.id · "selected" : ""}>${esc(a.date || "")} · ${esc(agendaStartTime(a) || (agendaIsAllDay(a) · 'Journée entière' : 'Heure à confirmer'))} · ${esc(a.title || "Réunion")}</option>`).join("")}</select>` : `<input class="full" value="${esc(`${selected.date || ""} · ${agendaStartTime(selected) || (agendaIsAllDay(selected) · 'Journée entière' : 'Heure à confirmer')} · ${selected.title || "Réunion"}`)}" disabled>`}<select id="msCategory"><option>Sujet</option><option>Question</option><option>Information</option><option>Décision attendue</option><option>Point de vigilance</option></select><select id="msImportance"><option>normale</option><option>importante</option><option>critique</option></select></div><div class="modal-actions"><button class="action" onclick="saveMeetingSubjectQuick()">Enregistrer</button><button class="secondary" onclick="closeMeetingSubjectModal()">Annuler</button></div>`;
+  return `<div class="form-grid"><textarea id="msText" class="full" placeholder="Sujet, question ou point à aborder"></textarea>${showMeetingSelect ? `<select id="msAgenda" class="full">${meetings.map(a => `<option value="${esc(a.id)}" ${selected.id === a.id ? "selected" : ""}>${esc(a.date || "")} · ${esc(agendaStartTime(a) || (agendaIsAllDay(a) ? 'Journée entière' : 'Heure à confirmer'))} · ${esc(a.title || "Réunion")}</option>`).join("")}</select>` : `<input class="full" value="${esc(`${selected.date || ""} · ${agendaStartTime(selected) || (agendaIsAllDay(selected) ? 'Journée entière' : 'Heure à confirmer')} · ${selected.title || "Réunion"}`)}" disabled>`}<select id="msCategory"><option>Sujet</option><option>Question</option><option>Information</option><option>Décision attendue</option><option>Point de vigilance</option></select><select id="msImportance"><option>normale</option><option>importante</option><option>critique</option></select></div><div class="modal-actions"><button class="action" onclick="saveMeetingSubjectQuick()">Enregistrer</button><button class="secondary" onclick="closeMeetingSubjectModal()">Annuler</button></div>`;
 }
 
 function saveMeetingSubjectQuick() {
@@ -5819,7 +5819,7 @@ function saveMeetingSubjectQuick() {
   if (!a || !text) return;
   const p = ensureMeetingPreparation(agendaId);
   p.ideas.push({ id: newId("idea"), text, createdAt: new Date().toLocaleString("fr-FR"), author: identityName(), category: document.getElementById("msCategory")?.value || "Sujet", importance: document.getElementById("msImportance")?.value || "normale", confidentiality: "partageable", status: "À traiter", conclusion: "" });
-  p.status = p.status === "À préparer" · "Préparation en cours" : p.status;
+  p.status = p.status === "À préparer" ? "Préparation en cours" : p.status;
   persist("meetingPreparations");
   addActivity("🗓️ Sujet réunion", a.title, text, p.id);
   meetingSubjectModalAgendaId = null;
@@ -5852,8 +5852,8 @@ function readAgendaForm(existing = {}) {
     const [sh, sm] = start.split(":").map(Number);
     const [eh, em] = end.split(":").map(Number);
     if (Number.isFinite(sh) && Number.isFinite(eh)) {
-      const smins = sh * 60 + (Number.isFinite(sm) · sm : 0);
-      const emins = eh * 60 + (Number.isFinite(em) · em : 0);
+      const smins = sh * 60 + (Number.isFinite(sm) ? sm : 0);
+      const emins = eh * 60 + (Number.isFinite(em) ? em : 0);
       if (emins < smins) {
         agendaFormError = "L'heure de fin ne peut pas être antérieure à l'heure de début.";
         renderCockpit();
@@ -5874,9 +5874,9 @@ function readAgendaForm(existing = {}) {
   const data = {
     ...existing,
     date: date || localIsoDate(),
-    startTime: allDay · "" : (start || ""),
-    time: allDay · "" : (start || ""),
-    endTime: allDay · "" : (end || ""),
+    startTime: allDay ? "" : (start || ""),
+    time: allDay ? "" : (start || ""),
+    endTime: allDay ? "" : (end || ""),
     title,
     type: document.getElementById("agType").value,
     location: document.getElementById("agLocation").value.trim(),
@@ -5906,7 +5906,7 @@ function addAgenda() {
   persist("agenda");
   ensureMeetingPreparation(data.id);
   addActivity("📅 Agenda", data.title, `${data.date} ${agendaStartTime(data)}`, data.id);
-  agendaFilter = data.date === localIsoDate() · "today" : agendaFilter;
+  agendaFilter = data.date === localIsoDate() ? "today" : agendaFilter;
   agendaModalOpen = false;
   agendaEditId = "";
   renderCockpit();
@@ -5960,7 +5960,7 @@ function syncMeetingPreparationLinks(agendaId) {
   const a = byId("agenda", agendaId);
   const p = meetingPrepForAgenda(agendaId);
   if (!a || !p) return;
-  const agendaManagerIds = normalizeLinkedManagerIds(ensureArray(a.linkedManagerIds).length · a.linkedManagerIds : ensureArray(a.linkedManagers));
+  const agendaManagerIds = normalizeLinkedManagerIds(ensureArray(a.linkedManagerIds).length ? a.linkedManagerIds : ensureArray(a.linkedManagers));
   p.linkedManagers = [...new Set([...(p.linkedManagers || []), ...agendaManagerIds])];
   p.linkedProjects = [...new Set([...(p.linkedProjects || []), ...(a.linkedProjects || [])])];
   p.linkedFolders = [...new Set([...(p.linkedFolders || []), ...(a.linkedFolders || [])])];
@@ -5970,7 +5970,7 @@ function syncMeetingPreparationLinks(agendaId) {
 function ensureMeetingPreparation(agendaId) {
   const a = byId("agenda", agendaId);
   if (!a) return null;
-  const agendaManagerIds = normalizeLinkedManagerIds(ensureArray(a.linkedManagerIds).length · a.linkedManagerIds : ensureArray(a.linkedManagers));
+  const agendaManagerIds = normalizeLinkedManagerIds(ensureArray(a.linkedManagerIds).length ? a.linkedManagerIds : ensureArray(a.linkedManagers));
   let p = meetingPrepForAgenda(agendaId);
   if (!p) {
     p = normalizeMeetingPreparation({
@@ -5992,7 +5992,7 @@ function ensureMeetingPreparation(agendaId) {
 }
 
 function prepStatusSelect(id, selected) {
-  return `<select id="${id}">${meetingPrepStatuses.map(s => `<option value="${esc(s)}" ${selected === s · "selected" : ""}>${esc(s)}</option>`).join("")}</select>`;
+  return `<select id="${id}">${meetingPrepStatuses.map(s => `<option value="${esc(s)}" ${selected === s ? "selected" : ""}>${esc(s)}</option>`).join("")}</select>`;
 }
 
 function prepDaysLabel(a) {
@@ -6012,8 +6012,8 @@ function prepAgendaDuration(p, a) {
     const [eh, em] = a.endTime.split(":").map(Number);
     available = (eh * 60 + em) - (sh * 60 + sm);
   }
-  const end = a.startTime && minutes · theoreticalEndTime(a.startTime, minutes) : "";
-  const alert = available > 0 && minutes > available · `<span class="prep-alert">Durée prévue supérieure au rendez-vous</span>` : "";
+  const end = a.startTime && minutes ? theoreticalEndTime(a.startTime, minutes) : "";
+  const alert = available > 0 && minutes > available ? `<span class="prep-alert">Durée prévue supérieure au rendez-vous</span>` : "";
   return `<div class="prep-kpis"><span>${minutes}<small>min prévues</small></span><span>${end || "À calculer"}<small>fin théorique</small></span><span>${available || "N/D"}<small>min disponibles</small></span></div>${alert}`;
 }
 
@@ -6031,20 +6031,20 @@ function prepLinkedNames(ids, entity, labelFn) {
 function prepIdeaList(p) {
   return (p.ideas || []).map((idea, index) => {
     const status = idea.status || "À traiter";
-    const conclusion = idea.conclusion · `<span class="meta">Conclusion : ${esc(idea.conclusion)}</span>` : "";
-    const linked = `${prepLinkedNames([idea.managerId], "managers", m => m.name)}${idea.projectId · " · " + prepLinkedNames([idea.projectId], "projects", pr => pr.name) : ""}${idea.folderId · " · " + prepLinkedNames([idea.folderId], "folders", f => f.name) : ""}`;
-    return `<div class="item prep-item prep-subject ${status === "Traité" · "subject-done" : status === "Reporté" · "subject-postponed" : ""}"><strong>${esc(idea.text || "Sujet")}</strong><span class="muted">${esc(idea.category || "Sujet")} · ${esc(status)} · ${esc(idea.importance || "normale")} · ${esc(idea.createdAt || "")}</span><span class="meta">${esc(linked)}</span>${conclusion}<div class="row-actions"><button class="secondary" onclick="editPrepIdea('${p.id}','${idea.id}')">Modifier</button><button class="secondary" onclick="setPrepIdeaStatus('${p.id}','${idea.id}','Traité')">Traité</button><button class="secondary" onclick="setPrepIdeaStatus('${p.id}','${idea.id}','Non traité')">Non traité</button><button class="secondary" onclick="setPrepIdeaStatus('${p.id}','${idea.id}','Reporté')">Reporté</button><button class="secondary" onclick="setPrepIdeaConclusion('${p.id}','${idea.id}')">Conclusion</button><button class="secondary" onclick="transferPrepIdea('${p.id}','${idea.id}')">Transférer</button><button class="secondary" onclick="transformIdeaToTopic('${p.id}','${idea.id}')">Ordre du jour</button><button class="secondary" onclick="transformIdeaToAction('${p.id}','${idea.id}')">Action</button><button class="secondary" onclick="transformIdeaToDecision('${p.id}','${idea.id}')">Décision</button><button class="secondary" onclick="movePrepIdea('${p.id}',${index},-1)">Monter</button><button class="secondary" onclick="movePrepIdea('${p.id}',${index},1)">Descendre</button><button class="danger" onclick="deletePrepIdea('${p.id}','${idea.id}')">Supprimer</button></div></div>`;
+    const conclusion = idea.conclusion ? `<span class="meta">Conclusion : ${esc(idea.conclusion)}</span>` : "";
+    const linked = `${prepLinkedNames([idea.managerId], "managers", m => m.name)}${idea.projectId ? " · " + prepLinkedNames([idea.projectId], "projects", pr => pr.name) : ""}${idea.folderId ? " · " + prepLinkedNames([idea.folderId], "folders", f => f.name) : ""}`;
+    return `<div class="item prep-item prep-subject ${status === "Traité" ? "subject-done" : status === "Reporté" ? "subject-postponed" : ""}"><strong>${esc(idea.text || "Sujet")}</strong><span class="muted">${esc(idea.category || "Sujet")} · ${esc(status)} · ${esc(idea.importance || "normale")} · ${esc(idea.createdAt || "")}</span><span class="meta">${esc(linked)}</span>${conclusion}<div class="row-actions"><button class="secondary" onclick="editPrepIdea('${p.id}','${idea.id}')">Modifier</button><button class="secondary" onclick="setPrepIdeaStatus('${p.id}','${idea.id}','Traité')">Traité</button><button class="secondary" onclick="setPrepIdeaStatus('${p.id}','${idea.id}','Non traité')">Non traité</button><button class="secondary" onclick="setPrepIdeaStatus('${p.id}','${idea.id}','Reporté')">Reporté</button><button class="secondary" onclick="setPrepIdeaConclusion('${p.id}','${idea.id}')">Conclusion</button><button class="secondary" onclick="transferPrepIdea('${p.id}','${idea.id}')">Transférer</button><button class="secondary" onclick="transformIdeaToTopic('${p.id}','${idea.id}')">Ordre du jour</button><button class="secondary" onclick="transformIdeaToAction('${p.id}','${idea.id}')">Action</button><button class="secondary" onclick="transformIdeaToDecision('${p.id}','${idea.id}')">Décision</button><button class="secondary" onclick="movePrepIdea('${p.id}',${index},-1)">Monter</button><button class="secondary" onclick="movePrepIdea('${p.id}',${index},1)">Descendre</button><button class="danger" onclick="deletePrepIdea('${p.id}','${idea.id}')">Supprimer</button></div></div>`;
   }).join("") || `<div class="empty">Aucun sujet collecté.</div>`;
 }
 
 function prepTopicList(p, a) {
-  const rows = (p.agendaTopics || []).map((t, index) => `<div class="item prep-item"><strong>${index + 1}. ${esc(t.title || "Sujet")}</strong><span class="muted">${esc(t.type || "Information")} · ${esc(t.duration || "0")} min · Présentation : ${esc(t.presenter || "À définir")} · ${esc(t.status || "À traiter")}</span><span class="meta">${esc(t.objective || "")}${t.expectedDecision · " · Décision attendue : " + esc(t.expectedDecision) : ""}</span><div class="row-actions"><button class="secondary" onclick="movePrepTopic('${p.id}',${index},-1)">Monter</button><button class="secondary" onclick="movePrepTopic('${p.id}',${index},1)">Descendre</button><button class="secondary" onclick="duplicatePrepTopic('${p.id}','${t.id}')">Dupliquer</button><button class="secondary" onclick="setPrepTopicStatus('${p.id}','${t.id}','Traité')">Traité</button><button class="secondary" onclick="setPrepTopicStatus('${p.id}','${t.id}','Reporté')">Reporté</button><button class="danger" onclick="deletePrepTopic('${p.id}','${t.id}')">Supprimer</button></div></div>`).join("") || `<div class="empty">Aucun sujet à l'ordre du jour.</div>`;
+  const rows = (p.agendaTopics || []).map((t, index) => `<div class="item prep-item"><strong>${index + 1}. ${esc(t.title || "Sujet")}</strong><span class="muted">${esc(t.type || "Information")} · ${esc(t.duration || "0")} min · Présentation : ${esc(t.presenter || "À définir")} · ${esc(t.status || "À traiter")}</span><span class="meta">${esc(t.objective || "")}${t.expectedDecision ? " · Décision attendue : " + esc(t.expectedDecision) : ""}</span><div class="row-actions"><button class="secondary" onclick="movePrepTopic('${p.id}',${index},-1)">Monter</button><button class="secondary" onclick="movePrepTopic('${p.id}',${index},1)">Descendre</button><button class="secondary" onclick="duplicatePrepTopic('${p.id}','${t.id}')">Dupliquer</button><button class="secondary" onclick="setPrepTopicStatus('${p.id}','${t.id}','Traité')">Traité</button><button class="secondary" onclick="setPrepTopicStatus('${p.id}','${t.id}','Reporté')">Reporté</button><button class="danger" onclick="deletePrepTopic('${p.id}','${t.id}')">Supprimer</button></div></div>`).join("") || `<div class="empty">Aucun sujet à l'ordre du jour.</div>`;
   return `${prepAgendaDuration(p, a)}${rows}`;
 }
 
 function prepParticipantList(p) {
   return (p.participants || []).map(part => {
-    const label = part.managerId · prepLinkedNames([part.managerId], "managers", m => `${m.name} · ${m.role || ""}`) : part.name;
+    const label = part.managerId ? prepLinkedNames([part.managerId], "managers", m => `${m.name} · ${m.role || ""}`) : part.name;
     return `<div class="item prep-item"><strong>${esc(label || "Participant")}</strong><span class="muted">${esc(part.status || "Présent attendu")} · ${esc(part.role || "Rôle à préciser")}</span><span class="meta">${esc(part.topics || "Sujets à préciser")}</span><button class="danger" onclick="deletePrepParticipant('${p.id}','${part.id}')">Supprimer</button></div>`;
   }).join("") || `<div class="empty">Aucun participant préparé.</div>`;
 }
@@ -6054,7 +6054,7 @@ function prepItemList(p) {
 }
 
 function prepDocumentsList(p) {
-  return (p.usefulDocuments || []).map(doc => `<div class="item prep-item"><strong>${esc(doc.documentId · prepLinkedNames([doc.documentId], "documents", d => d.title) : doc.title || "Document")}</strong><span class="muted">${esc(doc.type || "Document")} · ${esc(doc.version || "")} · ${esc(doc.status || "À préparer")}</span><span class="meta">${esc(doc.date || "")}</span><div class="row-actions">${doc.documentId · `<button class="secondary" onclick="editDocument('${doc.documentId}')">Ouvrir document</button>` : `<button class="secondary" onclick="createDocumentFromPrep('${p.id}','${doc.id}')">Créer fiche Document</button>`}<button class="danger" onclick="deletePrepDocument('${p.id}','${doc.id}')">Supprimer</button></div></div>`).join("") || `<div class="empty">Aucun document utile.</div>`;
+  return (p.usefulDocuments || []).map(doc => `<div class="item prep-item"><strong>${esc(doc.documentId ? prepLinkedNames([doc.documentId], "documents", d => d.title) : doc.title || "Document")}</strong><span class="muted">${esc(doc.type || "Document")} · ${esc(doc.version || "")} · ${esc(doc.status || "À préparer")}</span><span class="meta">${esc(doc.date || "")}</span><div class="row-actions">${doc.documentId ? `<button class="secondary" onclick="editDocument('${doc.documentId}')">Ouvrir document</button>` : `<button class="secondary" onclick="createDocumentFromPrep('${p.id}','${doc.id}')">Créer fiche Document</button>`}<button class="danger" onclick="deletePrepDocument('${p.id}','${doc.id}')">Supprimer</button></div></div>`).join("") || `<div class="empty">Aucun document utile.</div>`;
 }
 
 function prepPerformanceList(p) {
@@ -6062,12 +6062,12 @@ function prepPerformanceList(p) {
 }
 
 function prepArbitrationList(p) {
-  return (p.arbitrations || []).map(item => `<div class="item prep-item"><strong>${esc(item.subject || "Arbitrage")}</strong><span class="muted">${esc(item.status || "À préparer")} · décideur : ${esc(item.decider || "À préciser")} · ${esc(item.wantedDate || "")}</span><span class="meta">${esc(item.context || "")}${item.recommendation · " · Recommandation : " + esc(item.recommendation) : ""}</span><div class="row-actions"><button class="secondary" onclick="transformArbitrationToDecision('${p.id}','${item.id}')">Créer décision ${esc(identity.appName)}</button><button class="danger" onclick="deletePrepArbitration('${p.id}','${item.id}')">Supprimer</button></div></div>`).join("") || `<div class="empty">Aucun arbitrage préparé.</div>`;
+  return (p.arbitrations || []).map(item => `<div class="item prep-item"><strong>${esc(item.subject || "Arbitrage")}</strong><span class="muted">${esc(item.status || "À préparer")} · décideur : ${esc(item.decider || "À préciser")} · ${esc(item.wantedDate || "")}</span><span class="meta">${esc(item.context || "")}${item.recommendation ? " · Recommandation : " + esc(item.recommendation) : ""}</span><div class="row-actions"><button class="secondary" onclick="transformArbitrationToDecision('${p.id}','${item.id}')">Créer décision ${esc(identity.appName)}</button><button class="danger" onclick="deletePrepArbitration('${p.id}','${item.id}')">Supprimer</button></div></div>`).join("") || `<div class="empty">Aucun arbitrage préparé.</div>`;
 }
 
 function prepRunView(p) {
   const topic = (p.agendaTopics || [])[p.run.currentIndex || 0];
-  return `<div class="card full-span conduct-panel"><div class="row"><h2>Conduire la réunion</h2><div class="row-actions"><button class="secondary" onclick="moveConductTopic('${p.id}',-1)">Sujet précédent</button><button class="secondary" onclick="moveConductTopic('${p.id}',1)">Sujet suivant</button><button class="action" onclick="finishMeeting('${p.id}')">Terminer la réunion</button></div></div><p><strong>Sujet en cours :</strong> ${esc(topic · topic.title : "Aucun sujet")}</p><div class="form-grid"><textarea id="runNote" placeholder="Note prise pendant la réunion"></textarea><textarea id="runDecision" placeholder="Décision prise"></textarea><textarea id="runAction" placeholder="Action décidée"></textarea><textarea id="runPostponed" placeholder="Point reporté"></textarea></div><div class="manager-links"><label>Participants réellement présents</label>${checkboxList("runPresent", p.participants || [], p.run.presentParticipants || [], x => x.managerId · prepLinkedNames([x.managerId], "managers", m => m.name) : x.name)}</div><div class="row-actions"><button class="secondary" onclick="addConductNote('${p.id}')">Ajouter note</button><button class="secondary" onclick="createConductAction('${p.id}')">Créer action</button><button class="secondary" onclick="createConductDecision('${p.id}')">Créer décision</button><button class="secondary" onclick="markCurrentTopic('${p.id}','Traité')">Sujet traité</button><button class="secondary" onclick="markCurrentTopic('${p.id}','Reporté')">Sujet reporté</button><button class="action" onclick="generateMeetingReport('${p.id}')">Générer le compte rendu</button></div>${prepRunHistory(p)}</div>`;
+  return `<div class="card full-span conduct-panel"><div class="row"><h2>Conduire la réunion</h2><div class="row-actions"><button class="secondary" onclick="moveConductTopic('${p.id}',-1)">Sujet précédent</button><button class="secondary" onclick="moveConductTopic('${p.id}',1)">Sujet suivant</button><button class="action" onclick="finishMeeting('${p.id}')">Terminer la réunion</button></div></div><p><strong>Sujet en cours :</strong> ${esc(topic ? topic.title : "Aucun sujet")}</p><div class="form-grid"><textarea id="runNote" placeholder="Note prise pendant la réunion"></textarea><textarea id="runDecision" placeholder="Décision prise"></textarea><textarea id="runAction" placeholder="Action décidée"></textarea><textarea id="runPostponed" placeholder="Point reporté"></textarea></div><div class="manager-links"><label>Participants réellement présents</label>${checkboxList("runPresent", p.participants || [], p.run.presentParticipants || [], x => x.managerId ? prepLinkedNames([x.managerId], "managers", m => m.name) : x.name)}</div><div class="row-actions"><button class="secondary" onclick="addConductNote('${p.id}')">Ajouter note</button><button class="secondary" onclick="createConductAction('${p.id}')">Créer action</button><button class="secondary" onclick="createConductDecision('${p.id}')">Créer décision</button><button class="secondary" onclick="markCurrentTopic('${p.id}','Traité')">Sujet traité</button><button class="secondary" onclick="markCurrentTopic('${p.id}','Reporté')">Sujet reporté</button><button class="action" onclick="generateMeetingReport('${p.id}')">Générer le compte rendu</button></div>${prepRunHistory(p)}</div>`;
 }
 
 function prepRunHistory(p) {
@@ -6076,7 +6076,7 @@ function prepRunHistory(p) {
 }
 
 function meetingPrepForm(p, a) {
-  return `<div class="card full-span"><h2>Objectif de la réunion</h2><div class="form-grid"><input id="mpOrganizer" value="${esc(p.organizer || identityName())}" placeholder="Organisateur"><select id="mpTemplate">${meetingPrepTemplates.map(t => `<option value="${esc(t)}" ${p.template === t || (!p.template && a.type === t) · "selected" : ""}>${esc(t)}</option>`).join("")}</select>${prepStatusSelect("mpStatus", p.status)}<select id="mpLevel"><option ${p.prepLevel === "à démarrer" · "selected" : ""}>à démarrer</option><option ${p.prepLevel === "en cours" · "selected" : ""}>en cours</option><option ${p.prepLevel === "prête" · "selected" : ""}>prête</option></select></div><textarea id="mpObjective" placeholder="Objectif principal">${esc(p.objectiveMain || "")}</textarea><textarea id="mpResults" placeholder="Résultats attendus">${esc(p.expectedResults || "")}</textarea><textarea id="mpDecisions" placeholder="Décisions attendues">${esc(p.expectedDecisions || "")}</textarea><div class="grid two manager-links"><div><label>Managers</label>${checkboxList("mpManagers", state.managers, [...new Set([...(a.linkedManagers || []), ...(p.linkedManagers || [])])], m => `${m.name} · ${m.role || ""}`)}</div><div><label>Projets</label>${checkboxList("mpProjects", state.projects, [...new Set([...(a.linkedProjects || []), ...(p.linkedProjects || [])])], pr => pr.name)}</div><div><label>Dossiers</label>${folderSelect("mpFolders", [...new Set([...(a.linkedFolders || []), ...(p.linkedFolders || [])])])}</div><div><label>Décisions existantes</label>${checkboxList("mpDecisionsLinked", state.decisions, p.linkedDecisions || [], d => d.title)}</div><div><label>Actions existantes</label>${checkboxList("mpActionsLinked", state.actions, p.linkedActions || [], ac => ac.title)}</div><div><label>Documents existants</label>${checkboxList("mpDocumentsLinked", state.documents, p.linkedDocuments || [], d => d.title)}</div></div><button class="action" onclick="saveMeetingPreparationMain('${p.id}')">Enregistrer la préparation</button></div>`;
+  return `<div class="card full-span"><h2>Objectif de la réunion</h2><div class="form-grid"><input id="mpOrganizer" value="${esc(p.organizer || identityName())}" placeholder="Organisateur"><select id="mpTemplate">${meetingPrepTemplates.map(t => `<option value="${esc(t)}" ${p.template === t || (!p.template && a.type === t) ? "selected" : ""}>${esc(t)}</option>`).join("")}</select>${prepStatusSelect("mpStatus", p.status)}<select id="mpLevel"><option ${p.prepLevel === "à démarrer" ? "selected" : ""}>à démarrer</option><option ${p.prepLevel === "en cours" ? "selected" : ""}>en cours</option><option ${p.prepLevel === "prête" ? "selected" : ""}>prête</option></select></div><textarea id="mpObjective" placeholder="Objectif principal">${esc(p.objectiveMain || "")}</textarea><textarea id="mpResults" placeholder="Résultats attendus">${esc(p.expectedResults || "")}</textarea><textarea id="mpDecisions" placeholder="Décisions attendues">${esc(p.expectedDecisions || "")}</textarea><div class="grid two manager-links"><div><label>Managers</label>${checkboxList("mpManagers", state.managers, [...new Set([...(a.linkedManagers || []), ...(p.linkedManagers || [])])], m => `${m.name} · ${m.role || ""}`)}</div><div><label>Projets</label>${checkboxList("mpProjects", state.projects, [...new Set([...(a.linkedProjects || []), ...(p.linkedProjects || [])])], pr => pr.name)}</div><div><label>Dossiers</label>${folderSelect("mpFolders", [...new Set([...(a.linkedFolders || []), ...(p.linkedFolders || [])])])}</div><div><label>Décisions existantes</label>${checkboxList("mpDecisionsLinked", state.decisions, p.linkedDecisions || [], d => d.title)}</div><div><label>Actions existantes</label>${checkboxList("mpActionsLinked", state.actions, p.linkedActions || [], ac => ac.title)}</div><div><label>Documents existants</label>${checkboxList("mpDocumentsLinked", state.documents, p.linkedDocuments || [], d => d.title)}</div></div><button class="action" onclick="saveMeetingPreparationMain('${p.id}')">Enregistrer la préparation</button></div>`;
 }
 
 function openMeetingPreparation(agendaId) {
@@ -6087,11 +6087,11 @@ function openMeetingPreparation(agendaId) {
   const p = ensureMeetingPreparation(agendaId);
   document.getElementById("viewTitle").textContent = `Préparation · ${a.title}`;
   document.querySelectorAll(".nav").forEach(btn => btn.classList.toggle("active", btn.dataset.view === "cockpit"));
-  appHtml(`<div class="card hero prep-hero"><button class="secondary" onclick="renderCockpit()">Retour Cockpit</button><h2>${esc(a.title)}</h2><p>${esc(a.type || "Réunion")} · ${esc(a.date || "")} · ${esc(a.startTime || "")}${a.endTime · " - " + esc(a.endTime) : ""}${a.location · " · " + esc(a.location) : ""}</p><span class="meta">Organisateur ${esc(p.organizer || identityName())} · Participants prévus ${ensureArray(a.linkedManagers).length + (p.participants || []).length} · ${esc(prepDaysLabel(a))} · ID ${esc(p.id)}</span><div class="row-actions"><button class="action" onclick="saveMeetingPreparationMain('${p.id}')">Modifier / Enregistrer</button><button class="secondary" onclick="startConductMeeting('${p.id}')">Démarrer la réunion</button><button class="secondary" onclick="generateMeetingReport('${p.id}')">Générer le compte rendu</button><button class="secondary" onclick="startReport('agenda','${a.id}')">Assistant compte rendu</button></div></div><div class="grid two">${meetingPrepForm(p, a)}<div class="card full-span"><h2>Idées et notes en amont</h2>${prepIdeaList(p)}<div class="prep-inline form-grid"><input id="piText" class="full" placeholder="Idée, sujet, question ou note"><select id="piCategory"><option>Idée</option><option>Sujet</option><option>Question</option><option>Information</option><option>Vigilance</option><option>Décision à préparer</option><option>Arbitrage</option><option>Note personnelle</option></select><select id="piImportance"><option>normale</option><option>importante</option><option>critique</option></select><select id="piConf"><option>partageable</option><option>note personnelle</option></select><select id="piManager"><option value="">Manager lié</option>${state.managers.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join("")}</select><select id="piProject"><option value="">Projet lié</option>${state.projects.map(pr => `<option value="${esc(pr.id)}">${esc(pr.name)}</option>`).join("")}</select><select id="piFolder"><option value="">Dossier lié</option>${state.folders.map(f => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join("")}</select></div><button class="secondary" onclick="addPrepIdea('${p.id}')">+ Ajouter une idée</button></div><div class="card full-span"><h2>Ordre du jour</h2>${prepTopicList(p, a)}<div class="prep-inline form-grid"><input id="ptTitle" placeholder="Titre du sujet"><input id="ptObjective" placeholder="Objectif du point"><input id="ptPresenter" placeholder="Personne qui présente"><input id="ptDuration" type="number" min="0" placeholder="Durée prévue (min)"><select id="ptType"><option>Information</option><option>Échange</option><option>Décision</option><option>Arbitrage</option><option>Suivi</option></select><input id="ptExpected" placeholder="Décision attendue" class="full"><textarea id="ptNotes" placeholder="Notes de préparation" class="full"></textarea></div><button class="secondary" onclick="addPrepTopic('${p.id}')">Ajouter un sujet</button></div><div class="card"><h2>Participants</h2>${prepParticipantList(p)}<div class="prep-inline form-grid"><select id="ppManager"><option value="">Manager ${esc(identity.appName)}</option>${state.managers.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join("")}</select><input id="ppName" placeholder="Participant externe"><input id="ppRole" placeholder="Rôle"><select id="ppStatus"><option>Présent attendu</option><option>Facultatif</option><option>À confirmer</option><option>Excusé</option></select><input id="ppTopics" placeholder="Sujets d'intervention" class="full"></div><button class="secondary" onclick="addPrepParticipant('${p.id}')">Ajouter participant</button></div><div class="card"><h2>Éléments à préparer</h2>${prepItemList(p)}<div class="prep-inline form-grid"><input id="peiTitle" placeholder="Titre"><input id="peiOwner" placeholder="Responsable"><input id="peiDue" type="date"><select id="peiStatus"><option>À faire</option><option>En cours</option><option>Prêt</option></select><select id="peiPriority"><option>normale</option><option>importante</option><option>critique</option></select><input id="peiComment" placeholder="Commentaire"></div><button class="secondary" onclick="addPrepItem('${p.id}')">Ajouter élément</button></div><div class="card"><h2>Documents utiles</h2>${prepDocumentsList(p)}<div class="prep-inline form-grid"><select id="pdDocument"><option value="">Document existant</option>${state.documents.map(d => `<option value="${esc(d.id)}">${esc(d.title)}</option>`).join("")}</select><input id="pdTitle" placeholder="Titre à fournir"><input id="pdType" placeholder="Type"><input id="pdVersion" placeholder="Version"><select id="pdStatus"><option>À préparer</option><option>Disponible</option><option>À mettre à jour</option><option>Validé</option></select></div><button class="secondary" onclick="addPrepDocument('${p.id}')">Ajouter document</button></div><div class="card"><h2>Données Performance</h2>${prepPerformanceList(p)}<div class="prep-inline form-grid"><select id="ppfPerformance"><option value="">Période Performance</option>${state.performance.map(perf => `<option value="${esc(perf.id)}">${esc(perfPeriodLabel(perf))}</option>`).join("")}</select><textarea id="ppfComment" placeholder="Commentaires, écarts, actions liées" class="full"></textarea></div><button class="secondary" onclick="addPrepPerformance('${p.id}')">Associer Performance</button></div><div class="card full-span"><h2>Décisions et arbitrages attendus</h2>${prepArbitrationList(p)}<div class="prep-inline form-grid"><input id="paSubject" placeholder="Sujet"><input id="paDecider" placeholder="Décideur attendu"><input id="paDate" type="date"><select id="paStatus"><option>À préparer</option><option>Prête à décider</option><option>Décidée</option><option>Reportée</option></select><textarea id="paContext" placeholder="Contexte" class="full"></textarea><textarea id="paOptions" placeholder="Options envisagées" class="full"></textarea><textarea id="paBenefits" placeholder="Avantages" class="full"></textarea><textarea id="paRisks" placeholder="Risques" class="full"></textarea><textarea id="paReco" placeholder="Recommandation du Directeur" class="full"></textarea></div><button class="secondary" onclick="addPrepArbitration('${p.id}')">Ajouter arbitrage</button></div>${prepRunView(p)}</div>`);
+  appHtml(`<div class="card hero prep-hero"><button class="secondary" onclick="renderCockpit()">Retour Cockpit</button><h2>${esc(a.title)}</h2><p>${esc(a.type || "Réunion")} · ${esc(a.date || "")} · ${esc(a.startTime || "")}${a.endTime ? " - " + esc(a.endTime) : ""}${a.location ? " · " + esc(a.location) : ""}</p><span class="meta">Organisateur ${esc(p.organizer || identityName())} · Participants prévus ${ensureArray(a.linkedManagers).length + (p.participants || []).length} · ${esc(prepDaysLabel(a))} · ID ${esc(p.id)}</span><div class="row-actions"><button class="action" onclick="saveMeetingPreparationMain('${p.id}')">Modifier / Enregistrer</button><button class="secondary" onclick="startConductMeeting('${p.id}')">Démarrer la réunion</button><button class="secondary" onclick="generateMeetingReport('${p.id}')">Générer le compte rendu</button><button class="secondary" onclick="startReport('agenda','${a.id}')">Assistant compte rendu</button></div></div><div class="grid two">${meetingPrepForm(p, a)}<div class="card full-span"><h2>Idées et notes en amont</h2>${prepIdeaList(p)}<div class="prep-inline form-grid"><input id="piText" class="full" placeholder="Idée, sujet, question ou note"><select id="piCategory"><option>Idée</option><option>Sujet</option><option>Question</option><option>Information</option><option>Vigilance</option><option>Décision à préparer</option><option>Arbitrage</option><option>Note personnelle</option></select><select id="piImportance"><option>normale</option><option>importante</option><option>critique</option></select><select id="piConf"><option>partageable</option><option>note personnelle</option></select><select id="piManager"><option value="">Manager lié</option>${state.managers.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join("")}</select><select id="piProject"><option value="">Projet lié</option>${state.projects.map(pr => `<option value="${esc(pr.id)}">${esc(pr.name)}</option>`).join("")}</select><select id="piFolder"><option value="">Dossier lié</option>${state.folders.map(f => `<option value="${esc(f.id)}">${esc(f.name)}</option>`).join("")}</select></div><button class="secondary" onclick="addPrepIdea('${p.id}')">+ Ajouter une idée</button></div><div class="card full-span"><h2>Ordre du jour</h2>${prepTopicList(p, a)}<div class="prep-inline form-grid"><input id="ptTitle" placeholder="Titre du sujet"><input id="ptObjective" placeholder="Objectif du point"><input id="ptPresenter" placeholder="Personne qui présente"><input id="ptDuration" type="number" min="0" placeholder="Durée prévue (min)"><select id="ptType"><option>Information</option><option>Échange</option><option>Décision</option><option>Arbitrage</option><option>Suivi</option></select><input id="ptExpected" placeholder="Décision attendue" class="full"><textarea id="ptNotes" placeholder="Notes de préparation" class="full"></textarea></div><button class="secondary" onclick="addPrepTopic('${p.id}')">Ajouter un sujet</button></div><div class="card"><h2>Participants</h2>${prepParticipantList(p)}<div class="prep-inline form-grid"><select id="ppManager"><option value="">Manager ${esc(identity.appName)}</option>${state.managers.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join("")}</select><input id="ppName" placeholder="Participant externe"><input id="ppRole" placeholder="Rôle"><select id="ppStatus"><option>Présent attendu</option><option>Facultatif</option><option>À confirmer</option><option>Excusé</option></select><input id="ppTopics" placeholder="Sujets d'intervention" class="full"></div><button class="secondary" onclick="addPrepParticipant('${p.id}')">Ajouter participant</button></div><div class="card"><h2>Éléments à préparer</h2>${prepItemList(p)}<div class="prep-inline form-grid"><input id="peiTitle" placeholder="Titre"><input id="peiOwner" placeholder="Responsable"><input id="peiDue" type="date"><select id="peiStatus"><option>À faire</option><option>En cours</option><option>Prêt</option></select><select id="peiPriority"><option>normale</option><option>importante</option><option>critique</option></select><input id="peiComment" placeholder="Commentaire"></div><button class="secondary" onclick="addPrepItem('${p.id}')">Ajouter élément</button></div><div class="card"><h2>Documents utiles</h2>${prepDocumentsList(p)}<div class="prep-inline form-grid"><select id="pdDocument"><option value="">Document existant</option>${state.documents.map(d => `<option value="${esc(d.id)}">${esc(d.title)}</option>`).join("")}</select><input id="pdTitle" placeholder="Titre à fournir"><input id="pdType" placeholder="Type"><input id="pdVersion" placeholder="Version"><select id="pdStatus"><option>À préparer</option><option>Disponible</option><option>À mettre à jour</option><option>Validé</option></select></div><button class="secondary" onclick="addPrepDocument('${p.id}')">Ajouter document</button></div><div class="card"><h2>Données Performance</h2>${prepPerformanceList(p)}<div class="prep-inline form-grid"><select id="ppfPerformance"><option value="">Période Performance</option>${state.performance.map(perf => `<option value="${esc(perf.id)}">${esc(perfPeriodLabel(perf))}</option>`).join("")}</select><textarea id="ppfComment" placeholder="Commentaires, écarts, actions liées" class="full"></textarea></div><button class="secondary" onclick="addPrepPerformance('${p.id}')">Associer Performance</button></div><div class="card full-span"><h2>Décisions et arbitrages attendus</h2>${prepArbitrationList(p)}<div class="prep-inline form-grid"><input id="paSubject" placeholder="Sujet"><input id="paDecider" placeholder="Décideur attendu"><input id="paDate" type="date"><select id="paStatus"><option>À préparer</option><option>Prête à décider</option><option>Décidée</option><option>Reportée</option></select><textarea id="paContext" placeholder="Contexte" class="full"></textarea><textarea id="paOptions" placeholder="Options envisagées" class="full"></textarea><textarea id="paBenefits" placeholder="Avantages" class="full"></textarea><textarea id="paRisks" placeholder="Risques" class="full"></textarea><textarea id="paReco" placeholder="Recommandation du Directeur" class="full"></textarea></div><button class="secondary" onclick="addPrepArbitration('${p.id}')">Ajouter arbitrage</button></div>${prepRunView(p)}</div>`);
 }
 
 function savePrepAndOpen(p) {
-  state.meetingPreparations = state.meetingPreparations.map(x => x.id === p.id · normalizeMeetingPreparation(p) : x);
+  state.meetingPreparations = state.meetingPreparations.map(x => x.id === p.id ? normalizeMeetingPreparation(p) : x);
   persist("meetingPreparations");
   openMeetingPreparation(p.agendaId);
 }
@@ -6125,7 +6125,7 @@ function addPrepIdea(id) {
   const p = prepById(id), text = document.getElementById("piText")?.value.trim();
   if (!p || !text) return;
   p.ideas.push({ id: newId("idea"), text, createdAt: new Date().toLocaleString("fr-FR"), author: identityName(), category: document.getElementById("piCategory").value, importance: document.getElementById("piImportance").value, confidentiality: document.getElementById("piConf").value, managerId: document.getElementById("piManager").value, projectId: document.getElementById("piProject").value, folderId: document.getElementById("piFolder").value });
-  p.status = p.status === "À préparer" · "Préparation en cours" : p.status;
+  p.status = p.status === "À préparer" ? "Préparation en cours" : p.status;
   addActivity("🗓️ Sujet réunion", byId("agenda", p.agendaId)?.title || "Réunion", text, p.id);
   savePrepAndOpen(p);
 }
@@ -6200,14 +6200,14 @@ function transferPrepIdea(id, ideaId) {
 function transformIdeaToTopic(id, ideaId) {
   const p = prepById(id), idea = p?.ideas.find(x => x.id === ideaId);
   if (!p || !idea) return;
-  p.agendaTopics.push({ id: newId("topic"), title: idea.text, objective: idea.category || "", presenter: "", duration: 10, type: idea.category === "Question" · "Échange" : "Information", folderId: idea.folderId, projectId: idea.projectId, expectedDecision: idea.category === "Décision à préparer" · idea.text : "", prepNotes: idea.text, status: "À traiter" });
+  p.agendaTopics.push({ id: newId("topic"), title: idea.text, objective: idea.category || "", presenter: "", duration: 10, type: idea.category === "Question" ? "Échange" : "Information", folderId: idea.folderId, projectId: idea.projectId, expectedDecision: idea.category === "Décision à préparer" ? idea.text : "", prepNotes: idea.text, status: "À traiter" });
   savePrepAndOpen(p);
 }
 
 function transformIdeaToAction(id, ideaId) {
   const p = prepById(id), a = byId("agenda", p?.agendaId), idea = p?.ideas.find(x => x.id === ideaId);
   if (!p || !idea) return;
-  const action = { id: newId("action"), title: idea.text, link: a?.title || "Réunion", owner: "", level: idea.importance === "critique" · "red" : idea.importance === "importante" · "orange" : "green", due: "", done: false, linkedManagers: idea.managerId · [idea.managerId] : p.linkedManagers, linkedProjects: idea.projectId · [idea.projectId] : p.linkedProjects, linkedFolders: idea.folderId · [idea.folderId] : p.linkedFolders, linkedMeetingPreparations: [p.id] };
+  const action = { id: newId("action"), title: idea.text, link: a?.title || "Réunion", owner: "", level: idea.importance === "critique" ? "red" : idea.importance === "importante" ? "orange" : "green", due: "", done: false, linkedManagers: idea.managerId ? [idea.managerId] : p.linkedManagers, linkedProjects: idea.projectId ? [idea.projectId] : p.linkedProjects, linkedFolders: idea.folderId ? [idea.folderId] : p.linkedFolders, linkedMeetingPreparations: [p.id] };
   state.actions.unshift(normalizeEntity("actions", action));
   p.linkedActions = [...new Set([...(p.linkedActions || []), action.id])];
   persist("actions");
@@ -6218,7 +6218,7 @@ function transformIdeaToAction(id, ideaId) {
 function transformIdeaToDecision(id, ideaId) {
   const p = prepById(id), a = byId("agenda", p?.agendaId), idea = p?.ideas.find(x => x.id === ideaId);
   if (!p || !idea) return;
-  const decision = { id: newId("decision"), title: idea.text, date: localIsoDate(), status: "review", importance: idea.importance === "critique" · "red" : "orange", context: `Préparation réunion ${a?.title || ""}`, problem: idea.text, decision: "", rationale: "", alternatives: "", impacts: "", risks: "", owner: p.organizer || identityName(), linkedManagers: idea.managerId · [idea.managerId] : p.linkedManagers, linkedProjects: idea.projectId · [idea.projectId] : p.linkedProjects, linkedActions: [], linkedDocuments: [], linkedFolders: idea.folderId · [idea.folderId] : p.linkedFolders, linkedMeetingPreparations: [p.id], reviewDate: a?.date || "", events: [], directorNotes: [], nextStep: "Décision à préparer", tags: ["Réunion", "Préparation"] };
+  const decision = { id: newId("decision"), title: idea.text, date: localIsoDate(), status: "review", importance: idea.importance === "critique" ? "red" : "orange", context: `Préparation réunion ${a?.title || ""}`, problem: idea.text, decision: "", rationale: "", alternatives: "", impacts: "", risks: "", owner: p.organizer || identityName(), linkedManagers: idea.managerId ? [idea.managerId] : p.linkedManagers, linkedProjects: idea.projectId ? [idea.projectId] : p.linkedProjects, linkedActions: [], linkedDocuments: [], linkedFolders: idea.folderId ? [idea.folderId] : p.linkedFolders, linkedMeetingPreparations: [p.id], reviewDate: a?.date || "", events: [], directorNotes: [], nextStep: "Décision à préparer", tags: ["Réunion", "Préparation"] };
   state.decisions.unshift(decision);
   p.linkedDecisions = [...new Set([...(p.linkedDecisions || []), decision.id])];
   persist("decisions");
@@ -6268,7 +6268,7 @@ function addPrepParticipant(id) {
   const managerId = document.getElementById("ppManager").value;
   const name = document.getElementById("ppName").value.trim();
   if (!p || (!managerId && !name)) return;
-  p.participants.push({ id: newId("participant"), type: managerId · "manager" : "external", managerId, name, role: document.getElementById("ppRole").value.trim(), status: document.getElementById("ppStatus").value, topics: document.getElementById("ppTopics").value.trim() });
+  p.participants.push({ id: newId("participant"), type: managerId ? "manager" : "external", managerId, name, role: document.getElementById("ppRole").value.trim(), status: document.getElementById("ppStatus").value, topics: document.getElementById("ppTopics").value.trim() });
   if (managerId) p.linkedManagers = [...new Set([...(p.linkedManagers || []), managerId])];
   savePrepAndOpen(p);
 }
@@ -6290,7 +6290,7 @@ function addPrepItem(id) {
 function createActionFromPrepItem(id, itemId) {
   const p = prepById(id), item = p?.prepItems.find(x => x.id === itemId), a = byId("agenda", p?.agendaId);
   if (!p || !item) return;
-  const action = { id: newId("action"), title: item.title, owner: item.owner || "", due: item.due || "", level: item.priority === "critique" · "red" : item.priority === "importante" · "orange" : "green", link: a?.title || "Réunion", done: item.status === "Prêt", linkedManagers: p.linkedManagers, linkedProjects: p.linkedProjects, linkedFolders: p.linkedFolders, linkedDecisions: p.linkedDecisions, linkedMeetingPreparations: [p.id] };
+  const action = { id: newId("action"), title: item.title, owner: item.owner || "", due: item.due || "", level: item.priority === "critique" ? "red" : item.priority === "importante" ? "orange" : "green", link: a?.title || "Réunion", done: item.status === "Prêt", linkedManagers: p.linkedManagers, linkedProjects: p.linkedProjects, linkedFolders: p.linkedFolders, linkedDecisions: p.linkedDecisions, linkedMeetingPreparations: [p.id] };
   state.actions.unshift(normalizeEntity("actions", action));
   p.linkedActions = [...new Set([...(p.linkedActions || []), action.id])];
   persist("actions");
@@ -6353,7 +6353,7 @@ function addPrepArbitration(id) {
 function transformArbitrationToDecision(id, arbitrationId) {
   const p = prepById(id), item = p?.arbitrations.find(x => x.id === arbitrationId), a = byId("agenda", p?.agendaId);
   if (!p || !item) return;
-  const decision = { id: newId("decision"), title: item.subject, date: localIsoDate(), status: item.status === "Décidée" · "decided" : "review", importance: item.status === "Prête à décider" · "orange" : "green", context: item.context || `Arbitrage préparé pour ${a?.title || "réunion"}`, problem: item.subject, decision: item.status === "Décidée" · item.recommendation : "", rationale: item.recommendation || "", alternatives: item.options || "", impacts: item.benefits || "", risks: item.risks || "", owner: item.decider || p.organizer || identityName(), linkedManagers: p.linkedManagers, linkedProjects: p.linkedProjects, linkedActions: p.linkedActions, linkedDocuments: p.linkedDocuments, linkedFolders: p.linkedFolders, linkedPerformance: p.linkedPerformance, linkedMeetingPreparations: [p.id], reviewDate: item.wantedDate || a?.date || "", events: [], directorNotes: [], nextStep: "Arbitrage issu d'une préparation de réunion", tags: ["Réunion", "Arbitrage"] };
+  const decision = { id: newId("decision"), title: item.subject, date: localIsoDate(), status: item.status === "Décidée" ? "decided" : "review", importance: item.status === "Prête à décider" ? "orange" : "green", context: item.context || `Arbitrage préparé pour ${a?.title || "réunion"}`, problem: item.subject, decision: item.status === "Décidée" ? item.recommendation : "", rationale: item.recommendation || "", alternatives: item.options || "", impacts: item.benefits || "", risks: item.risks || "", owner: item.decider || p.organizer || identityName(), linkedManagers: p.linkedManagers, linkedProjects: p.linkedProjects, linkedActions: p.linkedActions, linkedDocuments: p.linkedDocuments, linkedFolders: p.linkedFolders, linkedPerformance: p.linkedPerformance, linkedMeetingPreparations: [p.id], reviewDate: item.wantedDate || a?.date || "", events: [], directorNotes: [], nextStep: "Arbitrage issu d'une préparation de réunion", tags: ["Réunion", "Arbitrage"] };
   state.decisions.unshift(decision);
   p.linkedDecisions = [...new Set([...(p.linkedDecisions || []), decision.id])];
   item.status = "Décidée";
@@ -6437,10 +6437,10 @@ function finishMeeting(id) {
 function meetingReportContent(p) {
   const a = byId("agenda", p.agendaId) || {};
   const managers = state.managers.filter(m => (p.linkedManagers || []).includes(m.id)).map(m => `- ${m.name} (${m.role || ""})`).join("\n") || "À compléter";
-  const ideas = (p.ideas || []).map((i, index) => `- ${index + 1}. ${i.text || "Sujet"} | ${i.category || "Sujet"} | ${i.status || "À traiter"}${i.conclusion · " | Conclusion : " + i.conclusion : ""}`).join("\n") || "À compléter";
+  const ideas = (p.ideas || []).map((i, index) => `- ${index + 1}. ${i.text || "Sujet"} | ${i.category || "Sujet"} | ${i.status || "À traiter"}${i.conclusion ? " | Conclusion : " + i.conclusion : ""}`).join("\n") || "À compléter";
   const topics = (p.agendaTopics || []).map((t, i) => `- ${i + 1}. ${t.title} | ${t.status || "À traiter"} | ${t.prepNotes || ""}`).join("\n") || "À compléter";
   const notes = [...(p.run.notes || []), ...(p.run.decisions || []), ...(p.run.actions || []), ...(p.run.postponed || [])].map(n => `- ${n.type || "Note"} : ${n.text || ""}`).join("\n") || "À compléter";
-  return `Réunion : ${a.title || ""}\nDate : ${a.date || ""} ${a.startTime || ""}${a.endTime · " - " + a.endTime : ""}\nLieu : ${a.location || "À compléter"}\nStatut préparation : ${p.status}\n\nObjectif\n${p.objectiveMain || "À compléter"}\n\nRésultats attendus\n${p.expectedResults || "À compléter"}\n\nDécisions attendues\n${p.expectedDecisions || "À compléter"}\n\nParticipants prévus\n${managers}\n\nSujets collectés en amont\n${ideas}\n\nOrdre du jour et sujets traités\n${topics}\n\nNotes, décisions, actions et points reportés\n${notes}\n\nActions liées\n${reportActions(state.actions.filter(x => (p.linkedActions || []).includes(x.id)))}\n\nDécisions liées\n${reportDecisions(state.decisions.filter(x => (p.linkedDecisions || []).includes(x.id)))}`;
+  return `Réunion : ${a.title || ""}\nDate : ${a.date || ""} ${a.startTime || ""}${a.endTime ? " - " + a.endTime : ""}\nLieu : ${a.location || "À compléter"}\nStatut préparation : ${p.status}\n\nObjectif\n${p.objectiveMain || "À compléter"}\n\nRésultats attendus\n${p.expectedResults || "À compléter"}\n\nDécisions attendues\n${p.expectedDecisions || "À compléter"}\n\nParticipants prévus\n${managers}\n\nSujets collectés en amont\n${ideas}\n\nOrdre du jour et sujets traités\n${topics}\n\nNotes, décisions, actions et points reportés\n${notes}\n\nActions liées\n${reportActions(state.actions.filter(x => (p.linkedActions || []).includes(x.id)))}\n\nDécisions liées\n${reportDecisions(state.decisions.filter(x => (p.linkedDecisions || []).includes(x.id)))}`;
 }
 
 function generateMeetingReport(id) {
@@ -6455,14 +6455,14 @@ function generateMeetingReport(id) {
   savePrepAndOpen(p);
 }
 
-function todoKind(p) { return p.kind === "todo" · "todo" : "priority"; }
-function todoStatusLabel(p) { return p.done · "Terminée" : (p.status === "in_progress" · "En cours" : "À faire"); }
+function todoKind(p) { return p.kind === "todo" ? "todo" : "priority"; }
+function todoStatusLabel(p) { return p.done ? "Terminée" : (p.status === "in_progress" ? "En cours" : "À faire"); }
 function todoLevelLabel(level) { return ({ red: "Haute", orange: "Moyenne", green: "Faible" })[level] || "Moyenne"; }
 
 function priorityItem(p) {
   const folders = state.folders.filter(f => ensureArray(p.linkedFolders).includes(f.id)).map(f => f.name).join(" · ");
   const kind = todoKind(p);
-  return `<div class="item row deos-todo-row"><div><strong>${kind === "todo" · "☐" : (icons[p.level] || "⚑")} ${esc(p.title)}</strong><span class="muted">${esc(todoLevelLabel(p.level))} · ${esc(p.due || "Pas d'échéance")}${p.link · " · " + esc(p.link) : ""}${p.owner · " · " + esc(p.owner) : ""}${folders · " · " + esc(folders) : ""} · ${esc(todoStatusLabel(p))}</span></div><div class="row-actions">${kind === "todo" && !p.done · `<button class="secondary" onclick="convertTodoToAction('${p.id}')">→ Action DEOS</button>` : ""}${!p.done · `<button class="secondary" onclick="toggleTodoProgress('${p.id}')">${p.status === "in_progress" · "À faire" : "En cours"}</button>` : ""}<button class="secondary" onclick="completePriority('${p.id}')">${p.done · "Réouvrir" : "Terminer"}</button><button class="danger" onclick="deletePriority('${p.id}')">Supprimer</button></div></div>`;
+  return `<div class="item row deos-todo-row"><div><strong>${kind === "todo" ? "☐" : (icons[p.level] || "⚑")} ${esc(p.title)}</strong><span class="muted">${esc(todoLevelLabel(p.level))} · ${esc(p.due || "Pas d'échéance")}${p.link ? " · " + esc(p.link) : ""}${p.owner ? " · " + esc(p.owner) : ""}${folders ? " · " + esc(folders) : ""} · ${esc(todoStatusLabel(p))}</span></div><div class="row-actions">${kind === "todo" && !p.done ? `<button class="secondary" onclick="convertTodoToAction('${p.id}')">→ Action DEOS</button>` : ""}${!p.done ? `<button class="secondary" onclick="toggleTodoProgress('${p.id}')">${p.status === "in_progress" ? "À faire" : "En cours"}</button>` : ""}<button class="secondary" onclick="completePriority('${p.id}')">${p.done ? "Réouvrir" : "Terminer"}</button><button class="danger" onclick="deletePriority('${p.id}')">Supprimer</button></div></div>`;
 }
 
 function renderPriorities() {
@@ -6484,23 +6484,23 @@ function addPriority(kind = "priority") {
   const p = { id: newId("priority"), kind, title, due: document.getElementById("pDue").value.trim(), link: document.getElementById("pLink").value.trim(), owner: document.getElementById("pOwner").value.trim(), impact: document.getElementById("pImpact").value.trim(), level: document.getElementById("pLevel").value, status: "todo", done: false, linkedFolders: checkedValues("pFolders") };
   state.priorities.unshift(p);
   persist("priorities");
-  addActivity(kind === "todo" · "☑ To-Do" : "⚡ Priorité", p.title, p.due || p.link, p.id);
+  addActivity(kind === "todo" ? "☑ To-Do" : "⚡ Priorité", p.title, p.due || p.link, p.id);
   if (closeCockpitQuickCreateIfNeeded("priority")) return;
   renderPriorities();
 }
 
 function toggleTodoProgress(id) {
   const p = byId("priorities", id); if (!p || p.done) return;
-  p.status = p.status === "in_progress" · "todo" : "in_progress";
+  p.status = p.status === "in_progress" ? "todo" : "in_progress";
   persist("priorities"); renderPriorities();
 }
 
 function completePriority(id) {
   const p = byId("priorities", id); if (!p) return;
   p.done = !p.done;
-  p.status = p.done · "done" : "todo";
+  p.status = p.done ? "done" : "todo";
   persist("priorities");
-  addActivity(p.done · "✅ Tâche terminée" : "↩ Tâche rouverte", p.title, p.link || "", p.id);
+  addActivity(p.done ? "✅ Tâche terminée" : "↩ Tâche rouverte", p.title, p.link || "", p.id);
   renderPriorities();
 }
 
@@ -6549,7 +6549,7 @@ function itemLinkedToFolder(item, folder) {
 }
 
 function folderRelations(folder) {
-  const linkedManagerIds = normalizeLinkedManagerIds(ensureArray(folder?.linkedManagers).length · folder.linkedManagers : ensureArray(folder?.linkedManagerIds));
+  const linkedManagerIds = normalizeLinkedManagerIds(ensureArray(folder?.linkedManagers).length ? folder.linkedManagers : ensureArray(folder?.linkedManagerIds));
   const projects = state.projects.filter(p => itemLinkedToFolder(p, folder));
   const projectIds = projects.map(p => p.id);
   const managers = state.managers.filter(m => linkedManagerIds.some(id => sameId(id, m.id)) || projectIds.some(id => ensureArray(m.linkedProjects).some(link => sameId(link, id))) || projects.some(p => sameId(p.ownerId, m.id) || ensureArray(p.linkedManagers).some(link => sameId(link, m.id))));
@@ -6580,11 +6580,11 @@ function folderStats(folder) {
 
 function folderCard(folder) {
   const stats = folderStats(folder);
-  return `<div class="card folder-card clickable" onclick="openFolder('${folder.id}')"><div class="row"><div><h2>${esc(folder.name)}</h2><span class="muted">${esc(folder.category)} · ${esc(folderPriorityLabel(folder.priorityLevel))}</span></div>${badge(folder.status)}</div><p>${esc(folder.description || folder.context || "Dossier transversal " + identity.appName)}</p><div class="folder-metrics"><span>${stats.total}<small>éléments</small></span><span>${stats.openActions}<small>actions ouvertes</small></span><span>${stats.overdueActions}<small>retards</small></span></div><span class="meta">Responsable ${esc(folder.owner || "À définir")} · Échéance ${esc(stats.nextDue || "Non définie")} · Dernière activité ${esc(stats.lastActivity || "Aucune")}</span></div>`;
+  return `<div class="card folder-card clickable" onclick="openFolder('${folder.id}')"><div class="row"><div><h2>${esc(folder.name)}</h2><span class="muted">${esc(folder.category)} · ${esc(folderPriorityLabel(folder.priorityLevel))}</span></div>${badge(folder.status)}</div><p>${esc(folder.description || folder.context || "Dossier transversal " + identity.appName)}</p><div class="folder-metrics"><span>${stats.total}<small>éléments</small></span><span>${stats.openActions}<small>actions ouvertes</small></span><span>${stats.overdueActions}<small>retards</small></span></div><span class="meta">Responsable ${esc(folder.owner || "À définir")} · Échéance ${esc(stats.nextDue || "Non définie")} ? Dernière activité ${esc(stats.lastActivity || "Aucune")}</span></div>`;
 }
 
 function folderViewToggle() {
-  return `<div class="segmented"><button class="secondary ${folderViewMode === "list" · "active-filter" : ""}" onclick="setFolderViewMode('list')">Vue liste</button><button class="secondary ${folderViewMode === "graph" · "active-filter" : ""}" onclick="setFolderViewMode('graph')">Vue graphique</button></div>`;
+  return `<div class="segmented"><button class="secondary ${folderViewMode === "list" ? "active-filter" : ""}" onclick="setFolderViewMode('list')">Vue liste</button><button class="secondary ${folderViewMode === "graph" ? "active-filter" : ""}" onclick="setFolderViewMode('graph')">Vue graphique</button></div>`;
 }
 
 function setFolderViewMode(mode) {
@@ -6643,7 +6643,7 @@ function folderGraphLayout(data) {
     });
   });
   const orphanProjects = projects.filter(node => !placedProjects.has(node.id));
-  const orphanStart = Math.max(baseY, folders.length · baseY + folders.length * stepY + 30 : baseY);
+  const orphanStart = Math.max(baseY, folders.length ? baseY + folders.length * stepY + 30 : baseY);
   orphanProjects.forEach((node, index) => positions[node.id] = { x: 780, y: orphanStart + index * 112 });
   const maxY = Math.max(520, ...Object.values(positions).map(pos => pos.y + 80));
   return { positions, width: 1120, height: maxY };
@@ -6674,19 +6674,19 @@ function renderFolderGraph() {
     const a = layout.positions[link.folderId], b = layout.positions[link.projectId];
     if (!a || !b) return "";
     const active = selected && (selected.id === link.folderId || selected.id === link.projectId);
-    return `<line class="graph-link ${active · "active" : selected · "dim" : ""}" data-folder-id="${esc(link.folderId)}" data-project-id="${esc(link.projectId)}" x1="${a.x + 118}" y1="${a.y}" x2="${b.x - 96}" y2="${b.y}" />`;
+    return `<line class="graph-link ${active ? "active" : selected ? "dim" : ""}" data-folder-id="${esc(link.folderId)}" data-project-id="${esc(link.projectId)}" x1="${a.x + 118}" y1="${a.y}" x2="${b.x - 96}" y2="${b.y}" />`;
   }).join("");
   const nodes = data.nodes.map(node => {
     const pos = layout.positions[node.id] || { x: 0, y: 0 };
     const isSelected = selected?.id === node.id;
     const isDim = selected && !isSelected && !connectedIds.has(node.id);
-    const onclick = node.type === "folder" · `openFolder('${node.id}')` : `openProject('${node.id}')`;
-    const badgeText = node.type === "folder" · folderPriorityLabel(node.priority) : `${Number(node.progress || 0)}%`;
-    return `<g class="graph-node ${node.type} ${isSelected · "selected" : ""} ${isDim · "dim" : ""}" data-node-type="${esc(node.type)}" data-node-id="${esc(node.id)}" transform="translate(${pos.x},${pos.y})" onmouseenter="previewFolderGraphNode('${node.type}','${node.id}')" onclick="${onclick}">
-      <title>${esc(node.type === "folder" · "Dossier" : "Projet")} · ${esc(node.label)}</title>
-      <rect x="-108" y="-34" width="216" height="68" rx="${node.type === "folder" · 14 : 28}"></rect>
+    const onclick = node.type === "folder" ? `openFolder('${node.id}')` : `openProject('${node.id}')`;
+    const badgeText = node.type === "folder" ? folderPriorityLabel(node.priority) : `${Number(node.progress || 0)}%`;
+    return `<g class="graph-node ${node.type} ${isSelected ? "selected" : ""} ${isDim ? "dim" : ""}" data-node-type="${esc(node.type)}" data-node-id="${esc(node.id)}" transform="translate(${pos.x},${pos.y})" onmouseenter="previewFolderGraphNode('${node.type}','${node.id}')" onclick="${onclick}">
+      <title>${esc(node.type === "folder" ? "Dossier" : "Projet")} · ${esc(node.label)}</title>
+      <rect x="-108" y="-34" width="216" height="68" rx="${node.type === "folder" ? 14 : 28}"></rect>
       <text class="node-title" y="-5" text-anchor="middle">${esc(node.label.slice(0, 28))}</text>
-      <text class="node-meta" y="16" text-anchor="middle">${esc(node.type === "folder" · "Dossier" : "Projet")} · ${esc(badgeText)}</text>
+      <text class="node-meta" y="16" text-anchor="middle">${esc(node.type === "folder" ? "Dossier" : "Projet")} · ${esc(badgeText)}</text>
     </g>`;
   }).join("");
   const viewWidth = layout.width / folderGraphZoom;
@@ -6695,12 +6695,12 @@ function renderFolderGraph() {
     <div class="graph-toolbar">
       <input value="${esc(folderGraphSearch)}" placeholder="Rechercher dans la carte" oninput="setFolderGraphSearch(this.value)">
       <select onchange="setFolderGraphFilter(this.value)">
-        <option value="all" ${folderGraphFilter === "all" · "selected" : ""}>Tous</option>
-        <option value="folders" ${folderGraphFilter === "folders" · "selected" : ""}>Dossiers uniquement</option>
-        <option value="projects" ${folderGraphFilter === "projects" · "selected" : ""}>Projets uniquement</option>
-        <option value="red" ${folderGraphFilter === "red" · "selected" : ""}>Critiques</option>
-        <option value="orange" ${folderGraphFilter === "orange" · "selected" : ""}>À suivre</option>
-        <option value="active" ${folderGraphFilter === "active" · "selected" : ""}>En cours</option>
+        <option value="all" ${folderGraphFilter === "all" ? "selected" : ""}>Tous</option>
+        <option value="folders" ${folderGraphFilter === "folders" ? "selected" : ""}>Dossiers uniquement</option>
+        <option value="projects" ${folderGraphFilter === "projects" ? "selected" : ""}>Projets uniquement</option>
+        <option value="red" ${folderGraphFilter === "red" ? "selected" : ""}>Critiques</option>
+        <option value="orange" ${folderGraphFilter === "orange" ? "selected" : ""}>À suivre</option>
+        <option value="active" ${folderGraphFilter === "active" ? "selected" : ""}>En cours</option>
       </select>
       <button class="secondary" onclick="zoomFolderGraph(1.18)">Zoom +</button>
       <button class="secondary" onclick="zoomFolderGraph(0.85)">Zoom -</button>
@@ -6730,14 +6730,14 @@ function setFolderGraphSearch(value) {
 }
 
 function selectFolderGraphNode(type, id) {
-  folderGraphSelected = type && id · `${type}:${id}` : "";
+  folderGraphSelected = type && id ? `${type}:${id}` : "";
   renderFolders();
 }
 
 function previewFolderGraphNode(type, id) {
   const data = folderGraphData();
   const node = data.nodes.find(item => item.type === type && item.id === id);
-  folderGraphSelected = node · `${type}:${id}` : "";
+  folderGraphSelected = node ? `${type}:${id}` : "";
   const preview = document.getElementById("folderGraphPreview");
   if (preview) preview.innerHTML = folderGraphPreview(node);
   document.querySelectorAll(".graph-node").forEach(el => {
@@ -6767,7 +6767,7 @@ function resetFolderGraph() {
 
 function folderGraphWheel(event) {
   event.preventDefault();
-  zoomFolderGraph(event.deltaY < 0 · 1.12 : 0.9);
+  zoomFolderGraph(event.deltaY < 0 ? 1.12 : 0.9);
 }
 
 function startFolderGraphPan(event) {
@@ -6793,7 +6793,7 @@ function renderFolders() {
   restoreFoldersFromSyncShadowIfNeeded();
   document.getElementById("viewTitle").textContent = "Dossiers";
   document.querySelectorAll(".nav").forEach(btn => btn.classList.toggle("active", btn.dataset.view === "folders"));
-  const notice = folderOperationNotice · `<p class="folder-operation-notice">${esc(folderOperationNotice)}</p>` : "";
+  const notice = folderOperationNotice ? `<p class="folder-operation-notice">${esc(folderOperationNotice)}</p>` : "";
   const hero = `<div class="card hero folder-hero"><div class="row"><div><h2>Dossiers</h2><p class="muted">Regroupez ici tout ce qui concerne vos grands sujets durables.</p><p class="architecture-hint">Le dossier contient. Le projet transforme. L'action fait avancer. La décision arbitre.</p>${notice}</div><div class="row-actions">${folderViewToggle()}<button class="action" onclick="newFolder()">Nouveau dossier</button></div></div></div>`;
   folderOperationNotice = "";
   if (folderViewMode === "graph") {
@@ -6810,7 +6810,7 @@ function renderFolders() {
     if (folderSort === "deadline") return dateRank(folderStats(a).nextDue) - dateRank(folderStats(b).nextDue);
     return String(folderStats(b).lastActivity || "").localeCompare(String(folderStats(a).lastActivity || ""));
   });
-  appHtml(`${hero}<div class="card folder-toolbar"><input id="folderSearch" value="${esc(folderSearch)}" placeholder="Rechercher un dossier ou mot-clé" oninput="setFolderSearch(this.value)"><select onchange="setFolderFilter('category',this.value)">${categories.map(c => `<option value="${esc(c)}" ${folderCategoryFilter === c · "selected" : ""}>${c === "all" · "Toutes catégories" : esc(c)}</option>`).join("")}</select><select onchange="setFolderFilter('status',this.value)"><option value="all">Tous statuts</option><option value="green" ${folderStatusFilter === "green" · "selected" : ""}>Maîtrisé</option><option value="orange" ${folderStatusFilter === "orange" · "selected" : ""}>À suivre</option><option value="red" ${folderStatusFilter === "red" · "selected" : ""}>Critique</option><option value="archived" ${folderStatusFilter === "archived" · "selected" : ""}>Archivé</option></select><select onchange="setFolderFilter('priority',this.value)"><option value="all">Toutes priorités</option><option value="green" ${folderPriorityFilter === "green" · "selected" : ""}>Normal</option><option value="orange" ${folderPriorityFilter === "orange" · "selected" : ""}>Important</option><option value="red" ${folderPriorityFilter === "red" · "selected" : ""}>Critique</option></select><select onchange="setFolderFilter('sort',this.value)"><option value="activity" ${folderSort === "activity" · "selected" : ""}>Dernière activité</option><option value="priority" ${folderSort === "priority" · "selected" : ""}>Priorité</option><option value="deadline" ${folderSort === "deadline" · "selected" : ""}>Prochaine échéance</option></select></div><div class="grid two">${filtered.map(folderCard).join("") || `<div class="card empty">Aucun dossier ne correspond aux filtres.</div>`}</div>`);
+  appHtml(`${hero}<div class="card folder-toolbar"><input id="folderSearch" value="${esc(folderSearch)}" placeholder="Rechercher un dossier ou mot-clé" oninput="setFolderSearch(this.value)"><select onchange="setFolderFilter('category',this.value)">${categories.map(c => `<option value="${esc(c)}" ${folderCategoryFilter === c ? "selected" : ""}>${c === "all" ? "Toutes catégories" : esc(c)}</option>`).join("")}</select><select onchange="setFolderFilter('status',this.value)"><option value="all">Tous statuts</option><option value="green" ${folderStatusFilter === "green" ? "selected" : ""}>Maîtrisé</option><option value="orange" ${folderStatusFilter === "orange" ? "selected" : ""}>À suivre</option><option value="red" ${folderStatusFilter === "red" ? "selected" : ""}>Critique</option><option value="archived" ${folderStatusFilter === "archived" ? "selected" : ""}>Archivé</option></select><select onchange="setFolderFilter('priority',this.value)"><option value="all">Toutes priorités</option><option value="green" ${folderPriorityFilter === "green" ? "selected" : ""}>Normal</option><option value="orange" ${folderPriorityFilter === "orange" ? "selected" : ""}>Important</option><option value="red" ${folderPriorityFilter === "red" ? "selected" : ""}>Critique</option></select><select onchange="setFolderFilter('sort',this.value)"><option value="activity" ${folderSort === "activity" ? "selected" : ""}>Dernière activité</option><option value="priority" ${folderSort === "priority" ? "selected" : ""}>Priorité</option><option value="deadline" ${folderSort === "deadline" ? "selected" : ""}>Prochaine échéance</option></select></div><div class="grid two">${filtered.map(folderCard).join("") || `<div class="card empty">Aucun dossier ne correspond aux filtres.</div>`}</div>`);
 }
 
 function setFolderSearch(value) {
@@ -6842,8 +6842,8 @@ function editFolder(id) {
 
 function folderForm(folder, mode) {
   const isEdit = mode === "edit";
-  const deletionPanel = isEdit · renderFolderDeletionPanel(folder) : "";
-  return `<div class="card"><h2>${mode === "create" · "Nouveau dossier" : "Modifier dossier"}</h2><div class="form-grid"><input id="fName" value="${esc(folder.name)}" placeholder="Nom du dossier"><select id="fCategory">${folderCategories.map(c => `<option value="${esc(c)}" ${folder.category === c · "selected" : ""}>${esc(c)}</option>`).join("")}</select><select id="fStatus"><option value="green" ${folder.status === "green" · "selected" : ""}>Maîtrisé</option><option value="orange" ${folder.status === "orange" · "selected" : ""}>À suivre</option><option value="red" ${folder.status === "red" · "selected" : ""}>Critique</option><option value="archived" ${folder.status === "archived" · "selected" : ""}>Archivé</option></select><select id="fPriority"><option value="green" ${folder.priorityLevel === "green" · "selected" : ""}>Normal</option><option value="orange" ${folder.priorityLevel === "orange" · "selected" : ""}>Important</option><option value="red" ${folder.priorityLevel === "red" · "selected" : ""}>Critique</option></select><input id="fOwner" value="${esc(folder.owner || "")}" placeholder="Responsable principal"><input id="fCreated" type="date" value="${esc(folder.createdAt || isoToday())}"><input id="fDeadline" type="date" value="${esc(folder.deadline || "")}"><input id="fTags" value="${esc((folder.tags || []).join(", "))}" placeholder="Mots-clés" class="full"></div><div class="manager-links"><label>Managers associés</label>${checkboxList("fManagers", state.managers, normalizeLinkedManagerIds(ensureArray(folder.linkedManagers).length · folder.linkedManagers : ensureArray(folder.linkedManagerIds)), m => `${m.name} · ${m.role || ""}`)}</div><textarea id="fDescription" placeholder="Description">${esc(folder.description || "")}</textarea><textarea id="fContext" placeholder="Contexte">${esc(folder.context || "")}</textarea><textarea id="fObjectives" placeholder="Objectifs">${esc(folder.objectives || "")}</textarea><textarea id="fExpected" placeholder="Résultats attendus">${esc(folder.expectedResults || "")}</textarea><textarea id="fNotes" placeholder="Notes du directeur">${esc(folder.directorNotes || "")}</textarea><div class="row-actions"><button class="action" onclick="${mode === "create" · "saveNewFolder()" : `saveFolder('${folder.id}')`}">Enregistrer</button><button class="secondary" onclick="${mode === "create" · "renderFolders()" : `openFolder('${folder.id}')`}">Annuler</button></div>${isEdit · `<div class="folder-delete-zone"><button class="danger" type="button" onclick="openFolderDeletionDialog('${folder.id}')">Supprimer le dossier</button><p class="muted">Action destructrice limitée au dossier. Les objets liés seront conservés.</p></div>` : ""}${deletionPanel}</div>`;
+  const deletionPanel = isEdit ? renderFolderDeletionPanel(folder) : "";
+  return `<div class="card"><h2>${mode === "create" ? "Nouveau dossier" : "Modifier dossier"}</h2><div class="form-grid"><input id="fName" value="${esc(folder.name)}" placeholder="Nom du dossier"><select id="fCategory">${folderCategories.map(c => `<option value="${esc(c)}" ${folder.category === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select><select id="fStatus"><option value="green" ${folder.status === "green" ? "selected" : ""}>Maîtrisé</option><option value="orange" ${folder.status === "orange" ? "selected" : ""}>À suivre</option><option value="red" ${folder.status === "red" ? "selected" : ""}>Critique</option><option value="archived" ${folder.status === "archived" ? "selected" : ""}>Archivé</option></select><select id="fPriority"><option value="green" ${folder.priorityLevel === "green" ? "selected" : ""}>Normal</option><option value="orange" ${folder.priorityLevel === "orange" ? "selected" : ""}>Important</option><option value="red" ${folder.priorityLevel === "red" ? "selected" : ""}>Critique</option></select><input id="fOwner" value="${esc(folder.owner || "")}" placeholder="Responsable principal"><input id="fCreated" type="date" value="${esc(folder.createdAt || isoToday())}"><input id="fDeadline" type="date" value="${esc(folder.deadline || "")}"><input id="fTags" value="${esc((folder.tags || []).join(", "))}" placeholder="Mots-clés" class="full"></div><div class="manager-links"><label>Managers associés</label>${checkboxList("fManagers", state.managers, normalizeLinkedManagerIds(ensureArray(folder.linkedManagers).length ? folder.linkedManagers : ensureArray(folder.linkedManagerIds)), m => `${m.name} ? ${m.role || ""}`)}</div><textarea id="fDescription" placeholder="Description">${esc(folder.description || "")}</textarea><textarea id="fContext" placeholder="Contexte">${esc(folder.context || "")}</textarea><textarea id="fObjectives" placeholder="Objectifs">${esc(folder.objectives || "")}</textarea><textarea id="fExpected" placeholder="Résultats attendus">${esc(folder.expectedResults || "")}</textarea><textarea id="fNotes" placeholder="Notes du directeur">${esc(folder.directorNotes || "")}</textarea><div class="row-actions"><button class="action" onclick="${mode === "create" ? "saveNewFolder()" : `saveFolder('${folder.id}')`}">Enregistrer</button><button class="secondary" onclick="${mode === "create" ? "renderFolders()" : `openFolder('${folder.id}')`}">Annuler</button></div>${isEdit ? `<div class="folder-delete-zone"><button class="danger" type="button" onclick="openFolderDeletionDialog('${folder.id}')">Supprimer le dossier</button><p class="muted">Action destructrice limitée au dossier. Les objets liés seront conservés.</p></div>` : ""}${deletionPanel}</div>`;
 }
 
 function resetFolderDeletionDialog() {
@@ -6880,11 +6880,11 @@ function renderFolderDeletionPanel(folder) {
   const impact = folderDeletionDialog.impact || getFolderDeletionImpact(folder.id);
   const sentence = "Seul le Dossier sera supprimé. Les éléments liés seront conservés, mais leur liaison avec ce Dossier sera retirée.";
   const expectedPhrase = `Confirmer la suppression du dossier "${folder.name}"`;
-  const hasError = folderDeletionDialog.error · `<p class="folder-delete-error">${esc(folderDeletionDialog.error)}</p>` : "";
+  const hasError = folderDeletionDialog.error ? `<p class="folder-delete-error">${esc(folderDeletionDialog.error)}</p>` : "";
   if (folderDeletionDialog.step === 1) {
     return `<div class="folder-delete-panel"><h3>Étape 1 — Aperçu des conséquences</h3><p><strong>${esc(folder.name)}</strong> · ${esc(folderStatusLabel(folder.status))}</p><div class="folder-delete-impact">${folderDeleteImpactRows(impact)}</div><p class="muted">${sentence}</p>${hasError}<div class="row-actions"><button class="secondary" type="button" onclick="cancelFolderDeletion()">Annuler</button><button class="danger" type="button" onclick="goFolderDeletionStep2()">Continuer</button></div></div>`;
   }
-  return `<div class="folder-delete-panel"><h3>Étape 2 — Confirmation explicite</h3><p class="muted">Saisissez exactement la phrase suivante pour confirmer.</p><p><strong>${esc(expectedPhrase)}</strong></p><input id="folderDeleteConfirmInput" value="${esc(folderDeletionDialog.confirmText || "")}" oninput="setFolderDeletionConfirmText(this.value)" placeholder="Confirmer la suppression"><p class="muted">${sentence}</p>${hasError}<div class="row-actions"><button class="secondary" type="button" onclick="cancelFolderDeletion()">Annuler</button><button class="danger" type="button" ${folderDeletionDialog.busy · "disabled" : ""} onclick="confirmFolderDeletion('${folder.id}')">Supprimer définitivement</button></div></div>`;
+  return `<div class="folder-delete-panel"><h3>Étape 2 — Confirmation explicite</h3><p class="muted">Saisissez exactement la phrase suivante pour confirmer.</p><p><strong>${esc(expectedPhrase)}</strong></p><input id="folderDeleteConfirmInput" value="${esc(folderDeletionDialog.confirmText || "")}" oninput="setFolderDeletionConfirmText(this.value)" placeholder="Confirmer la suppression"><p class="muted">${sentence}</p>${hasError}<div class="row-actions"><button class="secondary" type="button" onclick="cancelFolderDeletion()">Annuler</button><button class="danger" type="button" ${folderDeletionDialog.busy ? "disabled" : ""} onclick="confirmFolderDeletion('${folder.id}')">Supprimer définitivement</button></div></div>`;
 }
 
 function objectReferencesFolder(item, folderId) {
@@ -6991,7 +6991,7 @@ function removeFolderReferencesFromItem(item, folderId) {
     next.folderId = "";
     changed = true;
   }
-  return { item: changed · next : item, changed };
+  return { item: changed ? next : item, changed };
 }
 
 function sanitizeMeetingPreparationFolderLinks(prep, folderId) {
@@ -7012,7 +7012,7 @@ function sanitizeMeetingPreparationFolderLinks(prep, folderId) {
     next.ideas = cleanedIdeas;
     next.agendaTopics = cleanedTopics;
   }
-  return { item: changed · next : prep, changed };
+  return { item: changed ? next : prep, changed };
 }
 
 function persistExternalEventEnrichmentsOnly() {
@@ -7203,10 +7203,10 @@ function syncFolderManagersFromManager(managerId, previousFolderIds, nextFolderI
 
     const nextLinked = normalizeLinkedManagerIds(folder.linkedManagers);
     const withAdded = shouldAdd && !nextLinked.some(id => sameId(id, manager))
-      · [...nextLinked, manager]
+      ? [...nextLinked, manager]
       : nextLinked;
     const withRemoved = shouldRemove
-      · withAdded.filter(id => !sameId(id, manager))
+      ? withAdded.filter(id => !sameId(id, manager))
       : withAdded;
     const normalized = normalizeLinkedManagerIds(withRemoved);
 
@@ -7242,12 +7242,12 @@ function syncProjectsFromManager(managerId, previousProjectIds, nextProjectIds) 
     const shouldRemove = removed.some(id => sameId(id, projectId));
     if (!shouldAdd && !shouldRemove) return project;
 
-    const currentManagers = normalizeLinkedManagerIds(ensureArray(project.linkedManagers).length · project.linkedManagers : ensureArray(project.linkedManagerIds));
+    const currentManagers = normalizeLinkedManagerIds(ensureArray(project.linkedManagers).length ? project.linkedManagers : ensureArray(project.linkedManagerIds));
     const withAdded = shouldAdd && !currentManagers.some(id => sameId(id, manager))
-      · [...currentManagers, manager]
+      ? [...currentManagers, manager]
       : currentManagers;
     const withRemoved = shouldRemove
-      · withAdded.filter(id => !sameId(id, manager))
+      ? withAdded.filter(id => !sameId(id, manager))
       : withAdded;
     const normalized = normalizeLinkedManagerIds(withRemoved);
 
@@ -7279,10 +7279,10 @@ function syncManagerFoldersFromFolder(folderId, previousManagerIds, nextManagerI
 
     const currentFolders = normalizeLinkedIdArray(manager.linkedFolders);
     const withAdded = shouldAdd && !currentFolders.some(id => sameId(id, folder))
-      · [...currentFolders, folder]
+      ? [...currentFolders, folder]
       : currentFolders;
     const withRemoved = shouldRemove
-      · withAdded.filter(id => !sameId(id, folder))
+      ? withAdded.filter(id => !sameId(id, folder))
       : withAdded;
     const normalized = normalizeLinkedIdArray(withRemoved);
 
@@ -7394,8 +7394,8 @@ function readFolderAgendaForm(folderId) {
     const [sh, sm] = start.split(":").map(Number);
     const [eh, em] = end.split(":").map(Number);
     if (Number.isFinite(sh) && Number.isFinite(eh)) {
-      const smins = sh * 60 + (Number.isFinite(sm) · sm : 0);
-      const emins = eh * 60 + (Number.isFinite(em) · em : 0);
+      const smins = sh * 60 + (Number.isFinite(sm) ? sm : 0);
+      const emins = eh * 60 + (Number.isFinite(em) ? em : 0);
       if (emins < smins) {
         alert("L'heure de fin ne peut pas être antérieure à l'heure de début.");
         return null;
@@ -7412,9 +7412,9 @@ function readFolderAgendaForm(folderId) {
     syncStatus: "local",
     lastSyncedAt: "",
     date,
-    startTime: allDay · "" : (start || ""),
-    time: allDay · "" : (start || ""),
-    endTime: allDay · "" : (end || ""),
+    startTime: allDay ? "" : (start || ""),
+    time: allDay ? "" : (start || ""),
+    endTime: allDay ? "" : (end || ""),
     title,
     type: document.getElementById("fagType")?.value || "",
     location: document.getElementById("fagLocation")?.value.trim(),
@@ -7516,13 +7516,13 @@ function folderProjectsList(items, folderId) {
 }
 
 function folderManagersList(items, folder) {
-  const linkedManagerIds = normalizeLinkedManagerIds(ensureArray(folder?.linkedManagers).length · folder.linkedManagers : ensureArray(folder?.linkedManagerIds));
-  return items.map(m => `<div class="item clickable" onclick="openManager('${m.id}')"><strong>${esc(m.name)}</strong><span class="muted">${esc(m.role || "")} · ${esc(linkedManagerIds.some(id => sameId(id, m.id)) · "Manager associé" : "Lié par contenu")}</span>${badge(m.status)}</div>`).join("") || `<div class="empty">Aucun manager concerné.</div>`;
+  const linkedManagerIds = normalizeLinkedManagerIds(ensureArray(folder?.linkedManagers).length ? folder.linkedManagers : ensureArray(folder?.linkedManagerIds));
+  return items.map(m => `<div class="item clickable" onclick="openManager('${m.id}')"><strong>${esc(m.name)}</strong><span class="muted">${esc(m.role || "")} · ${esc(linkedManagerIds.some(id => sameId(id, m.id)) ? "Manager associé" : "Lié par contenu")}</span>${badge(m.status)}</div>`).join("") || `<div class="empty">Aucun manager concerné.</div>`;
 }
 
 function folderActionsList(items, folderId) {
   const sorted = [...items].sort((a, b) => Number(Boolean(a.done)) - Number(Boolean(b.done)) || (daysUntil(a.due) ?? 9999) - (daysUntil(b.due) ?? 9999) || levelRank(a.level || "orange") - levelRank(b.level || "orange"));
-  return sorted.map(a => `<div class="item row"><div class="clickable" onclick="setView('actions')"><strong>${a.done · "[Terminee]" : "[A faire]"} ${esc(a.title)}</strong><span class="muted">${esc(a.priorityLevel || a.level || "À suivre")} · ${esc(a.owner || "")}</span><span class="meta">Échéance ${esc(a.due || "Non définie")}</span></div><button class="secondary" onclick="completeFolderAction('${a.id}','${folderId}')">${a.done · "Réouvrir" : "Terminer"}</button></div>`).join("") || folderEmpty(folderId, "action", "action");
+  return sorted.map(a => `<div class="item row"><div class="clickable" onclick="setView('actions')"><strong>${a.done ? "[Terminee]" : "[A faire]"} ${esc(a.title)}</strong><span class="muted">${esc(a.priorityLevel || a.level || "À suivre")} · ${esc(a.owner || "")}</span><span class="meta">Échéance ${esc(a.due || "Non définie")}</span></div><button class="secondary" onclick="completeFolderAction('${a.id}','${folderId}')">${a.done ? "Réouvrir" : "Terminer"}</button></div>`).join("") || folderEmpty(folderId, "action", "action");
 }
 
 function completeFolderAction(actionId, folderId) {
@@ -7530,16 +7530,16 @@ function completeFolderAction(actionId, folderId) {
   if (!a) return;
   a.done = !a.done;
   persist("actions");
-  addActivity("Action modifiée", a.title, a.done · "Terminée" : "Réouverte", a.id);
+  addActivity("Action modifiée", a.title, a.done ? "Terminée" : "Réouverte", a.id);
   openFolder(folderId);
 }
 
 function folderPrioritiesList(items) {
-  return items.map(p => `<div class="item clickable" onclick="setView('priorities')"><strong>${esc(p.title)}</strong><span class="muted">${esc(folderPriorityLabel(p.level))} · ${p.done · "Terminée" : "Active"}</span><span class="meta">Échéance ${esc(p.due || "Non définie")}</span></div>`).join("") || `<div class="empty">Aucune priorité liée.</div>`;
+  return items.map(p => `<div class="item clickable" onclick="setView('priorities')"><strong>${esc(p.title)}</strong><span class="muted">${esc(folderPriorityLabel(p.level))} · ${p.done ? "Terminée" : "Active"}</span><span class="meta">Échéance ${esc(p.due || "Non définie")}</span></div>`).join("") || `<div class="empty">Aucune priorité liée.</div>`;
 }
 
 function folderDecisionsList(items, folderId) {
-  const sorted = [...items].sort((a, b) => (a.status === "review" · -1 : 0) - (b.status === "review" · -1 : 0) || dateRank(b.date) - dateRank(a.date));
+  const sorted = [...items].sort((a, b) => (a.status === "review" ? -1 : 0) - (b.status === "review" ? -1 : 0) || dateRank(b.date) - dateRank(a.date));
   return sorted.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(decisionStatusLabel(d.status))} · ${esc(folderPriorityLabel(d.importance))}</span><span class="meta">Date ${esc(d.date || "")} · Réexamen ${esc(d.reviewDate || "Non défini")}</span></div>`).join("") || folderEmpty(folderId, "decision", "décision");
 }
 
@@ -7577,7 +7577,7 @@ function actionItem(a) {
   const folders = state.folders.filter(f => ensureArray(a.linkedFolders).includes(f.id)).map(f => f.name).join(" · ");
   const projects = state.projects.filter(p => ensureArray(a.linkedProjects).includes(p.id));
   const decisions = state.decisions.filter(d => ensureArray(a.linkedDecisions).includes(d.id));
-  return `<div class="item row"><div><strong>${a.done · "[Terminee]" : "[A faire]"} ${esc(a.title)}</strong><span class="muted">${esc(a.link || "")}${folders · " · " + esc(folders) : ""}${projects.length · " · Projet : " + esc(projects.map(p => p.name).join(" · ")) : ""}${decisions.length · " · Décision : " + esc(decisions.map(d => d.title).join(" · ")) : ""}</span></div><div class="row-actions">${projects.map(p => `<button class="secondary" onclick="openProject('${p.id}')">Projet</button>`).join("")}${decisions.map(d => `<button class="secondary" onclick="openDecision('${d.id}')">Décision</button>`).join("")}<button class="secondary" onclick="openAction('${a.id}')">Ouvrir</button><button class="secondary" onclick="editAction('${a.id}')">Modifier</button><button class="secondary" onclick="toggleAction('${a.id}')">${a.done · "Réouvrir" : "Terminer"}</button><button class="danger" onclick="deleteAction('${a.id}')">Supprimer</button></div></div>`;
+  return `<div class="item row"><div><strong>${a.done ? "[Terminee]" : "[A faire]"} ${esc(a.title)}</strong><span class="muted">${esc(a.link || "")}${folders ? " · " + esc(folders) : ""}${projects.length ? " · Projet : " + esc(projects.map(p => p.name).join(" · ")) : ""}${decisions.length ? " · Décision : " + esc(decisions.map(d => d.title).join(" · ")) : ""}</span></div><div class="row-actions">${projects.map(p => `<button class="secondary" onclick="openProject('${p.id}')">Projet</button>`).join("")}${decisions.map(d => `<button class="secondary" onclick="openDecision('${d.id}')">Décision</button>`).join("")}<button class="secondary" onclick="openAction('${a.id}')">Ouvrir</button><button class="secondary" onclick="editAction('${a.id}')">Modifier</button><button class="secondary" onclick="toggleAction('${a.id}')">${a.done ? "Réouvrir" : "Terminer"}</button><button class="danger" onclick="deleteAction('${a.id}')">Supprimer</button></div></div>`;
 }
 
 function addAction() {
@@ -7600,7 +7600,7 @@ function toggleAction(id) {
   if (!a) return;
   a.done = !a.done;
   persist("actions");
-  addActivity("Action modifiée", a.title, a.done · "Terminée" : "Réouverte", a.id);
+  addActivity("Action modifiée", a.title, a.done ? "Terminée" : "Réouverte", a.id);
   renderActions();
 }
 
@@ -7617,7 +7617,7 @@ function openAction(id) {
   const linkedFolders = state.folders.filter(f => ensureArray(a.linkedFolders).includes(f.id));
   const linkedDocuments = state.documents.filter(d => ensureArray(d.linkedActions).includes(a.id));
   document.getElementById("viewTitle").textContent = a.title;
-  appHtml(`<div class="card hero manager-hero"><button class="secondary" onclick="renderActions()">Retour Actions</button><h2>${esc(a.title)}</h2><p>${esc(a.link || "")}</p><span class="muted">${a.done · "Terminée" : "En cours"}</span><div class="row-actions"><button class="secondary" onclick="editAction('${a.id}')">Modifier</button><button class="secondary" onclick="toggleAction('${a.id}')">${a.done · "Réouvrir" : "Terminer"}</button><button class="danger" onclick="deleteAction('${a.id}')">Supprimer</button></div></div><div class="grid two"><div class="card"><h2>Dossiers liés</h2>${linkedFolders.map(f => `<div class="item clickable" onclick="openFolder('${f.id}')"><strong>${esc(f.name)}</strong><span class="muted">${esc(f.category || "")}</span></div>`).join("") || `<div class="empty">Aucun dossier lié.</div>`}</div><div class="card"><h2>Projets liés</h2>${linkedProjects.map(p => `<div class="item clickable" onclick="openProject('${p.id}')"><strong>${esc(p.name)}</strong><span class="muted">${esc(p.next || "")}</span></div>`).join("") || `<div class="empty">Aucun projet lié.</div>`}</div><div class="card"><h2>Décisions liées</h2>${linkedDecisions.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(decisionStatusLabel(d.status))}</span></div>`).join("") || `<div class="empty">Aucune décision liée.</div>`}</div><div class="card"><h2>Documents liés</h2>${linkedDocuments.map(d => `<div class="item clickable" onclick="editDocument('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(d.type || "")}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`}</div><div class="card full-span"><h2>Rendez-vous liés</h2>${actionAgendaList(a)}</div></div>`);
+  appHtml(`<div class="card hero manager-hero"><button class="secondary" onclick="renderActions()">Retour Actions</button><h2>${esc(a.title)}</h2><p>${esc(a.link || "")}</p><span class="muted">${a.done ? "Terminée" : "En cours"}</span><div class="row-actions"><button class="secondary" onclick="editAction('${a.id}')">Modifier</button><button class="secondary" onclick="toggleAction('${a.id}')">${a.done ? "Réouvrir" : "Terminer"}</button><button class="danger" onclick="deleteAction('${a.id}')">Supprimer</button></div></div><div class="grid two"><div class="card"><h2>Dossiers liés</h2>${linkedFolders.map(f => `<div class="item clickable" onclick="openFolder('${f.id}')"><strong>${esc(f.name)}</strong><span class="muted">${esc(f.category || "")}</span></div>`).join("") || `<div class="empty">Aucun dossier lié.</div>`}</div><div class="card"><h2>Projets liés</h2>${linkedProjects.map(p => `<div class="item clickable" onclick="openProject('${p.id}')"><strong>${esc(p.name)}</strong><span class="muted">${esc(p.next || "")}</span></div>`).join("") || `<div class="empty">Aucun projet lié.</div>`}</div><div class="card"><h2>Décisions liées</h2>${linkedDecisions.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(decisionStatusLabel(d.status))}</span></div>`).join("") || `<div class="empty">Aucune décision liée.</div>`}</div><div class="card"><h2>Documents liés</h2>${linkedDocuments.map(d => `<div class="item clickable" onclick="editDocument('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(d.type || "")}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`}</div><div class="card full-span"><h2>Rendez-vous liés</h2>${actionAgendaList(a)}</div></div>`);
 }
 
 function openActionModal(id) {
@@ -7638,12 +7638,12 @@ function idsFromTextarea(id) {
 
 function optionLines(items, currentIds, labelFn) {
   const selected = new Set(currentIds || []);
-  return items.filter(item => selected.has(item.id)).map(item => `${item.id} · ${labelFn(item)}`).join("\n");
+  return items.filter(item => selected.has(item.id)).map(item => `${item.id} ? ${labelFn(item)}`).join("\n");
 }
 
 function linkedActionsList(m) {
   const linked = state.actions.filter(a => (m.linkedActions || []).includes(a.id));
-  return linked.map(a => `<div class="item row"><div><strong>${a.done · "[Terminee]" : "[A faire]"} ${esc(a.title)}</strong><span class="muted">${esc(a.link || "")}</span><span class="meta">ID ${esc(a.id)}</span></div><button class="secondary" onclick="toggleLinkedManagerAction('${m.id}','${a.id}')">${a.done · "Réouvrir" : "Terminer"}</button></div>`).join("") || `<div class="empty">Aucune action liée.</div>`;
+  return linked.map(a => `<div class="item row"><div><strong>${a.done ? "[Terminee]" : "[A faire]"} ${esc(a.title)}</strong><span class="muted">${esc(a.link || "")}</span><span class="meta">ID ${esc(a.id)}</span></div><button class="secondary" onclick="toggleLinkedManagerAction('${m.id}','${a.id}')">${a.done ? "Réouvrir" : "Terminer"}</button></div>`).join("") || `<div class="empty">Aucune action liée.</div>`;
 }
 
 function linkedProjectsList(m) {
@@ -7654,16 +7654,16 @@ function linkedProjectsList(m) {
 function projectOwnerId(p) {
   if (p.ownerId && byId("managers", p.ownerId)) return p.ownerId;
   const owner = state.managers.find(m => m.name === p.owner || m.id === p.owner);
-  return owner · owner.id : "";
+  return owner ? owner.id : "";
 }
 
 function projectOwnerName(p) {
   const owner = byId("managers", p.ownerId) || state.managers.find(m => m.name === p.owner || m.id === p.owner);
-  return owner · owner.name : (p.owner || "");
+  return owner ? owner.name : (p.owner || "");
 }
 
 function ownerSelect(id, selectedId = "") {
-  return `<select id="${id}"><option value="">Aucun responsable principal</option>${state.managers.map(m => `<option value="${esc(m.id)}" ${selectedId === m.id · "selected" : ""}>${esc(m.name)} · ${esc(m.role || "")}</option>`).join("")}</select>`;
+  return `<select id="${id}"><option value="">Aucun responsable principal</option>${state.managers.map(m => `<option value="${esc(m.id)}" ${selectedId === m.id ? "selected" : ""}>${esc(m.name)} · ${esc(m.role || "")}</option>`).join("")}</select>`;
 }
 
 function managerResponsibleProjects(m) {
@@ -7675,7 +7675,7 @@ function managerAssociatedProjects(m) {
 }
 
 function managerProjectItem(p) {
-  return `<div class="item clickable" onclick="openProject('${p.id}')"><strong>${esc(p.name)}</strong><span class="muted">${esc(labels[p.status] || "À suivre")} · ${Number(p.progress || 0)}% · Échéance ${esc(p.deadline || "À préciser")}</span><span class="meta">Prochaine étape : ${esc(p.next || "À compléter")} · ID ${esc(p.id)}</span></div>`;
+  return `<div class="item clickable" onclick="openProject('${p.id}')"><strong>${esc(p.name)}</strong><span class="muted">${esc(labels[p.status] || "À suivre")} · ${Number(p.progress || 0)}% ? Échéance ${esc(p.deadline || "À préciser")}</span><span class="meta">Prochaine étape : ${esc(p.next || "À compléter")} · ID ${esc(p.id)}</span></div>`;
 }
 
 function managerResponsibleProjectsList(m) {
@@ -7690,14 +7690,14 @@ function managerAssociatedProjectsList(m) {
 
 function linkedDecisionsList(m) {
   const linked = state.decisions.filter(d => (m.linkedDecisions || []).includes(d.id) || (d.linkedManagers || []).includes(m.id));
-  return linked.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(d.date || "")} · ${(d.tags || []).map(esc).join(", ")}</span><span class="meta">ID ${esc(d.id)}</span></div>`).join("") || `<div class="empty">Aucune décision liée.</div>`;
+  return linked.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(d.date || "")} ? ${(d.tags || []).map(esc).join(", ")}</span><span class="meta">ID ${esc(d.id)}</span></div>`).join("") || `<div class="empty">Aucune décision liée.</div>`;
 }
 
 function managerTimeline(m) {
   const managerEvents = (m.events || []).map(e => ({ date: e.date || "", title: e.title || "Événement", detail: e.detail || "", kind: "Échange" }));
-  const pilotEvents = normalizeManagerPilotNotes(m.pilotNotes).map(n => ({ date: n.date || "", title: managerPilotTypeLabel(n.type), detail: ensureArray(n.followUps).length · `${ensureArray(n.followUps).length} élément(s) à suivre` : "Note de pilotage", kind: "Pilotage" }));
-  const activityEvents = state.activity.filter(a => a.entityId === m.id).map(a => ({ date: a.date || "", title: a.type || "Activité", detail: `${a.title || ""}${a.detail · " · " + a.detail : ""}`, kind: "Activité" }));
-  return [...managerEvents, ...pilotEvents, ...activityEvents].sort((a, b) => String(b.date).localeCompare(String(a.date))).map(e => `<div class="item"><strong>${esc(e.date || "Sans date")} · ${esc(e.title)}</strong><span class="muted">${esc(e.kind)}${e.detail · " · " + esc(e.detail) : ""}</span></div>`).join("") || `<div class="empty">Aucun échange enregistré.</div>`;
+  const pilotEvents = normalizeManagerPilotNotes(m.pilotNotes).map(n => ({ date: n.date || "", title: managerPilotTypeLabel(n.type), detail: ensureArray(n.followUps).length ? `${ensureArray(n.followUps).length} élément(s) à suivre` : "Note de pilotage", kind: "Pilotage" }));
+  const activityEvents = state.activity.filter(a => a.entityId === m.id).map(a => ({ date: a.date || "", title: a.type || "Activité", detail: `${a.title || ""}${a.detail ? " · " + a.detail : ""}`, kind: "Activité" }));
+  return [...managerEvents, ...pilotEvents, ...activityEvents].sort((a, b) => String(b.date).localeCompare(String(a.date))).map(e => `<div class="item"><strong>${esc(e.date || "Sans date")} · ${esc(e.title)}</strong><span class="muted">${esc(e.kind)}${e.detail ? " · " + esc(e.detail) : ""}</span></div>`).join("") || `<div class="empty">Aucun échange enregistré.</div>`;
 }
 
 function directorNotesList(m) {
@@ -7721,17 +7721,17 @@ function managerDocumentsList(m) {
   const interviewRows = interviews.map(doc => {
     const templateKey = normalizeInterviewTemplate(doc.interviewTemplate || "");
     const modelLabel = templateKey
-      · interviewTemplateLabel(templateKey)
+      ? interviewTemplateLabel(templateKey)
       : (doc.documentType || "Compte-rendu d'entretien");
     const statusLabel = documentStatusLabelV520(doc);
     const confidentialityLabel = documentConfidentialityLabelV520(doc);
     const confidentiality = normalizeInterviewConfidentiality(doc.confidentiality || "normal");
-    const badgeClass = confidentiality === "confidential" · "red" : confidentiality === "restricted" · "orange" : "green";
+    const badgeClass = confidentiality === "confidential" ? "red" : confidentiality === "restricted" ? "orange" : "green";
     const nextDate = documentNextInterviewDate(doc);
-    return `<div class="item row"><div class="clickable" onclick="editDocument('${esc(doc.id)}')"><strong>${esc(doc.title || "Compte-rendu")}</strong><span class="muted">${esc(doc.date || doc.updatedAt || "Sans date")} · ${esc(modelLabel)} · ${esc(statusLabel)}</span><span class="meta"><span class="badge ${badgeClass}">${esc(confidentialityLabel)}</span>${nextDate · " · Prochain entretien " + esc(nextDate) : ""}</span></div><button class="secondary" onclick="editDocument('${esc(doc.id)}')">Ouvrir</button></div>`;
+    return `<div class="item row"><div class="clickable" onclick="editDocument('${esc(doc.id)}')"><strong>${esc(doc.title || "Compte-rendu")}</strong><span class="muted">${esc(doc.date || doc.updatedAt || "Sans date")} · ${esc(modelLabel)} · ${esc(statusLabel)}</span><span class="meta"><span class="badge ${badgeClass}">${esc(confidentialityLabel)}</span>${nextDate ? " · Prochain entretien " + esc(nextDate) : ""}</span></div><button class="secondary" onclick="editDocument('${esc(doc.id)}')">Ouvrir</button></div>`;
   }).join("") || `<div class="empty">Aucun compte-rendu d'entretien lié.</div>`;
 
-  const classicRows = classics.map(doc => `<div class="item row"><div class="clickable" onclick="editDocument('${esc(doc.id)}')"><strong>${esc(doc.title || "Document")}</strong><span class="muted">${esc(doc.type || "Document")}${doc.category · " · " + esc(doc.category) : ""}${doc.status · " · " + esc(doc.status) : ""}</span><span class="meta">${esc(doc.date || doc.updatedAt || "Sans date")}</span></div><button class="secondary" onclick="editDocument('${esc(doc.id)}')">Ouvrir</button></div>`).join("") || `<div class="empty">Aucun document classique lié.</div>`;
+  const classicRows = classics.map(doc => `<div class="item row"><div class="clickable" onclick="editDocument('${esc(doc.id)}')"><strong>${esc(doc.title || "Document")}</strong><span class="muted">${esc(doc.type || "Document")}${doc.category ? " · " + esc(doc.category) : ""}${doc.status ? " · " + esc(doc.status) : ""}</span><span class="meta">${esc(doc.date || doc.updatedAt || "Sans date")}</span></div><button class="secondary" onclick="editDocument('${esc(doc.id)}')">Ouvrir</button></div>`).join("") || `<div class="empty">Aucun document classique lié.</div>`;
 
   if (!linked.length) return `<div class="empty">Aucun document lié.</div>`;
   return `<div class="manager-doc-sections"><h3>Comptes-rendus d'entretien</h3>${interviewRows}<h3>Documents liés</h3>${classicRows}</div>`;
@@ -7757,7 +7757,7 @@ function managementRequestStatusLabel(value) {
 
 function managementRequestStatusBadge(value) {
   const v = String(value || "open");
-  const cls = v === "achieved" · "green" : (v === "missed" · "red" : (v === "abandoned" · "orange" : "orange"));
+  const cls = v === "achieved" ? "green" : (v === "missed" ? "red" : (v === "abandoned" ? "orange" : "orange"));
   return `<span class="badge ${cls}">${esc(managementRequestStatusLabel(v))}</span>`;
 }
 
@@ -7770,15 +7770,15 @@ function managerManagementRequestsSummary(m) {
     return !Number.isNaN(d.getTime()) && d.getTime() < Date.now();
   }).length;
   const achieved = rows.filter(r => String(r.status || "") === "achieved").length;
-  return `<div class="row-actions"><span class="badge orange">${open} ouverte(s)</span><span class="badge green">${achieved} atteinte(s)</span>${overdue · `<span class="badge red">${overdue} en retard</span>` : ""}</div>`;
+  return `<div class="row-actions"><span class="badge orange">${open} ouverte(s)</span><span class="badge green">${achieved} atteinte(s)</span>${overdue ? `<span class="badge red">${overdue} en retard</span>` : ""}</div>`;
 }
 
 function managerManagementRequestsList(m) {
   const rows = [...ensureArray(m.managementRequests)].sort((a,b) => String(b.date || "").localeCompare(String(a.date || "")));
   if (!rows.length) return `<div class="empty">Aucune demande ou objectif managérial tracé.</div>`;
   return rows.map(r => {
-    const proof = [r.channel · `Canal : ${r.channel}` : "", r.emailRef · `Mail : ${r.emailRef}` : "", r.documentRef · `Preuve : ${r.documentRef}` : ""].filter(Boolean).join(" · ");
-    return `<details class="item"><summary><strong>${esc(r.date || "Sans date")} · ${esc(managementRequestTypeLabel(r.type))} · ${esc(r.subject || "Sans objet")}</strong> ${managementRequestStatusBadge(r.status)}</summary><div style="padding-top:10px"><p><strong>Demande / objectif formulé</strong><br>${esc(r.requestText || "À compléter")}</p><p><strong>Résultat attendu</strong><br>${esc(r.expectedResult || "À compléter")}</p><p><strong>Échéance :</strong> ${esc(r.dueDate || "Non définie")}</p>${proof · `<p class="muted">${esc(proof)}</p>` : ""}${r.closureComment · `<p><strong>Suivi / clôture</strong><br>${esc(r.closureComment)}</p>` : ""}${r.actionId · `<p><button class="secondary" onclick="openAction('${esc(r.actionId)}')">Ouvrir l’action liée</button></p>` : ""}<div class="row-actions"><button class="secondary" onclick="openManager('${esc(m.id)}','request:${esc(r.id)}')">Modifier / suivre</button></div></div></details>`;
+    const proof = [r.channel ? `Canal : ${r.channel}` : "", r.emailRef ? `Mail : ${r.emailRef}` : "", r.documentRef ? `Preuve : ${r.documentRef}` : ""].filter(Boolean).join(" · ");
+    return `<details class="item"><summary><strong>${esc(r.date || "Sans date")} · ${esc(managementRequestTypeLabel(r.type))} · ${esc(r.subject || "Sans objet")}</strong> ${managementRequestStatusBadge(r.status)}</summary><div style="padding-top:10px"><p><strong>Demande / objectif formulé</strong><br>${esc(r.requestText || "À compléter")}</p><p><strong>Résultat attendu</strong><br>${esc(r.expectedResult || "À compléter")}</p><p><strong>Échéance :</strong> ${esc(r.dueDate || "Non définie")}</p>${proof ? `<p class="muted">${esc(proof)}</p>` : ""}${r.closureComment ? `<p><strong>Suivi / clôture</strong><br>${esc(r.closureComment)}</p>` : ""}${r.actionId ? `<p><button class="secondary" onclick="openAction('${esc(r.actionId)}')">Ouvrir l’action liée</button></p>` : ""}<div class="row-actions"><button class="secondary" onclick="openManager('${esc(m.id)}','request:${esc(r.id)}')">Modifier / suivre</button></div></div></details>`;
   }).join("");
 }
 
@@ -7786,7 +7786,7 @@ function managerManagementRequestForm(m, requestId = "") {
   const existing = ensureArray(m.managementRequests).find(r => sameId(r.id, requestId)) || {};
   const editing = Boolean(existing.id);
   const todayValue = existing.date || isoToday();
-  return `<div id="manager-request-form" class="card full-span"><h2>${editing · "Mettre à jour l’échange managérial" : "Tracer un échange / une demande"}</h2><p class="muted">Conservez ici la demande formulée, son contexte, l’échéance et la preuve associée. Ce suivi reste distinct d’une action opérationnelle.</p><div class="form-grid"><input id="mrDate" type="date" value="${esc(todayValue)}"><select id="mrType"><option value="objective" ${existing.type === "objective" · "selected" : ""}>Objectif</option><option value="request" ${!editing || existing.type === "request" · "selected" : ""}>Demande particulière</option><option value="expectation" ${existing.type === "expectation" · "selected" : ""}>Attente managériale</option><option value="watch" ${existing.type === "watch" · "selected" : ""}>Point de vigilance</option><option value="reframing" ${existing.type === "reframing" · "selected" : ""}>Recadrage</option><option value="praise" ${existing.type === "praise" · "selected" : ""}>Félicitation</option></select><input id="mrSubject" value="${esc(existing.subject || "")}" placeholder="Objet / titre court"><input id="mrDue" type="date" value="${esc(existing.dueDate || "")}"><select id="mrChannel"><option ${existing.channel === "Oral" · "selected" : ""}>Oral</option><option ${existing.channel === "Entretien" · "selected" : ""}>Entretien</option><option ${existing.channel === "Réunion" · "selected" : ""}>Réunion</option><option ${existing.channel === "Mail" · "selected" : ""}>Mail</option><option ${existing.channel === "Teams" · "selected" : ""}>Teams</option><option ${existing.channel === "Autre" · "selected" : ""}>Autre</option></select><select id="mrStatus"><option value="open" ${!editing || existing.status === "open" · "selected" : ""}>À suivre</option><option value="progress" ${existing.status === "progress" · "selected" : ""}>En cours</option><option value="achieved" ${existing.status === "achieved" · "selected" : ""}>Atteint</option><option value="partial" ${existing.status === "partial" · "selected" : ""}>Partiellement atteint</option><option value="missed" ${existing.status === "missed" · "selected" : ""}>Non atteint</option><option value="abandoned" ${existing.status === "abandoned" · "selected" : ""}>Abandonné</option></select></div><textarea id="mrRequest" placeholder="Demande / objectif formulé">${esc(existing.requestText || "")}</textarea><textarea id="mrExpected" placeholder="Résultat attendu / critères de réussite">${esc(existing.expectedResult || "")}</textarea><div class="form-grid"><input id="mrEmailRef" value="${esc(existing.emailRef || "")}" placeholder="Référence mail / objet du mail"><input id="mrDocumentRef" value="${esc(existing.documentRef || "")}" placeholder="Document / preuve associée"></div><textarea id="mrClosure" placeholder="Commentaire de suivi ou de clôture">${esc(existing.closureComment || "")}</textarea>${existing.actionId · `<p class="muted">Action DEOS liée : ${esc(existing.actionId)}</p>` : `<label><input id="mrCreateAction" type="checkbox"> Créer également une action DEOS liée à cette demande</label>`}<div class="row-actions"><button class="action" onclick="saveManagerManagementRequest('${esc(m.id)}','${esc(existing.id || "")}')">${editing · "Enregistrer le suivi" : "Tracer l’échange"}</button><button class="secondary" onclick="openManager('${esc(m.id)}')">Annuler</button></div></div>`;
+  return `<div id="manager-request-form" class="card full-span"><h2>${editing ? "Mettre à jour l’échange managérial" : "Tracer un échange / une demande"}</h2><p class="muted">Conservez ici la demande formulée, son contexte, l’échéance et la preuve associée. Ce suivi reste distinct d’une action opérationnelle.</p><div class="form-grid"><input id="mrDate" type="date" value="${esc(todayValue)}"><select id="mrType"><option value="objective" ${existing.type === "objective" ? "selected" : ""}>Objectif</option><option value="request" ${!editing || existing.type === "request" ? "selected" : ""}>Demande particulière</option><option value="expectation" ${existing.type === "expectation" ? "selected" : ""}>Attente managériale</option><option value="watch" ${existing.type === "watch" ? "selected" : ""}>Point de vigilance</option><option value="reframing" ${existing.type === "reframing" ? "selected" : ""}>Recadrage</option><option value="praise" ${existing.type === "praise" ? "selected" : ""}>Félicitation</option></select><input id="mrSubject" value="${esc(existing.subject || "")}" placeholder="Objet / titre court"><input id="mrDue" type="date" value="${esc(existing.dueDate || "")}"><select id="mrChannel"><option ${existing.channel === "Oral" ? "selected" : ""}>Oral</option><option ${existing.channel === "Entretien" ? "selected" : ""}>Entretien</option><option ${existing.channel === "Réunion" ? "selected" : ""}>Réunion</option><option ${existing.channel === "Mail" ? "selected" : ""}>Mail</option><option ${existing.channel === "Teams" ? "selected" : ""}>Teams</option><option ${existing.channel === "Autre" ? "selected" : ""}>Autre</option></select><select id="mrStatus"><option value="open" ${!editing || existing.status === "open" ? "selected" : ""}>À suivre</option><option value="progress" ${existing.status === "progress" ? "selected" : ""}>En cours</option><option value="achieved" ${existing.status === "achieved" ? "selected" : ""}>Atteint</option><option value="partial" ${existing.status === "partial" ? "selected" : ""}>Partiellement atteint</option><option value="missed" ${existing.status === "missed" ? "selected" : ""}>Non atteint</option><option value="abandoned" ${existing.status === "abandoned" ? "selected" : ""}>Abandonné</option></select></div><textarea id="mrRequest" placeholder="Demande / objectif formulé">${esc(existing.requestText || "")}</textarea><textarea id="mrExpected" placeholder="Résultat attendu / critères de réussite">${esc(existing.expectedResult || "")}</textarea><div class="form-grid"><input id="mrEmailRef" value="${esc(existing.emailRef || "")}" placeholder="Référence mail / objet du mail"><input id="mrDocumentRef" value="${esc(existing.documentRef || "")}" placeholder="Document / preuve associée"></div><textarea id="mrClosure" placeholder="Commentaire de suivi ou de clôture">${esc(existing.closureComment || "")}</textarea>${existing.actionId ? `<p class="muted">Action DEOS liée : ${esc(existing.actionId)}</p>` : `<label><input id="mrCreateAction" type="checkbox"> Créer également une action DEOS liée à cette demande</label>`}<div class="row-actions"><button class="action" onclick="saveManagerManagementRequest('${esc(m.id)}','${esc(existing.id || "")}')">${editing ? "Enregistrer le suivi" : "Tracer l’échange"}</button><button class="secondary" onclick="openManager('${esc(m.id)}')">Annuler</button></div></div>`;
 }
 
 function saveManagerManagementRequest(managerId, requestId = "") {
@@ -7841,7 +7841,7 @@ function saveManagerManagementRequest(managerId, requestId = "") {
 }
 
 function toggleManagerAddForm(force) {
-  managerAddFormExpanded = typeof force === "boolean" · force : !managerAddFormExpanded;
+  managerAddFormExpanded = typeof force === "boolean" ? force : !managerAddFormExpanded;
   renderManagers();
   if (managerAddFormExpanded) {
     requestAnimationFrame(() => {
@@ -7855,7 +7855,7 @@ window.toggleManagerAddForm = toggleManagerAddForm;
 
 function renderManagers() {
   document.getElementById("viewTitle").textContent = "Managers";
-  const addPanel = `<div class="card" id="manager-add-card"><div class="settings-card-heading"><div><h2>Ajouter un manager</h2><p class="muted">Créez une nouvelle fiche uniquement lorsque nécessaire.</p></div><button class="secondary" type="button" onclick="toggleManagerAddForm()" aria-expanded="${managerAddFormExpanded · "true" : "false"}">${managerAddFormExpanded · "Replier" : "+ Ajouter un manager"}</button></div>${managerAddFormExpanded · `<div id="manager-add-form" style="scroll-margin-top:14px"><input id="mName" placeholder="Nom"><input id="mRole" placeholder="Poste"><select id="mStatus"><option value="green">Maîtrisé</option><option value="orange">À suivre</option><option value="red">Critique</option></select><input id="mPriority" placeholder="Priorité manager"><input id="mNext" placeholder="Prochain entretien"><textarea id="mNote" placeholder="Note"></textarea><div class="row-actions"><button class="action" onclick="addManager()">Ajouter</button><button class="secondary" onclick="toggleManagerAddForm(false)">Annuler</button></div></div>` : ""}</div>`;
+  const addPanel = `<div class="card" id="manager-add-card"><div class="settings-card-heading"><div><h2>Ajouter un manager</h2><p class="muted">Créez une nouvelle fiche uniquement lorsque nécessaire.</p></div><button class="secondary" type="button" onclick="toggleManagerAddForm()" aria-expanded="${managerAddFormExpanded ? "true" : "false"}">${managerAddFormExpanded ? "Replier" : "+ Ajouter un manager"}</button></div>${managerAddFormExpanded ? `<div id="manager-add-form" style="scroll-margin-top:14px"><input id="mName" placeholder="Nom"><input id="mRole" placeholder="Poste"><select id="mStatus"><option value="green">Maîtrisé</option><option value="orange">À suivre</option><option value="red">Critique</option></select><input id="mPriority" placeholder="Priorité manager"><input id="mNext" placeholder="Prochain entretien"><textarea id="mNote" placeholder="Note"></textarea><div class="row-actions"><button class="action" onclick="addManager()">Ajouter</button><button class="secondary" onclick="toggleManagerAddForm(false)">Annuler</button></div></div>` : ""}</div>`;
   appHtml(`${addPanel}<div class="grid two">${state.managers.map(managerCard).join("")}</div>`);
 }
 
@@ -7880,7 +7880,7 @@ function normalizeManagerPilotNotes(rows = []) {
   return ensureArray(rows).filter(row => row && typeof row === "object").map(row => {
     const followUps = ensureArray(row.followUps).map(item => {
       if (typeof item === "string") return { id: newId("pilot-follow"), text: item.trim(), kind: "follow", createdRefs: {} };
-      return { id: item.id || newId("pilot-follow"), text: String(item.text || "").trim(), kind: String(item.kind || "follow"), createdRefs: item.createdRefs && typeof item.createdRefs === "object" · { ...item.createdRefs } : {} };
+      return { id: item.id || newId("pilot-follow"), text: String(item.text || "").trim(), kind: String(item.kind || "follow"), createdRefs: item.createdRefs && typeof item.createdRefs === "object" ? { ...item.createdRefs } : {} };
     }).filter(item => item.text);
     return {
       id: row.id || newId("pilot-note"),
@@ -7922,7 +7922,7 @@ function managerPilotMarkerLine(line) {
 
 function managerPilotTextBlock(value) {
   const lines = String(value || "").split(/\r?\n/).filter(line => line.trim());
-  return lines.length · lines.map(managerPilotMarkerLine).join("") : `<span class="muted">Aucune note.</span>`;
+  return lines.length ? lines.map(managerPilotMarkerLine).join("") : `<span class="muted">Aucune note.</span>`;
 }
 
 function managerPilotOpenActions(m) {
@@ -7934,17 +7934,17 @@ function managerPilotSinceLastData(m, excludeNoteId = "") {
   const previous = notes[0] || null;
   const actions = managerPilotOpenActions(m);
   const requests = ensureArray(m.managementRequests).filter(r => ["open","progress","partial"].includes(String(r.status || "open")));
-  const followUps = previous · ensureArray(previous.followUps).filter(f => !f.createdRefs || Object.keys(f.createdRefs).length === 0) : [];
+  const followUps = previous ? ensureArray(previous.followUps).filter(f => !f.createdRefs || Object.keys(f.createdRefs).length === 0) : [];
   return { previous, actions, requests, followUps };
 }
 
 function managerPilotSinceLastSummary(m, excludeNoteId = "") {
   const { actions, requests, followUps } = managerPilotSinceLastData(m, excludeNoteId);
   const bits = [];
-  if (requests.length) bits.push(`${requests.length} demande${requests.length > 1 · "s" : ""}`);
-  if (actions.length) bits.push(`${actions.length} action${actions.length > 1 · "s" : ""}`);
-  if (followUps.length) bits.push(`${followUps.length} point${followUps.length > 1 · "s" : ""} à revoir`);
-  return bits.length · bits.join(" · ") : "Aucun élément en attente";
+  if (requests.length) bits.push(`${requests.length} demande${requests.length > 1 ? "s" : ""}`);
+  if (actions.length) bits.push(`${actions.length} action${actions.length > 1 ? "s" : ""}`);
+  if (followUps.length) bits.push(`${followUps.length} point${followUps.length > 1 ? "s" : ""} à revoir`);
+  return bits.length ? bits.join(" · ") : "Aucun élément en attente";
 }
 
 function managerPilotSinceLast(m, excludeNoteId = "") {
@@ -7954,15 +7954,15 @@ function managerPilotSinceLast(m, excludeNoteId = "") {
   actions.slice(0,6).forEach(a => items.push(`<button type="button" class="pilot-carry-chip pilot-carry-action" onclick="openAction('${esc(a.id)}')"><span>→</span>${esc(a.title)}</button>`));
   requests.slice(0,6).forEach(r => items.push(`<span class="pilot-carry-chip pilot-carry-request"><span>◎</span>${esc(r.subject || r.requestText || "Demande")}</span>`));
   followUps.slice(0,8).forEach(f => items.push(`<span class="pilot-carry-chip pilot-carry-follow"><span>↻</span>${esc(f.text)}</span>`));
-  return `<div class="pilot-carry-body">${previous · `<div class="pilot-carry-last"><strong>Dernière note</strong><span>${esc(previous.date)} · ${esc(managerPilotTypeLabel(previous.type))}</span></div>` : ""}<div class="pilot-carry-chips">${items.join("")}</div></div>`;
+  return `<div class="pilot-carry-body">${previous ? `<div class="pilot-carry-last"><strong>Dernière note</strong><span>${esc(previous.date)} · ${esc(managerPilotTypeLabel(previous.type))}</span></div>` : ""}<div class="pilot-carry-chips">${items.join("")}</div></div>`;
 }
 
 function managerPilotLegacyNotes(existing = {}) {
   const blocks = [];
   const facts = String(existing.facts || "").split(/\r?\n/).map(x => x.trim()).filter(Boolean);
   const questions = String(existing.questions || "").split(/\r?\n/).map(x => x.trim()).filter(Boolean);
-  facts.forEach(line => blocks.push(line.startsWith("★") · line : `★ ${line}`));
-  questions.forEach(line => blocks.push(line.startsWith("?") · line : `? ${line}`));
+  facts.forEach(line => blocks.push(line.startsWith("★") ? line : `★ ${line}`));
+  questions.forEach(line => blocks.push(line.startsWith("?") ? line : `? ${line}`));
   const free = String(existing.notes || "").trim();
   if (free) blocks.push(free);
   return blocks.join("\n");
@@ -7971,7 +7971,7 @@ function managerPilotLegacyNotes(existing = {}) {
 function managerPilotExtractTagged(value) {
   return String(value || "").split(/\r?\n/).map((line, index) => {
     const info = managerPilotMarkerInfoFromLine(line);
-    return info && info.text · { ...info, index } : null;
+    return info && info.text ? { ...info, index } : null;
   }).filter(Boolean);
 }
 
@@ -7997,15 +7997,15 @@ function managerPilotForm(m, noteId = "") {
   const noteType = existing.type || "performance";
   const centralNotes = managerPilotLegacyNotes(existing);
   return `<div id="manager-pilot-form" class="card full-span pilot-workspace" style="scroll-margin-top:14px">
-    <div class="pilot-heading"><div><h2>${editing · "Modifier la note de pilotage" : "Nouvelle note de pilotage"}</h2><p>Prise de notes libre, pensée pour les entretiens de performance et les 1:1.</p></div><span class="meta">${editing · "Note existante" : "Nouvelle note"}</span></div>
+    <div class="pilot-heading"><div><h2>${editing ? "Modifier la note de pilotage" : "Nouvelle note de pilotage"}</h2><p>Prise de notes libre, pensée pour les entretiens de performance et les 1:1.</p></div><span class="meta">${editing ? "Note existante" : "Nouvelle note"}</span></div>
 
     <div class="pilot-meta-row">
       <label class="pilot-field"><span>Date</span><input id="mpDate" type="date" value="${esc(noteDate)}"></label>
-      <label class="pilot-field"><span>Type</span><select id="mpType"><option value="performance" ${noteType === "performance" · "selected" : ""}>Entretien performance</option><option value="oneToOne" ${noteType === "oneToOne" · "selected" : ""}>1:1 managérial</option><option value="quick" ${noteType === "quick" · "selected" : ""}>Point rapide</option><option value="other" ${noteType === "other" · "selected" : ""}>Autre note</option></select></label>
+      <label class="pilot-field"><span>Type</span><select id="mpType"><option value="performance" ${noteType === "performance" ? "selected" : ""}>Entretien performance</option><option value="oneToOne" ${noteType === "oneToOne" ? "selected" : ""}>1:1 managérial</option><option value="quick" ${noteType === "quick" ? "selected" : ""}>Point rapide</option><option value="other" ${noteType === "other" ? "selected" : ""}>Autre note</option></select></label>
       <div class="pilot-manager-pill"><span>Manager</span><strong>${esc(m.name)}</strong><small>${esc(m.role || "")}</small></div>
     </div>
 
-    <details class="pilot-carry" ${managerPilotSinceLastSummary(m, existing.id || "") !== "Aucun élément en attente" · "open" : ""}><summary><span>Depuis le dernier entretien</span><strong>${esc(managerPilotSinceLastSummary(m, existing.id || ""))}</strong></summary>${managerPilotSinceLast(m, existing.id || "")}</details>
+    <details class="pilot-carry" ${managerPilotSinceLastSummary(m, existing.id || "") !== "Aucun élément en attente" ? "open" : ""}><summary><span>Depuis le dernier entretien</span><strong>${esc(managerPilotSinceLastSummary(m, existing.id || ""))}</strong></summary>${managerPilotSinceLast(m, existing.id || "")}</details>
 
     <input id="mpPrevious" type="hidden" value="${esc(existing.previousReview || "")}">
     <div class="pilot-main-grid">
@@ -8025,7 +8025,7 @@ function managerPilotForm(m, noteId = "") {
       <aside class="pilot-retained-panel"><div class="pilot-retained-heading"><div><h3>Ce que DEOS a retenu</h3><p>Lecture automatique des éléments qualifiés.</p></div></div><div id="mpRetained" class="pilot-retained-content">${managerPilotRetainedHtml(centralNotes)}</div></aside>
     </div>
 
-    <div class="pilot-footer"><div class="pilot-footer-summary"><span>Les éléments marqués →, ✓, ! et · seront conservés dans « À suivre » après l'enregistrement.</span></div><div class="row-actions"><button class="action" onclick="saveManagerPilotNote('${esc(m.id)}','${esc(existing.id || "")}')">${editing · "Enregistrer les modifications" : "Enregistrer la note"}</button><button class="secondary" onclick="openManager('${esc(m.id)}')">Annuler</button></div></div>
+    <div class="pilot-footer"><div class="pilot-footer-summary"><span>Les éléments marqués →, ✓, ! et ? seront conservés dans « À suivre » après l'enregistrement.</span></div><div class="row-actions"><button class="action" onclick="saveManagerPilotNote('${esc(m.id)}','${esc(existing.id || "")}')">${editing ? "Enregistrer les modifications" : "Enregistrer la note"}</button><button class="secondary" onclick="openManager('${esc(m.id)}')">Annuler</button></div></div>
   </div>`;
 }
 
@@ -8033,8 +8033,8 @@ function tagPilotSelection(marker) {
   const field = document.getElementById("mpNotes");
   if (!field) return;
   const value = field.value || "";
-  const start = Number.isFinite(field.selectionStart) · field.selectionStart : value.length;
-  const end = Number.isFinite(field.selectionEnd) · field.selectionEnd : start;
+  const start = Number.isFinite(field.selectionStart) ? field.selectionStart : value.length;
+  const end = Number.isFinite(field.selectionEnd) ? field.selectionEnd : start;
   const lineStart = value.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
   let lineEnd = value.indexOf("\n", end);
   if (lineEnd < 0) lineEnd = value.length;
@@ -8044,7 +8044,7 @@ function tagPilotSelection(marker) {
   let body = originalLine.slice(leading.length);
   const old = MANAGER_PILOT_MARKERS.find(item => body.startsWith(item.symbol));
   if (old) body = body.slice(old.symbol.length).replace(/^\s+/, "");
-  const nextLine = body.trim() · `${leading}${marker} ${body}` : `${leading}${marker} `;
+  const nextLine = body.trim() ? `${leading}${marker} ${body}` : `${leading}${marker} `;
   field.value = before + nextLine + value.slice(lineEnd);
   const cursor = lineStart + nextLine.length;
   field.focus();
@@ -8058,10 +8058,10 @@ function insertPilotMarker(fieldId, marker) {
   if (fieldId === "mpNotes") return tagPilotSelection(marker);
   const field = document.getElementById(fieldId);
   if (!field) return;
-  const prefix = field.value && !field.value.endsWith("\n") · "\n" : "";
+  const prefix = field.value && !field.value.endsWith("\n") ? "\n" : "";
   const addition = `${prefix}${marker} `;
-  const start = Number.isFinite(field.selectionStart) · field.selectionStart : field.value.length;
-  const end = Number.isFinite(field.selectionEnd) · field.selectionEnd : field.value.length;
+  const start = Number.isFinite(field.selectionStart) ? field.selectionStart : field.value.length;
+  const end = Number.isFinite(field.selectionEnd) ? field.selectionEnd : field.value.length;
   field.value = field.value.slice(0,start) + addition + field.value.slice(end);
   field.focus();
   const pos = start + addition.length;
@@ -8074,7 +8074,7 @@ function saveManagerPilotNote(managerId, noteId = "") {
   if (!m) return;
   m.pilotNotes = normalizeManagerPilotNotes(m.pilotNotes);
   const existingIndex = m.pilotNotes.findIndex(n => sameId(n.id, noteId));
-  const existing = existingIndex >= 0 · m.pilotNotes[existingIndex] : null;
+  const existing = existingIndex >= 0 ? m.pilotNotes[existingIndex] : null;
   const date = document.getElementById("mpDate")?.value || isoToday();
   const notes = document.getElementById("mpNotes")?.value.trim() || "";
   const tagged = managerPilotExtractTagged(notes).filter(item => item.kind !== "fact");
@@ -8082,7 +8082,7 @@ function saveManagerPilotNote(managerId, noteId = "") {
   const followUps = tagged.map(item => {
     const key = `${item.kind}|${item.text}`;
     const old = previousByKey.get(key) || ensureArray(existing?.followUps).find(f => String(f.text || "").trim() === item.text);
-    return old · { ...old, text: item.text, kind: item.kind } : { id: newId("pilot-follow"), text: item.text, kind: item.kind, createdRefs: {} };
+    return old ? { ...old, text: item.text, kind: item.kind } : { id: newId("pilot-follow"), text: item.text, kind: item.kind, createdRefs: {} };
   });
   const stamp = new Date().toISOString();
   const payload = {
@@ -8117,7 +8117,7 @@ function managerPilotFollowUpItem(m, note, f) {
   const refs = f.createdRefs || {};
   const createdButtons = Object.entries(refs).map(([type,id]) => managerPilotCreatedRefButton(type,id)).filter(Boolean).join("");
   const marker = MANAGER_PILOT_MARKERS.find(item => item.kind === f.kind);
-  const kindBadge = marker · `<span class="pilot-inline-kind pilot-inline-${esc(marker.kind)}">${esc(marker.symbol)} ${esc(marker.label)}</span>` : "";
+  const kindBadge = marker ? `<span class="pilot-inline-kind pilot-inline-${esc(marker.kind)}">${esc(marker.symbol)} ${esc(marker.label)}</span>` : "";
   if (createdButtons) return `<div class="item"><div class="pilot-follow-title">${kindBadge}<strong>${esc(f.text)}</strong></div><div class="row-actions" style="margin-top:6px">${createdButtons}<span class="badge green">Converti</span></div></div>`;
   return `<div class="item"><div class="pilot-follow-title">${kindBadge}<strong>${esc(f.text)}</strong></div><div class="row-actions" style="margin-top:6px"><button class="secondary" onclick="convertManagerPilotFollowUp('${esc(m.id)}','${esc(note.id)}','${esc(f.id)}','action')">→ Action</button><button class="secondary" onclick="convertManagerPilotFollowUp('${esc(m.id)}','${esc(note.id)}','${esc(f.id)}','decision')">✓ Décision</button><button class="secondary" onclick="convertManagerPilotFollowUp('${esc(m.id)}','${esc(note.id)}','${esc(f.id)}','request')">Demande manager</button><button class="secondary" onclick="convertManagerPilotFollowUp('${esc(m.id)}','${esc(note.id)}','${esc(f.id)}','project')">Projet</button></div></div>`;
 }
@@ -8126,11 +8126,11 @@ function managerPilotNotesList(m) {
   const notes = normalizeManagerPilotNotes(m.pilotNotes);
   if (!notes.length) return `<div class="empty">Aucune note de pilotage. Créez le prochain entretien directement dans DEOS.</div>`;
   return notes.map(note => `<details class="item"><summary><strong>${esc(note.date)} · ${esc(managerPilotTypeLabel(note.type))}</strong> <span class="badge orange">${ensureArray(note.followUps).length} à suivre</span></summary><div style="padding-top:10px">
-    ${note.previousReview · `<h3>Retour précédent</h3>${managerPilotTextBlock(note.previousReview)}` : ""}
-    ${note.facts · `<h3>Chiffres / faits</h3>${managerPilotTextBlock(note.facts)}` : ""}
-    ${note.questions · `<h3>Sujets / questions</h3>${managerPilotTextBlock(note.questions)}` : ""}
-    ${note.notes · `<h3>Notes de l'entretien</h3>${managerPilotTextBlock(note.notes)}` : ""}
-    ${ensureArray(note.followUps).length · `<h3>À suivre</h3>${ensureArray(note.followUps).map(f => managerPilotFollowUpItem(m,note,f)).join("")}` : ""}
+    ${note.previousReview ? `<h3>Retour précédent</h3>${managerPilotTextBlock(note.previousReview)}` : ""}
+    ${note.facts ? `<h3>Chiffres / faits</h3>${managerPilotTextBlock(note.facts)}` : ""}
+    ${note.questions ? `<h3>Sujets / questions</h3>${managerPilotTextBlock(note.questions)}` : ""}
+    ${note.notes ? `<h3>Notes de l'entretien</h3>${managerPilotTextBlock(note.notes)}` : ""}
+    ${ensureArray(note.followUps).length ? `<h3>À suivre</h3>${ensureArray(note.followUps).map(f => managerPilotFollowUpItem(m,note,f)).join("")}` : ""}
     <div class="row-actions" style="margin-top:10px"><button class="secondary" onclick="openManager('${esc(m.id)}','pilot:${esc(note.id)}')">Modifier cette note</button></div>
   </div></details>`).join("");
 }
@@ -8142,7 +8142,7 @@ function convertManagerPilotFollowUp(managerId, noteId, followId, type) {
   const note = m.pilotNotes.find(n => sameId(n.id, noteId));
   const follow = note && ensureArray(note.followUps).find(f => sameId(f.id, followId));
   if (!note || !follow || !follow.text) return;
-  follow.createdRefs = follow.createdRefs && typeof follow.createdRefs === "object" · { ...follow.createdRefs } : {};
+  follow.createdRefs = follow.createdRefs && typeof follow.createdRefs === "object" ? { ...follow.createdRefs } : {};
   let createdId = "";
   if (type === "action") {
     const action = normalizeEntity("actions", { id: newId("action"), title: follow.text, link: `Note de pilotage · ${m.name} · ${note.date}`, owner: m.name, due: "", done: false, linkedManagers: [m.id] });
@@ -8182,7 +8182,7 @@ function openManager(id, mode = "") {
   if (!m) return renderManagers();
   const responsibleCount = managerResponsibleProjects(m).length;
   document.getElementById("viewTitle").textContent = m.name;
-  appHtml(`<div class="card hero manager-hero"><button class="secondary" onclick="renderManagers()">Retour Managers</button><h2>${esc(m.name)}</h2><p>${esc(m.role || "")}</p>${badge(m.status)}<p class="muted">${esc(m.note || "")}</p><span class="meta">ID ${esc(m.id)} · ${responsibleCount} projet(s) sous responsabilité</span><div class="row-actions"><button class="action" onclick="editManager('${m.id}')">Modifier</button><button class="secondary" onclick="startReport('managers','${m.id}')">Générer un compte rendu</button><button class="secondary" onclick="openManager('${m.id}','note')">Ajouter une note</button><button class="secondary" onclick="openManager('${m.id}','event')">Ajouter un événement</button><button class="secondary" onclick="openManager('${m.id}','request')">Tracer un échange</button><button class="action" onclick="openManager('${m.id}','pilot')">+ Note de pilotage</button><button class="danger" onclick="deleteManager('${m.id}')">Supprimer</button></div></div><div class="grid two">${managerQuickForm(m, mode)}<div class="card"><h2>Priorité managériale</h2><p>${esc(m.priority || "À compléter")}</p></div><div class="card"><h2>Entretiens</h2><p><strong>Dernier :</strong> ${esc(m.lastInterview || "À compléter")}</p><p><strong>Prochaine rencontre :</strong> ${esc(m.nextMeeting || "À planifier")}</p></div><div class="card full-span"><h2>Rendez-vous liés</h2>${managerAgendaList(m)}</div><div class="card full-span"><h2>Préparations de réunion liées</h2>${managerMeetingPreparationsList(m)}</div><div class="card full-span"><h2>Projets sous ma responsabilité</h2>${managerResponsibleProjectsList(m)}</div><div class="card full-span"><h2>Autres projets associés</h2>${managerAssociatedProjectsList(m)}</div><div class="card"><h2>Dossiers liés</h2>${linkedFoldersList(m)}</div><div class="card full-span"><div class="row"><div><h2>Notes de pilotage / 1:1 Performance</h2><p class="muted">Notes libres, suivi du précédent entretien et conversion des éléments à suivre.</p></div><button class="action" onclick="openManager('${m.id}','pilot')">+ Nouvelle note</button></div>${managerPilotNotesList(m)}</div><div class="card full-span"><h2>Demandes & objectifs managériaux</h2>${managerManagementRequestsSummary(m)}<div style="margin-top:12px">${managerManagementRequestsList(m)}</div><div class="row-actions" style="margin-top:12px"><button class="action" onclick="openManager('${m.id}','request')">+ Tracer un échange</button></div></div><div class="card"><h2>Objectifs en cours</h2>${listItems(m.objectives)}</div><div class="card"><h2>Points forts</h2>${listItems(m.strengths)}</div><div class="card"><h2>Points de vigilance</h2>${listItems(m.watchPoints)}</div><div class="card"><h2>Actions internes</h2>${listItems(m.actions, "? ")}</div><div class="card"><h2>Actions liées</h2>${linkedActionsList(m)}</div><div class="card"><h2>Décisions liées</h2>${linkedDecisionsList(m)}</div><div class="card"><h2>Journal lié</h2>${managerJournalList(m)}</div><div class="card"><h2>Documents liés</h2>${managerDocumentsList(m)}</div><div class="card"><h2>Notes du directeur</h2>${directorNotesList(m)}</div><div class="card full-span"><h2>Historique chronologique</h2>${managerTimeline(m)}</div></div>`);
+  appHtml(`<div class="card hero manager-hero"><button class="secondary" onclick="renderManagers()">Retour Managers</button><h2>${esc(m.name)}</h2><p>${esc(m.role || "")}</p>${badge(m.status)}<p class="muted">${esc(m.note || "")}</p><span class="meta">ID ${esc(m.id)} ? ${responsibleCount} projet(s) sous responsabilité</span><div class="row-actions"><button class="action" onclick="editManager('${m.id}')">Modifier</button><button class="secondary" onclick="startReport('managers','${m.id}')">Générer un compte rendu</button><button class="secondary" onclick="openManager('${m.id}','note')">Ajouter une note</button><button class="secondary" onclick="openManager('${m.id}','event')">Ajouter un événement</button><button class="secondary" onclick="openManager('${m.id}','request')">Tracer un échange</button><button class="action" onclick="openManager('${m.id}','pilot')">+ Note de pilotage</button><button class="danger" onclick="deleteManager('${m.id}')">Supprimer</button></div></div><div class="grid two">${managerQuickForm(m, mode)}<div class="card"><h2>Priorité managériale</h2><p>${esc(m.priority || "À compléter")}</p></div><div class="card"><h2>Entretiens</h2><p><strong>Dernier :</strong> ${esc(m.lastInterview || "À compléter")}</p><p><strong>Prochaine rencontre :</strong> ${esc(m.nextMeeting || "À planifier")}</p></div><div class="card full-span"><h2>Rendez-vous liés</h2>${managerAgendaList(m)}</div><div class="card full-span"><h2>Préparations de réunion liées</h2>${managerMeetingPreparationsList(m)}</div><div class="card full-span"><h2>Projets sous ma responsabilité</h2>${managerResponsibleProjectsList(m)}</div><div class="card full-span"><h2>Autres projets associés</h2>${managerAssociatedProjectsList(m)}</div><div class="card"><h2>Dossiers liés</h2>${linkedFoldersList(m)}</div><div class="card full-span"><div class="row"><div><h2>Notes de pilotage / 1:1 Performance</h2><p class="muted">Notes libres, suivi du précédent entretien et conversion des éléments à suivre.</p></div><button class="action" onclick="openManager('${m.id}','pilot')">+ Nouvelle note</button></div>${managerPilotNotesList(m)}</div><div class="card full-span"><h2>Demandes & objectifs managériaux</h2>${managerManagementRequestsSummary(m)}<div style="margin-top:12px">${managerManagementRequestsList(m)}</div><div class="row-actions" style="margin-top:12px"><button class="action" onclick="openManager('${m.id}','request')">+ Tracer un échange</button></div></div><div class="card"><h2>Objectifs en cours</h2>${listItems(m.objectives)}</div><div class="card"><h2>Points forts</h2>${listItems(m.strengths)}</div><div class="card"><h2>Points de vigilance</h2>${listItems(m.watchPoints)}</div><div class="card"><h2>Actions internes</h2>${listItems(m.actions, "? ")}</div><div class="card"><h2>Actions liées</h2>${linkedActionsList(m)}</div><div class="card"><h2>Décisions liées</h2>${linkedDecisionsList(m)}</div><div class="card"><h2>Journal lié</h2>${managerJournalList(m)}</div><div class="card"><h2>Documents liés</h2>${managerDocumentsList(m)}</div><div class="card"><h2>Notes du directeur</h2>${directorNotesList(m)}</div><div class="card full-span"><h2>Historique chronologique</h2>${managerTimeline(m)}</div></div>`);
   if (String(mode || "").startsWith("request")) {
     requestAnimationFrame(() => {
       const form = document.getElementById("manager-request-form");
@@ -8203,7 +8203,7 @@ function editManager(id) {
   const m = byId("managers", id);
   if (!m) return;
   document.getElementById("viewTitle").textContent = "Modifier " + m.name;
-  appHtml(`<div class="card"><h2>Modifier manager</h2><div class="form-grid"><input id="emName" value="${esc(m.name)}" placeholder="Nom"><input id="emRole" value="${esc(m.role || "")}" placeholder="Fonction"><select id="emStatus"><option value="green" ${m.status === "green" · "selected" : ""}>Maîtrisé</option><option value="orange" ${m.status === "orange" · "selected" : ""}>À suivre</option><option value="red" ${m.status === "red" · "selected" : ""}>Critique</option></select><input id="emPriority" value="${esc(m.priority || "")}" placeholder="Priorité managériale"><input id="emLast" value="${esc(m.lastInterview || "")}" placeholder="Date du dernier entretien"><input id="emNext" value="${esc(m.nextMeeting || "")}" placeholder="Date de la prochaine rencontre"></div><textarea id="emNote" placeholder="Note de synthèse">${esc(m.note || "")}</textarea><textarea id="emObjectives" placeholder="Objectifs en cours, un par ligne">${esc((m.objectives || []).join("\n"))}</textarea><textarea id="emStrengths" placeholder="Points forts, un par ligne">${esc((m.strengths || []).join("\n"))}</textarea><textarea id="emWatch" placeholder="Points de vigilance, un par ligne">${esc((m.watchPoints || []).join("\n"))}</textarea><textarea id="emActions" placeholder="Actions internes, une par ligne">${esc((m.actions || []).join("\n"))}</textarea><div class="grid three manager-links"><div><label>Actions liées par ID</label><textarea id="emLinkedActions" placeholder="Un ID action par ligne">${esc(optionLines(state.actions, m.linkedActions, a => a.title))}</textarea></div><div><label>Projets associés</label>${checkboxList("emProjects", state.projects, managerLinkedProjectIds(m.id), p => p.name)}</div><div><label>Décisions liées par ID</label><textarea id="emLinkedDecisions" placeholder="Un ID décision par ligne">${esc(optionLines(state.decisions, m.linkedDecisions, d => d.title))}</textarea></div><div><label>Dossiers liés</label>${folderSelect("emFolders", m.linkedFolders || [])}</div></div><button class="action" onclick="saveManager('${m.id}')">Enregistrer</button><button class="secondary" onclick="openManager('${m.id}')">Annuler</button></div>`);
+  appHtml(`<div class="card"><h2>Modifier manager</h2><div class="form-grid"><input id="emName" value="${esc(m.name)}" placeholder="Nom"><input id="emRole" value="${esc(m.role || "")}" placeholder="Fonction"><select id="emStatus"><option value="green" ${m.status === "green" ? "selected" : ""}>Maîtrisé</option><option value="orange" ${m.status === "orange" ? "selected" : ""}>À suivre</option><option value="red" ${m.status === "red" ? "selected" : ""}>Critique</option></select><input id="emPriority" value="${esc(m.priority || "")}" placeholder="Priorité managériale"><input id="emLast" value="${esc(m.lastInterview || "")}" placeholder="Date du dernier entretien"><input id="emNext" value="${esc(m.nextMeeting || "")}" placeholder="Date de la prochaine rencontre"></div><textarea id="emNote" placeholder="Note de synthèse">${esc(m.note || "")}</textarea><textarea id="emObjectives" placeholder="Objectifs en cours, un par ligne">${esc((m.objectives || []).join("\n"))}</textarea><textarea id="emStrengths" placeholder="Points forts, un par ligne">${esc((m.strengths || []).join("\n"))}</textarea><textarea id="emWatch" placeholder="Points de vigilance, un par ligne">${esc((m.watchPoints || []).join("\n"))}</textarea><textarea id="emActions" placeholder="Actions internes, une par ligne">${esc((m.actions || []).join("\n"))}</textarea><div class="grid three manager-links"><div><label>Actions liées par ID</label><textarea id="emLinkedActions" placeholder="Un ID action par ligne">${esc(optionLines(state.actions, m.linkedActions, a => a.title))}</textarea></div><div><label>Projets associés</label>${checkboxList("emProjects", state.projects, managerLinkedProjectIds(m.id), p => p.name)}</div><div><label>Décisions liées par ID</label><textarea id="emLinkedDecisions" placeholder="Un ID décision par ligne">${esc(optionLines(state.decisions, m.linkedDecisions, d => d.title))}</textarea></div><div><label>Dossiers liés</label>${folderSelect("emFolders", m.linkedFolders || [])}</div></div><button class="action" onclick="saveManager('${m.id}')">Enregistrer</button><button class="secondary" onclick="openManager('${m.id}')">Annuler</button></div>`);
 }
 
 function saveManager(id) {
@@ -8301,7 +8301,7 @@ function toggleLinkedManagerAction(managerId, actionId) {
   if (!a || !m) return;
   a.done = !a.done;
   persist("actions");
-  addActivity("Action liée modifiée", a.title, a.done · "Terminée" : "Réouverte", managerId);
+  addActivity("Action liée modifiée", a.title, a.done ? "Terminée" : "Réouverte", managerId);
   openManager(managerId);
 }
 
@@ -8350,8 +8350,8 @@ function renderManagerDeleteModal() {
   const manager = byId("managers", managerDeleteDialog.managerId);
   if (!manager) return "";
   const impact = managerDeleteDialog.impact || getManagerDeletionImpact(manager.id);
-  const errorHtml = managerDeleteDialog.error · `<p class="folder-delete-error">${esc(managerDeleteDialog.error)}</p>` : "";
-  return `<div class="modal-backdrop manager-delete-modal" onclick="closeManagerDeleteModal()"><div class="modal-panel" onclick="event.stopPropagation()"><div class="modal-head"><h2>Supprimer le manager</h2><button class="icon-close" type="button" onclick="closeManagerDeleteModal()" aria-label="Fermer">×</button></div><p>Confirmer la suppression de <strong>${esc(manager.name || "Manager")}</strong>.</p><p class="muted">Le Manager sera supprimé. Les Dossiers, Projets, Actions, Décisions et Rendez-vous liés seront conservés, mais leur liaison avec ce Manager sera retirée.</p>${errorHtml}<div class="grid two"><div class="card"><h3>Objets liés conservés</h3><p><strong>Dossiers :</strong> ${impact.folders}</p><p><strong>Projets :</strong> ${impact.projects}</p><p><strong>Actions :</strong> ${impact.actions}</p><p><strong>Décisions :</strong> ${impact.decisions}</p><p><strong>Rendez-vous DEOS :</strong> ${impact.meetings}</p><p><strong>Rendez-vous Google :</strong> ${impact.googleMeetings}</p></div><div class="card"><h3>Rappel</h3><p>${esc(manager.role || manager.priority || "Manager sans détail complémentaire")}</p></div></div><div class="modal-actions"><button class="danger" type="button" ${managerDeleteDialog.busy · "disabled" : ""} onclick="confirmManagerDelete('${esc(manager.id)}')">Supprimer</button><button class="secondary" type="button" onclick="closeManagerDeleteModal()">Annuler</button></div></div></div>`;
+  const errorHtml = managerDeleteDialog.error ? `<p class="folder-delete-error">${esc(managerDeleteDialog.error)}</p>` : "";
+  return `<div class="modal-backdrop manager-delete-modal" onclick="closeManagerDeleteModal()"><div class="modal-panel" onclick="event.stopPropagation()"><div class="modal-head"><h2>Supprimer le manager</h2><button class="icon-close" type="button" onclick="closeManagerDeleteModal()" aria-label="Fermer">×</button></div><p>Confirmer la suppression de <strong>${esc(manager.name || "Manager")}</strong>.</p><p class="muted">Le Manager sera supprimé. Les Dossiers, Projets, Actions, Décisions et Rendez-vous liés seront conservés, mais leur liaison avec ce Manager sera retirée.</p>${errorHtml}<div class="grid two"><div class="card"><h3>Objets liés conservés</h3><p><strong>Dossiers :</strong> ${impact.folders}</p><p><strong>Projets :</strong> ${impact.projects}</p><p><strong>Actions :</strong> ${impact.actions}</p><p><strong>Décisions :</strong> ${impact.decisions}</p><p><strong>Rendez-vous DEOS :</strong> ${impact.meetings}</p><p><strong>Rendez-vous Google :</strong> ${impact.googleMeetings}</p></div><div class="card"><h3>Rappel</h3><p>${esc(manager.role || manager.priority || "Manager sans détail complémentaire")}</p></div></div><div class="modal-actions"><button class="danger" type="button" ${managerDeleteDialog.busy ? "disabled" : ""} onclick="confirmManagerDelete('${esc(manager.id)}')">Supprimer</button><button class="secondary" type="button" onclick="closeManagerDeleteModal()">Annuler</button></div></div></div>`;
 }
 
 function renderManagerModalOverlays() {
@@ -8411,7 +8411,7 @@ function removeManagerReferencesFromItem(item, managerId, managerName = "") {
     next.managerId = "";
     changed = true;
   }
-  return { item: changed · next : item, changed };
+  return { item: changed ? next : item, changed };
 }
 
 function sanitizeMeetingPreparationManagerLinks(prep, managerId, managerName) {
@@ -8432,7 +8432,7 @@ function sanitizeMeetingPreparationManagerLinks(prep, managerId, managerName) {
     next.ideas = cleanedIdeas;
     next.agendaTopics = cleanedTopics;
   }
-  return { item: changed · next : prep, changed };
+  return { item: changed ? next : prep, changed };
 }
 
 function deleteManagerSafely(managerId) {
@@ -8547,7 +8547,7 @@ function renderProjects() {
 
 function projectCard(p) {
   const owner = projectOwnerName(p);
-  return `<div class="card clickable" onclick="openProject('${p.id}')"><h2>${esc(p.name)}</h2>${badge(p.status)}<p>${esc(p.next || "")}</p><div class="progress"><span style="width:${Number(p.progress || 0)}%"></span></div><span class="muted">${Number(p.progress || 0)}%${owner · " · " + esc(owner) : ""}</span><span class="meta">ID ${esc(p.id)}</span></div>`;
+  return `<div class="card clickable" onclick="openProject('${p.id}')"><h2>${esc(p.name)}</h2>${badge(p.status)}<p>${esc(p.next || "")}</p><div class="progress"><span style="width:${Number(p.progress || 0)}%"></span></div><span class="muted">${Number(p.progress || 0)}%${owner ? " · " + esc(owner) : ""}</span><span class="meta">ID ${esc(p.id)}</span></div>`;
 }
 
 function addProject() {
@@ -8566,7 +8566,7 @@ function addProject() {
 function checkboxList(id, items, selectedIds, labelFn) {
   const selected = new Set((selectedIds || []).map(x => String(x)));
   const visibleItems = ensureArray(items).filter(item => !(item?.hiddenSystem === true || isPrioritySyncTransportDocument(item)));
-  return `<div id="${id}" class="check-list">${visibleItems.map(item => `<label class="check-row"><input type="checkbox" value="${esc(String(item.id))}" ${selected.has(String(item.id)) · "checked" : ""}> <span>${esc(cleanDisplayLabel(labelFn(item)))}</span></label>`).join("") || `<div class="empty">Aucune donnée disponible.</div>`}</div>`;
+  return `<div id="${id}" class="check-list">${visibleItems.map(item => `<label class="check-row"><input type="checkbox" value="${esc(String(item.id))}" ${selected.has(String(item.id)) ? "checked" : ""}> <span>${esc(cleanDisplayLabel(labelFn(item)))}</span></label>`).join("") || `<div class="empty">Aucune donnée disponible.</div>`}</div>`;
 }
 
 function checkedValues(id) {
@@ -8588,17 +8588,17 @@ function projectManagersList(p) {
 
 function projectActionsList(p) {
   const linked = state.actions.filter(a => (p.linkedActions || []).includes(a.id) || ensureArray(a.linkedProjects).includes(p.id));
-  return linked.map(a => `<div class="item row"><div><strong>${a.done · "[Terminee]" : "[A faire]"} ${esc(a.title)}</strong><span class="muted">${esc(a.link || "")}</span><span class="meta">ID ${esc(a.id)}</span></div><button class="secondary" onclick="toggleLinkedProjectAction('${p.id}','${a.id}')">${a.done · "Réouvrir" : "Terminer"}</button></div>`).join("") || `<div class="empty">Aucune action liée.</div>`;
+  return linked.map(a => `<div class="item row"><div><strong>${a.done ? "[Terminee]" : "[A faire]"} ${esc(a.title)}</strong><span class="muted">${esc(a.link || "")}</span><span class="meta">ID ${esc(a.id)}</span></div><button class="secondary" onclick="toggleLinkedProjectAction('${p.id}','${a.id}')">${a.done ? "Réouvrir" : "Terminer"}</button></div>`).join("") || `<div class="empty">Aucune action liée.</div>`;
 }
 
 function projectDecisionsList(p) {
   const linked = state.decisions.filter(d => (p.linkedDecisions || []).includes(d.id) || (d.linkedProjects || []).includes(p.id));
-  return linked.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(d.date || "")} · ${(d.tags || []).map(esc).join(", ")}</span><span class="meta">ID ${esc(d.id)}</span></div>`).join("") || `<div class="empty">Aucune décision liée.</div>`;
+  return linked.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(d.date || "")} ? ${(d.tags || []).map(esc).join(", ")}</span><span class="meta">ID ${esc(d.id)}</span></div>`).join("") || `<div class="empty">Aucune décision liée.</div>`;
 }
 
 function projectDocumentsList(p) {
   const linked = state.documents.filter(d => (p.linkedDocuments || []).includes(d.id) || (d.linkedProjects || []).includes(p.id));
-  return linked.map(d => `<div class="item"><strong>${esc(d.title)}</strong><span class="muted">${esc(d.type || "")}${d.status · " · " + esc(d.status) : ""}</span><span class="meta">ID ${esc(d.id)}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`;
+  return linked.map(d => `<div class="item"><strong>${esc(d.title)}</strong><span class="muted">${esc(d.type || "")}${d.status ? " · " + esc(d.status) : ""}</span><span class="meta">ID ${esc(d.id)}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`;
 }
 
 function projectMilestonesList(p) {
@@ -8608,8 +8608,8 @@ function projectMilestonesList(p) {
 function projectTimeline(p) {
   const projectEvents = (p.events || []).map(e => ({ date: e.date || "", title: e.title || "Événement", detail: e.detail || "", kind: "Événement" }));
   const milestones = (p.milestones || []).map(m => ({ date: m.date || "", title: m.title || "Jalon", detail: m.status || "", kind: "Jalon" }));
-  const activityEvents = state.activity.filter(a => a.entityId === p.id).map(a => ({ date: a.date || "", title: a.type || "Activité", detail: `${a.title || ""}${a.detail · " · " + a.detail : ""}`, kind: "Activité" }));
-  return [...projectEvents, ...milestones, ...activityEvents].sort((a, b) => String(b.date).localeCompare(String(a.date))).map(e => `<div class="item"><strong>${esc(e.date || "Sans date")} · ${esc(e.title)}</strong><span class="muted">${esc(e.kind)}${e.detail · " · " + esc(e.detail) : ""}</span></div>`).join("") || `<div class="empty">Aucun historique.</div>`;
+  const activityEvents = state.activity.filter(a => a.entityId === p.id).map(a => ({ date: a.date || "", title: a.type || "Activité", detail: `${a.title || ""}${a.detail ? " · " + a.detail : ""}`, kind: "Activité" }));
+  return [...projectEvents, ...milestones, ...activityEvents].sort((a, b) => String(b.date).localeCompare(String(a.date))).map(e => `<div class="item"><strong>${esc(e.date || "Sans date")} · ${esc(e.title)}</strong><span class="muted">${esc(e.kind)}${e.detail ? " · " + esc(e.detail) : ""}</span></div>`).join("") || `<div class="empty">Aucun historique.</div>`;
 }
 
 function projectNotesList(p) {
@@ -8633,7 +8633,7 @@ function openProject(id, mode = "") {
   const p = byId("projects", id);
   if (!p) return renderProjects();
   document.getElementById("viewTitle").textContent = p.name;
-  appHtml(`<div class="card hero manager-hero"><button class="secondary" onclick="renderProjects()">Retour Projets</button><h2>${esc(p.name)}</h2>${badge(p.status)}<p>${esc(p.objective || p.next || "")}</p><span class="meta">ID ${esc(p.id)}</span><div class="row-actions"><button class="action" onclick="editProject('${p.id}')">Modifier</button><button class="secondary" onclick="startReport('projects','${p.id}')">Générer un compte rendu</button><button class="secondary" onclick="openProject('${p.id}','milestone')">Ajouter un jalon</button><button class="secondary" onclick="openProject('${p.id}','note')">Ajouter une note</button><button class="secondary" onclick="openProject('${p.id}','event')">Ajouter un événement</button><button class="danger" onclick="deleteProject('${p.id}')">Supprimer</button></div></div><div class="grid two">${projectQuickForm(p, mode)}<div class="card"><h2>Avancement</h2><div class="progress"><span style="width:${Number(p.progress || 0)}%"></span></div><p>${Number(p.progress || 0)}%</p><div class="row"><input id="quickProgress" type="number" min="0" max="100" value="${Number(p.progress || 0)}"><button class="secondary" onclick="updateProjectProgress('${p.id}')">Mettre à jour</button></div></div><div class="card"><h2>Pilotage</h2><p><strong>Responsable :</strong> ${esc(projectOwnerName(p) || "À compléter")}</p><p><strong>Lancement :</strong> ${esc(p.launchDate || "À compléter")}</p><p><strong>Échéance :</strong> ${esc(p.deadline || "À préciser")}</p><p><strong>Priorité :</strong> ${icons[p.priorityLevel] || ""} ${esc(labels[p.priorityLevel] || p.priorityLevel || "À suivre")}</p></div><div class="card full-span"><h2>Rendez-vous liés</h2>${projectAgendaList(p)}</div><div class="card full-span"><h2>Préparations de réunion liées</h2>${projectMeetingPreparationsList(p)}</div><div class="card"><h2>Objectif</h2><p>${esc(p.objective || "À compléter")}</p></div><div class="card"><h2>Contexte</h2><p>${esc(p.context || "À compléter")}</p></div><div class="card"><h2>Prochaine étape</h2><p>${esc(p.next || "À compléter")}</p></div><div class="card"><h2>Risques et points de vigilance</h2><p>${esc(p.risks || "À compléter")}</p></div><div class="card"><h2>Managers associés</h2>${projectManagersList(p)}</div><div class="card"><h2>Jalons</h2>${projectMilestonesList(p)}</div><div class="card"><h2>Actions liées</h2>${projectActionsList(p)}${p.actions · `<p class="muted">${esc(p.actions)}</p>` : ""}</div><div class="card"><h2>Décisions liées</h2>${projectDecisionsList(p)}${p.decisions · `<p class="muted">${esc(p.decisions)}</p>` : ""}</div><div class="card"><h2>Journal lié</h2>${projectJournalList(p)}</div><div class="card"><h2>Documents liés</h2>${projectDocumentsList(p)}</div><div class="card"><h2>Dossiers liés</h2>${linkedFoldersList(p)}</div><div class="card"><h2>Notes du directeur</h2>${projectNotesList(p)}</div><div class="card full-span"><h2>Historique chronologique</h2>${projectTimeline(p)}</div></div>`);
+  appHtml(`<div class="card hero manager-hero"><button class="secondary" onclick="renderProjects()">Retour Projets</button><h2>${esc(p.name)}</h2>${badge(p.status)}<p>${esc(p.objective || p.next || "")}</p><span class="meta">ID ${esc(p.id)}</span><div class="row-actions"><button class="action" onclick="editProject('${p.id}')">Modifier</button><button class="secondary" onclick="startReport('projects','${p.id}')">Générer un compte rendu</button><button class="secondary" onclick="openProject('${p.id}','milestone')">Ajouter un jalon</button><button class="secondary" onclick="openProject('${p.id}','note')">Ajouter une note</button><button class="secondary" onclick="openProject('${p.id}','event')">Ajouter un événement</button><button class="danger" onclick="deleteProject('${p.id}')">Supprimer</button></div></div><div class="grid two">${projectQuickForm(p, mode)}<div class="card"><h2>Avancement</h2><div class="progress"><span style="width:${Number(p.progress || 0)}%"></span></div><p>${Number(p.progress || 0)}%</p><div class="row"><input id="quickProgress" type="number" min="0" max="100" value="${Number(p.progress || 0)}"><button class="secondary" onclick="updateProjectProgress('${p.id}')">Mettre à jour</button></div></div><div class="card"><h2>Pilotage</h2><p><strong>Responsable :</strong> ${esc(projectOwnerName(p) || "À compléter")}</p><p><strong>Lancement :</strong> ${esc(p.launchDate || "À compléter")}</p><p><strong>Échéance :</strong> ${esc(p.deadline || "À préciser")}</p><p><strong>Priorité :</strong> ${icons[p.priorityLevel] || ""} ${esc(labels[p.priorityLevel] || p.priorityLevel || "À suivre")}</p></div><div class="card full-span"><h2>Rendez-vous liés</h2>${projectAgendaList(p)}</div><div class="card full-span"><h2>Préparations de réunion liées</h2>${projectMeetingPreparationsList(p)}</div><div class="card"><h2>Objectif</h2><p>${esc(p.objective || "À compléter")}</p></div><div class="card"><h2>Contexte</h2><p>${esc(p.context || "À compléter")}</p></div><div class="card"><h2>Prochaine étape</h2><p>${esc(p.next || "À compléter")}</p></div><div class="card"><h2>Risques et points de vigilance</h2><p>${esc(p.risks || "À compléter")}</p></div><div class="card"><h2>Managers associés</h2>${projectManagersList(p)}</div><div class="card"><h2>Jalons</h2>${projectMilestonesList(p)}</div><div class="card"><h2>Actions liées</h2>${projectActionsList(p)}${p.actions ? `<p class="muted">${esc(p.actions)}</p>` : ""}</div><div class="card"><h2>Décisions liées</h2>${projectDecisionsList(p)}${p.decisions ? `<p class="muted">${esc(p.decisions)}</p>` : ""}</div><div class="card"><h2>Journal lié</h2>${projectJournalList(p)}</div><div class="card"><h2>Documents liés</h2>${projectDocumentsList(p)}</div><div class="card"><h2>Dossiers liés</h2>${linkedFoldersList(p)}</div><div class="card"><h2>Notes du directeur</h2>${projectNotesList(p)}</div><div class="card full-span"><h2>Historique chronologique</h2>${projectTimeline(p)}</div></div>`);
 }
 
 function editProject(id) {
@@ -8692,7 +8692,7 @@ function toggleLinkedProjectAction(projectId, actionId) {
   if (!a || !p) return;
   a.done = !a.done;
   persist("actions");
-  addActivity("Action projet modifiée", a.title, a.done · "Terminée" : "Réouverte", projectId);
+  addActivity("Action projet modifiée", a.title, a.done ? "Terminée" : "Réouverte", projectId);
   openProject(projectId);
 }
 
@@ -8708,14 +8708,14 @@ function projectEditModalBody(project) {
       <input id="pepName" value="${esc(project.name || "")}" placeholder="Titre du projet" class="full">
       <textarea id="pepDescription" placeholder="Description" class="full">${esc(description)}</textarea>
       <select id="pepStatus">
-        <option value="green" ${project.status === "green" · "selected" : ""}>Maîtrisé</option>
-        <option value="orange" ${project.status === "orange" · "selected" : ""}>À suivre</option>
-        <option value="red" ${project.status === "red" · "selected" : ""}>Critique</option>
+        <option value="green" ${project.status === "green" ? "selected" : ""}>Maîtrisé</option>
+        <option value="orange" ${project.status === "orange" ? "selected" : ""}>À suivre</option>
+        <option value="red" ${project.status === "red" ? "selected" : ""}>Critique</option>
       </select>
       <select id="pepPriority">
-        <option value="green" ${project.priorityLevel === "green" · "selected" : ""}>Priorité normale</option>
-        <option value="orange" ${project.priorityLevel === "orange" || !project.priorityLevel · "selected" : ""}>Priorité importante</option>
-        <option value="red" ${project.priorityLevel === "red" · "selected" : ""}>Priorité critique</option>
+        <option value="green" ${project.priorityLevel === "green" ? "selected" : ""}>Priorité normale</option>
+        <option value="orange" ${project.priorityLevel === "orange" || !project.priorityLevel ? "selected" : ""}>Priorité importante</option>
+        <option value="red" ${project.priorityLevel === "red" ? "selected" : ""}>Priorité critique</option>
       </select>
       <div><label>Responsable principal</label>${ownerSelect("pepOwnerId", projectOwnerId(project))}</div>
       <input id="pepLaunch" type="date" value="${esc(project.launchDate || "")}" placeholder="Date de lancement">
@@ -8747,7 +8747,7 @@ function renderProjectEditModal() {
   if (!projectEditDialog.open) return "";
   const project = byId("projects", projectEditDialog.projectId);
   if (!project) return "";
-  const errorHtml = projectEditDialog.error · `<p class="folder-delete-error">${esc(projectEditDialog.error)}</p>` : "";
+  const errorHtml = projectEditDialog.error ? `<p class="folder-delete-error">${esc(projectEditDialog.error)}</p>` : "";
   return `<div class="modal-backdrop project-edit-modal" onclick="closeProjectEditModal()"><div class="modal-panel" style="max-height:88vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="modal-head"><h2>Modifier projet</h2><button class="icon-close" type="button" onclick="closeProjectEditModal()" aria-label="Fermer">×</button></div>${errorHtml}${projectEditModalBody(project)}</div></div>`;
 }
 
@@ -8798,8 +8798,8 @@ function renderProjectDeleteModal() {
   const project = byId("projects", projectDeleteDialog.projectId);
   if (!project) return "";
   const impact = projectDeleteDialog.impact || getProjectDeletionImpact(project.id);
-  const errorHtml = projectDeleteDialog.error · `<p class="folder-delete-error">${esc(projectDeleteDialog.error)}</p>` : "";
-  return `<div class="modal-backdrop project-delete-modal" onclick="closeProjectDeleteModal()"><div class="modal-panel" onclick="event.stopPropagation()"><div class="modal-head"><h2>Supprimer le projet</h2><button class="icon-close" type="button" onclick="closeProjectDeleteModal()" aria-label="Fermer">×</button></div><p>Confirmer la suppression du projet <strong>${esc(project.name || "Projet")}</strong>.</p><p class="muted">Seul le Projet sera supprimé. Les objets liés seront conservés, mais leur liaison avec ce Projet sera retirée.</p>${errorHtml}<div class="grid two"><div class="card"><h3>Objets liés</h3><p><strong>Actions :</strong> ${impact.actions}</p><p><strong>Décisions :</strong> ${impact.decisions}</p><p><strong>Managers :</strong> ${impact.managers}</p><p><strong>Rendez-vous :</strong> ${impact.meetings}</p><p><strong>Documents :</strong> ${impact.documents}</p><p><strong>Journal :</strong> ${impact.journal}</p><p><strong>Préparations :</strong> ${impact.preparations}</p></div><div class="card"><h3>Rappel</h3><p>${esc(project.objective || project.next || "Projet sans descriptif")}</p></div></div><div class="modal-actions"><button class="danger" type="button" ${projectDeleteDialog.busy · "disabled" : ""} onclick="confirmProjectDelete('${esc(project.id)}')">Supprimer</button><button class="secondary" type="button" onclick="closeProjectDeleteModal()">Annuler</button></div></div></div>`;
+  const errorHtml = projectDeleteDialog.error ? `<p class="folder-delete-error">${esc(projectDeleteDialog.error)}</p>` : "";
+  return `<div class="modal-backdrop project-delete-modal" onclick="closeProjectDeleteModal()"><div class="modal-panel" onclick="event.stopPropagation()"><div class="modal-head"><h2>Supprimer le projet</h2><button class="icon-close" type="button" onclick="closeProjectDeleteModal()" aria-label="Fermer">×</button></div><p>Confirmer la suppression du projet <strong>${esc(project.name || "Projet")}</strong>.</p><p class="muted">Seul le Projet sera supprimé. Les objets liés seront conservés, mais leur liaison avec ce Projet sera retirée.</p>${errorHtml}<div class="grid two"><div class="card"><h3>Objets liés</h3><p><strong>Actions :</strong> ${impact.actions}</p><p><strong>Décisions :</strong> ${impact.decisions}</p><p><strong>Managers :</strong> ${impact.managers}</p><p><strong>Rendez-vous :</strong> ${impact.meetings}</p><p><strong>Documents :</strong> ${impact.documents}</p><p><strong>Journal :</strong> ${impact.journal}</p><p><strong>Préparations :</strong> ${impact.preparations}</p></div><div class="card"><h3>Rappel</h3><p>${esc(project.objective || project.next || "Projet sans descriptif")}</p></div></div><div class="modal-actions"><button class="danger" type="button" ${projectDeleteDialog.busy ? "disabled" : ""} onclick="confirmProjectDelete('${esc(project.id)}')">Supprimer</button><button class="secondary" type="button" onclick="closeProjectDeleteModal()">Annuler</button></div></div></div>`;
 }
 
 function renderProjectModalOverlays() {
@@ -8907,7 +8907,7 @@ function removeProjectReferencesFromItem(item, projectId) {
     next.projectId = "";
     changed = true;
   }
-  return { item: changed · next : item, changed };
+  return { item: changed ? next : item, changed };
 }
 
 function sanitizeMeetingPreparationProjectLinks(prep, projectId) {
@@ -8928,7 +8928,7 @@ function sanitizeMeetingPreparationProjectLinks(prep, projectId) {
     next.ideas = cleanedIdeas;
     next.agendaTopics = cleanedTopics;
   }
-  return { item: changed · next : prep, changed };
+  return { item: changed ? next : prep, changed };
 }
 
 function deleteProjectSafely(projectId) {
@@ -9064,18 +9064,18 @@ function decisionProjectsList(d) {
 
 function decisionActionsList(d) {
   const linked = state.actions.filter(a => (d.linkedActions || []).includes(a.id));
-  return linked.map(a => `<div class="item row"><div><strong>${a.done · "[Terminee]" : "[A faire]"} ${esc(a.title)}</strong><span class="muted">${esc(a.link || "")}</span><span class="meta">ID ${esc(a.id)}</span></div><button class="secondary" onclick="toggleLinkedDecisionAction('${d.id}','${a.id}')">${a.done · "Réouvrir" : "Terminer"}</button></div>`).join("") || `<div class="empty">Aucune action générée.</div>`;
+  return linked.map(a => `<div class="item row"><div><strong>${a.done ? "[Terminee]" : "[A faire]"} ${esc(a.title)}</strong><span class="muted">${esc(a.link || "")}</span><span class="meta">ID ${esc(a.id)}</span></div><button class="secondary" onclick="toggleLinkedDecisionAction('${d.id}','${a.id}')">${a.done ? "Réouvrir" : "Terminer"}</button></div>`).join("") || `<div class="empty">Aucune action générée.</div>`;
 }
 
 function decisionDocumentsList(d) {
   const linked = state.documents.filter(doc => (d.linkedDocuments || []).includes(doc.id) || (doc.linkedDecisions || []).includes(d.id));
-  return linked.map(doc => `<div class="item"><strong>${esc(doc.title)}</strong><span class="muted">${esc(doc.type || "")}${doc.status · " · " + esc(doc.status) : ""}</span><span class="meta">ID ${esc(doc.id)}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`;
+  return linked.map(doc => `<div class="item"><strong>${esc(doc.title)}</strong><span class="muted">${esc(doc.type || "")}${doc.status ? " · " + esc(doc.status) : ""}</span><span class="meta">ID ${esc(doc.id)}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`;
 }
 
 function decisionTimeline(d) {
   const events = (d.events || []).map(e => ({ date: e.date || "", title: e.title || "Événement", detail: e.detail || "", kind: "Événement" }));
-  const activities = state.activity.filter(a => a.entityId === d.id).map(a => ({ date: a.date || "", title: a.type || "Activité", detail: `${a.title || ""}${a.detail · " · " + a.detail : ""}`, kind: "Activité" }));
-  return [...events, ...activities].sort((a, b) => String(b.date).localeCompare(String(a.date))).map(e => `<div class="item"><strong>${esc(e.date || "Sans date")} · ${esc(e.title)}</strong><span class="muted">${esc(e.kind)}${e.detail · " · " + esc(e.detail) : ""}</span></div>`).join("") || `<div class="empty">Aucun historique.</div>`;
+  const activities = state.activity.filter(a => a.entityId === d.id).map(a => ({ date: a.date || "", title: a.type || "Activité", detail: `${a.title || ""}${a.detail ? " · " + a.detail : ""}`, kind: "Activité" }));
+  return [...events, ...activities].sort((a, b) => String(b.date).localeCompare(String(a.date))).map(e => `<div class="item"><strong>${esc(e.date || "Sans date")} · ${esc(e.title)}</strong><span class="muted">${esc(e.kind)}${e.detail ? " · " + esc(e.detail) : ""}</span></div>`).join("") || `<div class="empty">Aucun historique.</div>`;
 }
 
 function decisionNotesList(d) {
@@ -9090,7 +9090,7 @@ function decisionJournalList(d) {
 function decisionQuickForm(d, mode = "") {
   if (mode === "note") return `<div class="card full-span"><h2>Ajouter une note du directeur</h2><textarea id="dnContent" placeholder="Note du directeur"></textarea><button class="action" onclick="saveDecisionNote('${d.id}')">Enregistrer</button><button class="secondary" onclick="openDecision('${d.id}')">Annuler</button></div>`;
   if (mode === "event") return `<div class="card full-span"><h2>Ajouter un événement</h2><div class="form-grid"><input id="deTitle" placeholder="Titre de l'événement"><input id="deDate" value="${esc(new Date().toLocaleString("fr-FR"))}" placeholder="Date"></div><textarea id="deDetail" placeholder="Détail de l'événement"></textarea><button class="action" onclick="saveDecisionEvent('${d.id}')">Enregistrer</button><button class="secondary" onclick="openDecision('${d.id}')">Annuler</button></div>`;
-  if (mode === "action") return `<div class="card full-span"><h2>Créer une action liée</h2><input id="daTitle" placeholder="Action · créer"><div class="grid two manager-links"><div><label>Managers concernés par l'action</label>${checkboxList("daManagers", state.managers, d.linkedManagers, m => `${m.name} · ${m.role || ""}`)}</div><div><label>Projets concernés par l'action</label>${checkboxList("daProjects", state.projects, d.linkedProjects, p => p.name)}</div></div><button class="action" onclick="saveDecisionAction('${d.id}')">Enregistrer</button><button class="secondary" onclick="openDecision('${d.id}')">Annuler</button></div>`;
+  if (mode === "action") return `<div class="card full-span"><h2>Créer une action liée</h2><input id="daTitle" placeholder="Action ? créer"><div class="grid two manager-links"><div><label>Managers concernés par l'action</label>${checkboxList("daManagers", state.managers, d.linkedManagers, m => `${m.name} ? ${m.role || ""}`)}</div><div><label>Projets concernés par l'action</label>${checkboxList("daProjects", state.projects, d.linkedProjects, p => p.name)}</div></div><button class="action" onclick="saveDecisionAction('${d.id}')">Enregistrer</button><button class="secondary" onclick="openDecision('${d.id}')">Annuler</button></div>`;
   return "";
 }
 
@@ -9101,7 +9101,7 @@ function renderDecisions() {
 }
 
 function decisionCard(d) {
-  return `<div class="card clickable" onclick="openDecision('${d.id}')"><h2>${esc(d.title)}</h2><p>${esc(d.context || "")}</p><span class="muted">${esc(d.date || "")} · ${esc(decisionStatusLabel(d.status))} · ${(d.tags || []).map(esc).join(", ")}</span><span class="meta">ID ${esc(d.id)}</span></div>`;
+  return `<div class="card clickable" onclick="openDecision('${d.id}')"><h2>${esc(d.title)}</h2><p>${esc(d.context || "")}</p><span class="muted">${esc(d.date || "")} · ${esc(decisionStatusLabel(d.status))} ? ${(d.tags || []).map(esc).join(", ")}</span><span class="meta">ID ${esc(d.id)}</span></div>`;
 }
 
 function addDecision() {
@@ -9127,7 +9127,7 @@ function editDecision(id) {
   const d = byId("decisions", id);
   if (!d) return;
   document.getElementById("viewTitle").textContent = "Modifier " + d.title;
-  appHtml(`<div class="card"><h2>Modifier décision</h2><input id="edTitle" value="${esc(d.title)}" placeholder="Titre"><div class="form-grid"><input id="edDate" value="${esc(d.date || "")}" placeholder="Date de décision"><select id="edStatus"><option value="decided" ${d.status === "decided" · "selected" : ""}>Décidée</option><option value="applying" ${d.status === "applying" · "selected" : ""}>En cours d'application</option><option value="applied" ${d.status === "applied" · "selected" : ""}>Appliquée</option><option value="review" ${d.status === "review" · "selected" : ""}>À réexaminer</option></select><select id="edImportance"><option value="green" ${d.importance === "green" · "selected" : ""}>Normal</option><option value="orange" ${d.importance === "orange" · "selected" : ""}>Important</option><option value="red" ${d.importance === "red" · "selected" : ""}>Critique</option></select><input id="edOwner" value="${esc(d.owner || "")}" placeholder="Responsable du suivi"><input id="edReview" value="${esc(d.reviewDate || "")}" placeholder="Échéance de réexamen"><input id="edTags" value="${esc((d.tags || []).join(", "))}" placeholder="Mots-clés" class="full"></div><textarea id="edContext" placeholder="Contexte">${esc(d.context || "")}</textarea><textarea id="edProblem" placeholder="Problème ou besoin initial">${esc(d.problem || "")}</textarea><textarea id="edDecisionText" placeholder="Décision prise">${esc(d.decision || "")}</textarea><textarea id="edRationale" placeholder="Raisons et critères">${esc(d.rationale || "")}</textarea><textarea id="edAlternatives" placeholder="Alternatives étudiées">${esc(d.alternatives || "")}</textarea><textarea id="edImpacts" placeholder="Impacts attendus">${esc(d.impacts || d.impact || "")}</textarea><textarea id="edRisks" placeholder="Risques et points de vigilance">${esc(d.risks || "")}</textarea><textarea id="edNext" placeholder="Suite attendue">${esc(d.nextStep || "")}</textarea><div class="grid two manager-links"><div><label>Managers concernés</label>${checkboxList("edManagers", state.managers, d.linkedManagers, m => `${m.name} · ${m.role || ""}`)}</div><div><label>Projets concernés</label>${checkboxList("edProjects", state.projects, d.linkedProjects, p => p.name)}</div><div><label>Actions générées</label>${checkboxList("edActions", state.actions, d.linkedActions, a => a.title)}</div><div><label>Documents liés</label>${checkboxList("edDocuments", state.documents, d.linkedDocuments, doc => doc.title)}</div><div><label>Dossiers liés</label>${folderSelect("edFolders", d.linkedFolders || [])}</div></div><button class="action" onclick="saveDecision('${d.id}')">Enregistrer</button><button class="secondary" onclick="openDecision('${d.id}')">Annuler</button></div>`);
+  appHtml(`<div class="card"><h2>Modifier décision</h2><input id="edTitle" value="${esc(d.title)}" placeholder="Titre"><div class="form-grid"><input id="edDate" value="${esc(d.date || "")}" placeholder="Date de décision"><select id="edStatus"><option value="decided" ${d.status === "decided" ? "selected" : ""}>Décidée</option><option value="applying" ${d.status === "applying" ? "selected" : ""}>En cours d'application</option><option value="applied" ${d.status === "applied" ? "selected" : ""}>Appliquée</option><option value="review" ${d.status === "review" ? "selected" : ""}>À réexaminer</option></select><select id="edImportance"><option value="green" ${d.importance === "green" ? "selected" : ""}>Normal</option><option value="orange" ${d.importance === "orange" ? "selected" : ""}>Important</option><option value="red" ${d.importance === "red" ? "selected" : ""}>Critique</option></select><input id="edOwner" value="${esc(d.owner || "")}" placeholder="Responsable du suivi"><input id="edReview" value="${esc(d.reviewDate || "")}" placeholder="Échéance de réexamen"><input id="edTags" value="${esc((d.tags || []).join(", "))}" placeholder="Mots-clés" class="full"></div><textarea id="edContext" placeholder="Contexte">${esc(d.context || "")}</textarea><textarea id="edProblem" placeholder="Problème ou besoin initial">${esc(d.problem || "")}</textarea><textarea id="edDecisionText" placeholder="Décision prise">${esc(d.decision || "")}</textarea><textarea id="edRationale" placeholder="Raisons et critères">${esc(d.rationale || "")}</textarea><textarea id="edAlternatives" placeholder="Alternatives étudiées">${esc(d.alternatives || "")}</textarea><textarea id="edImpacts" placeholder="Impacts attendus">${esc(d.impacts || d.impact || "")}</textarea><textarea id="edRisks" placeholder="Risques et points de vigilance">${esc(d.risks || "")}</textarea><textarea id="edNext" placeholder="Suite attendue">${esc(d.nextStep || "")}</textarea><div class="grid two manager-links"><div><label>Managers concernés</label>${checkboxList("edManagers", state.managers, d.linkedManagers, m => `${m.name} ? ${m.role || ""}`)}</div><div><label>Projets concernés</label>${checkboxList("edProjects", state.projects, d.linkedProjects, p => p.name)}</div><div><label>Actions générées</label>${checkboxList("edActions", state.actions, d.linkedActions, a => a.title)}</div><div><label>Documents liés</label>${checkboxList("edDocuments", state.documents, d.linkedDocuments, doc => doc.title)}</div><div><label>Dossiers liés</label>${folderSelect("edFolders", d.linkedFolders || [])}</div></div><button class="action" onclick="saveDecision('${d.id}')">Enregistrer</button><button class="secondary" onclick="openDecision('${d.id}')">Annuler</button></div>`);
 }
 
 function syncDecisionBacklinks(d) {
@@ -9159,7 +9159,7 @@ function saveDecision(id) {
 
 
 function decisionEditableManagerIds(decision) {
-  return normalizeLinkedManagerIds(ensureArray(decision?.linkedManagers).length · decision.linkedManagers : ensureArray(decision?.linkedManagerIds));
+  return normalizeLinkedManagerIds(ensureArray(decision?.linkedManagers).length ? decision.linkedManagers : ensureArray(decision?.linkedManagerIds));
 }
 
 function decisionRenderRelatedMeetings(decision) {
@@ -9172,23 +9172,23 @@ function decisionEditModalBody(decision) {
   const hasManagersField = Object.prototype.hasOwnProperty.call(decision, "linkedManagers") || Object.prototype.hasOwnProperty.call(decision, "linkedManagerIds");
   const managerIds = decisionEditableManagerIds(decision);
   const relatedManagersHtml = hasManagersField
-    · `<div><label>Managers associés</label>${checkboxList("deManagers", state.managers, managerIds, manager => `${manager.name} · ${manager.role || ""}`)}</div>`
-    : `<div><label>Managers associés</label>${a5List(relations.managers, manager => `<article class="a5-item"><p>${esc(manager.name || "Manager")}${manager.role · " · " + esc(manager.role) : ""}</p></article>`, "Aucun manager associé.")}</div>`;
+    ? `<div><label>Managers associés</label>${checkboxList("deManagers", state.managers, managerIds, manager => `${manager.name} · ${manager.role || ""}`)}</div>`
+    : `<div><label>Managers associés</label>${a5List(relations.managers, manager => `<article class="a5-item"><p>${esc(manager.name || "Manager")}${manager.role ? " · " + esc(manager.role) : ""}</p></article>`, "Aucun manager associé.")}</div>`;
 
   return `
     <div class="form-grid">
       <input id="deTitle" value="${esc(decision.title || "")}" placeholder="Titre ou libellé" class="full">
       <input id="deDate" type="date" value="${esc(decision.date || "")}" placeholder="Date">
       <select id="deStatus">
-        <option value="decided" ${decision.status === "decided" · "selected" : ""}>Décidée</option>
-        <option value="applying" ${decision.status === "applying" · "selected" : ""}>En cours d'application</option>
-        <option value="applied" ${decision.status === "applied" · "selected" : ""}>Appliquée</option>
-        <option value="review" ${decision.status === "review" · "selected" : ""}>À réexaminer</option>
+        <option value="decided" ${decision.status === "decided" ? "selected" : ""}>Décidée</option>
+        <option value="applying" ${decision.status === "applying" ? "selected" : ""}>En cours d'application</option>
+        <option value="applied" ${decision.status === "applied" ? "selected" : ""}>Appliquée</option>
+        <option value="review" ${decision.status === "review" ? "selected" : ""}>À réexaminer</option>
       </select>
       <select id="deImportance">
-        <option value="green" ${decision.importance === "green" · "selected" : ""}>Normal</option>
-        <option value="orange" ${decision.importance === "orange" || !decision.importance · "selected" : ""}>Important</option>
-        <option value="red" ${decision.importance === "red" · "selected" : ""}>Critique</option>
+        <option value="green" ${decision.importance === "green" ? "selected" : ""}>Normal</option>
+        <option value="orange" ${decision.importance === "orange" || !decision.importance ? "selected" : ""}>Important</option>
+        <option value="red" ${decision.importance === "red" ? "selected" : ""}>Critique</option>
       </select>
       <input id="deOwner" value="${esc(decision.owner || "")}" placeholder="Responsable ou décideur">
       <input id="deReview" value="${esc(decision.reviewDate || "")}" placeholder="Date de revue">
@@ -9228,7 +9228,7 @@ function renderDecisionEditModal() {
   if (!decisionEditDialog.open) return "";
   const decision = byId("decisions", decisionEditDialog.decisionId);
   if (!decision) return "";
-  const errorHtml = decisionEditDialog.error · `<p class="folder-delete-error">${esc(decisionEditDialog.error)}</p>` : "";
+  const errorHtml = decisionEditDialog.error ? `<p class="folder-delete-error">${esc(decisionEditDialog.error)}</p>` : "";
   return `<div class="modal-backdrop decision-edit-modal" onclick="closeDecisionEditModal()"><div class="modal-panel" style="max-height:88vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="modal-head"><h2>Modifier décision</h2><button class="icon-close" type="button" onclick="closeDecisionEditModal()" aria-label="Fermer">×</button></div>${errorHtml}${decisionEditModalBody(decision)}</div></div>`;
 }
 
@@ -9236,7 +9236,7 @@ function renderDecisionDeleteModal() {
   if (!decisionDeleteDialog.open) return "";
   const decision = byId("decisions", decisionDeleteDialog.decisionId);
   if (!decision) return "";
-  const errorHtml = decisionDeleteDialog.error · `<p class="folder-delete-error">${esc(decisionDeleteDialog.error)}</p>` : "";
+  const errorHtml = decisionDeleteDialog.error ? `<p class="folder-delete-error">${esc(decisionDeleteDialog.error)}</p>` : "";
   return `<div class="modal-backdrop decision-delete-modal" onclick="closeDecisionDeleteModal()"><div class="modal-panel" onclick="event.stopPropagation()"><div class="modal-head"><h2>Supprimer la décision</h2><button class="icon-close" type="button" onclick="closeDecisionDeleteModal()" aria-label="Fermer">×</button></div><p>Confirmer la suppression de <strong>${esc(decision.title || "Décision")}</strong>.</p><p class="muted">Aucune suppression ne sera effectuée si vous annulez.</p>${errorHtml}<div class="grid two"><div class="card"><h3>Relations</h3><p><strong>Dossiers :</strong> ${normalizeLinkedIdArray(decision.linkedFolders).length}</p><p><strong>Projets :</strong> ${normalizeLinkedIdArray(decision.linkedProjects).length}</p><p><strong>Actions :</strong> ${normalizeLinkedIdArray(decision.linkedActions).length}</p><p><strong>Documents :</strong> ${normalizeLinkedIdArray(decision.linkedDocuments).length}</p><p><strong>Managers :</strong> ${decisionEditableManagerIds(decision).length}</p></div><div class="card"><h3>Rappel</h3><p>${esc(decision.context || decision.problem || "Décision à confirmer avant suppression.")}</p></div></div><div class="modal-actions"><button class="danger" type="button" onclick="confirmDecisionDelete('${esc(decision.id)}')">Supprimer</button><button class="secondary" type="button" onclick="closeDecisionDeleteModal()">Annuler</button></div></div></div></div>`;
 }
 
@@ -9311,7 +9311,7 @@ function saveDecisionEdit(id) {
   };
   const managerIds = decisionEditableManagerIds(current);
   const selectedManagers = normalizeLinkedManagerIds(checkedValues("deManagers"));
-  next.linkedManagers = selectedManagers.length · selectedManagers : managerIds;
+  next.linkedManagers = selectedManagers.length ? selectedManagers : managerIds;
   if (Object.prototype.hasOwnProperty.call(current, "linkedManagerIds")) next.linkedManagerIds = next.linkedManagers;
   state.decisions[i] = normalizeEntity("decisions", next);
   persist("decisions");
@@ -9410,7 +9410,7 @@ function toggleLinkedDecisionAction(decisionId, actionId) {
   if (!a) return;
   a.done = !a.done;
   persist("actions");
-  addActivity("Action décision modifiée", a.title, a.done · "Terminée" : "Réouverte", decisionId);
+  addActivity("Action décision modifiée", a.title, a.done ? "Terminée" : "Réouverte", decisionId);
   openDecision(decisionId);
 }
 
@@ -9437,7 +9437,7 @@ function renderJournal() {
 }
 
 function journalCard(j) {
-  return `<div class="card clickable" onclick="openJournal('${j.id}')"><h2>${esc(j.title)}</h2><p>${esc(j.summary || j.content || "")}</p><span class="muted">${esc(j.date || "")} · ${esc(j.entryType || "Note rapide")} · ${(j.tags || []).map(esc).join(", ")}</span><span class="meta">ID ${esc(j.id)}</span></div>`;
+  return `<div class="card clickable" onclick="openJournal('${j.id}')"><h2>${esc(j.title)}</h2><p>${esc(j.summary || j.content || "")}</p><span class="muted">${esc(j.date || "")} · ${esc(j.entryType || "Note rapide")} ? ${(j.tags || []).map(esc).join(", ")}</span><span class="meta">ID ${esc(j.id)}</span></div>`;
 }
 
 function addJournal() {
@@ -9466,23 +9466,23 @@ function journalDecisionsList(j) {
 
 function journalActionsList(j) {
   const linked = state.actions.filter(a => (j.linkedActions || []).includes(a.id));
-  return linked.map(a => `<div class="item"><strong>${a.done · "[Terminee]" : "[A faire]"} ${esc(a.title)}</strong><span class="muted">${esc(a.link || "")}</span><span class="meta">ID ${esc(a.id)}</span></div>`).join("") || `<div class="empty">Aucune action générée.</div>`;
+  return linked.map(a => `<div class="item"><strong>${a.done ? "[Terminee]" : "[A faire]"} ${esc(a.title)}</strong><span class="muted">${esc(a.link || "")}</span><span class="meta">ID ${esc(a.id)}</span></div>`).join("") || `<div class="empty">Aucune action générée.</div>`;
 }
 
 function journalDocumentsList(j) {
   const linked = state.documents.filter(d => (j.linkedDocuments || []).includes(d.id) || (d.linkedJournal || []).includes(j.id));
-  return linked.map(d => `<div class="item"><strong>${esc(d.title)}</strong><span class="muted">${esc(d.type || "")}${d.status · " · " + esc(d.status) : ""}</span><span class="meta">ID ${esc(d.id)}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`;
+  return linked.map(d => `<div class="item"><strong>${esc(d.title)}</strong><span class="muted">${esc(d.type || "")}${d.status ? " · " + esc(d.status) : ""}</span><span class="meta">ID ${esc(d.id)}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`;
 }
 
 function journalTimeline(j) {
   const events = (j.events || []).map(e => ({ date: e.date || "", title: e.title || "Événement", detail: e.detail || "", kind: "Événement" }));
-  const activities = state.activity.filter(a => a.entityId === j.id).map(a => ({ date: a.date || "", title: a.type || "Activité", detail: `${a.title || ""}${a.detail · " · " + a.detail : ""}`, kind: "Activité" }));
-  return [...events, ...activities].sort((a, b) => String(b.date).localeCompare(String(a.date))).map(e => `<div class="item"><strong>${esc(e.date || "Sans date")} · ${esc(e.title)}</strong><span class="muted">${esc(e.kind)}${e.detail · " · " + esc(e.detail) : ""}</span></div>`).join("") || `<div class="empty">Aucun événement.</div>`;
+  const activities = state.activity.filter(a => a.entityId === j.id).map(a => ({ date: a.date || "", title: a.type || "Activité", detail: `${a.title || ""}${a.detail ? " · " + a.detail : ""}`, kind: "Activité" }));
+  return [...events, ...activities].sort((a, b) => String(b.date).localeCompare(String(a.date))).map(e => `<div class="item"><strong>${esc(e.date || "Sans date")} · ${esc(e.title)}</strong><span class="muted">${esc(e.kind)}${e.detail ? " · " + esc(e.detail) : ""}</span></div>`).join("") || `<div class="empty">Aucun événement.</div>`;
 }
 
 function journalQuickForm(j, mode = "") {
-  if (mode === "action") return `<div class="card full-span"><h2>Ajouter une action liée</h2><input id="jaTitle" placeholder="Action · créer"><div class="grid three manager-links"><div><label>Managers concernés</label>${checkboxList("jaManagers", state.managers, j.linkedManagers, m => `${m.name} · ${m.role || ""}`)}</div><div><label>Projets concernés</label>${checkboxList("jaProjects", state.projects, j.linkedProjects, p => p.name)}</div><div><label>Décisions concernées</label>${checkboxList("jaDecisions", state.decisions, j.linkedDecisions, d => d.title)}</div></div><button class="action" onclick="saveJournalAction('${j.id}')">Enregistrer</button><button class="secondary" onclick="openJournal('${j.id}')">Annuler</button></div>`;
-  if (mode === "decision") return `<div class="card full-span"><h2>Ajouter une décision liée</h2><input id="jdTitle" placeholder="Titre de la décision"><textarea id="jdContext" placeholder="Contexte"></textarea><div class="grid two manager-links"><div><label>Managers concernés</label>${checkboxList("jdManagers", state.managers, j.linkedManagers, m => `${m.name} · ${m.role || ""}`)}</div><div><label>Projets concernés</label>${checkboxList("jdProjects", state.projects, j.linkedProjects, p => p.name)}</div></div><button class="action" onclick="saveJournalDecision('${j.id}')">Enregistrer</button><button class="secondary" onclick="openJournal('${j.id}')">Annuler</button></div>`;
+  if (mode === "action") return `<div class="card full-span"><h2>Ajouter une action liée</h2><input id="jaTitle" placeholder="Action ? créer"><div class="grid three manager-links"><div><label>Managers concernés</label>${checkboxList("jaManagers", state.managers, j.linkedManagers, m => `${m.name} ? ${m.role || ""}`)}</div><div><label>Projets concernés</label>${checkboxList("jaProjects", state.projects, j.linkedProjects, p => p.name)}</div><div><label>Décisions concernées</label>${checkboxList("jaDecisions", state.decisions, j.linkedDecisions, d => d.title)}</div></div><button class="action" onclick="saveJournalAction('${j.id}')">Enregistrer</button><button class="secondary" onclick="openJournal('${j.id}')">Annuler</button></div>`;
+  if (mode === "decision") return `<div class="card full-span"><h2>Ajouter une décision liée</h2><input id="jdTitle" placeholder="Titre de la décision"><textarea id="jdContext" placeholder="Contexte"></textarea><div class="grid two manager-links"><div><label>Managers concernés</label>${checkboxList("jdManagers", state.managers, j.linkedManagers, m => `${m.name} ? ${m.role || ""}`)}</div><div><label>Projets concernés</label>${checkboxList("jdProjects", state.projects, j.linkedProjects, p => p.name)}</div></div><button class="action" onclick="saveJournalDecision('${j.id}')">Enregistrer</button><button class="secondary" onclick="openJournal('${j.id}')">Annuler</button></div>`;
   if (mode === "event") return `<div class="card full-span"><h2>Ajouter un événement</h2><div class="form-grid"><input id="jeTitle" placeholder="Titre de l'événement"><input id="jeDate" value="${esc(new Date().toLocaleString("fr-FR"))}" placeholder="Date"></div><textarea id="jeDetail" placeholder="Détail de l'événement"></textarea><button class="action" onclick="saveJournalEvent('${j.id}')">Enregistrer</button><button class="secondary" onclick="openJournal('${j.id}')">Annuler</button></div>`;
   return "";
 }
@@ -9491,14 +9491,14 @@ function openJournal(id, mode = "") {
   const j = byId("journal", id);
   if (!j) return renderJournal();
   document.getElementById("viewTitle").textContent = j.title;
-  appHtml(`<div class="card hero manager-hero"><button class="secondary" onclick="renderJournal()">Retour Journal</button><h2>${esc(j.title)}</h2><p>${esc(j.summary || j.content || "")}</p><span class="muted">${esc(j.date || "")} · ${esc(j.entryType || "Note rapide")}</span><span class="meta">ID ${esc(j.id)}</span><div class="row-actions"><button class="action" onclick="editJournal('${j.id}')">Modifier</button><button class="secondary" onclick="startReport('journal','${j.id}')">Générer un compte rendu</button><button class="secondary" onclick="openJournal('${j.id}','action')">Ajouter une action liée</button><button class="secondary" onclick="openJournal('${j.id}','decision')">Ajouter une décision liée</button><button class="secondary" onclick="openJournal('${j.id}','event')">Ajouter un événement</button><button class="danger" onclick="deleteJournal('${j.id}')">Supprimer</button></div></div><div class="grid two">${journalQuickForm(j, mode)}<div class="card"><h2>Résumé</h2><p>${esc(j.summary || "À compléter")}</p></div><div class="card"><h2>Faits observés</h2><p>${esc(j.facts || "À compléter")}</p></div><div class="card"><h2>Analyse du directeur</h2><p>${esc(j.analysis || "À compléter")}</p></div><div class="card"><h2>Décisions prises</h2><p>${esc(j.decisionsText || "À compléter")}</p></div><div class="card"><h2>Actions générées</h2>${journalActionsList(j)}${j.actionsText · `<p class="muted">${esc(j.actionsText)}</p>` : ""}</div><div class="card"><h2>Managers concernés</h2>${journalManagersList(j)}</div><div class="card"><h2>Projets concernés</h2>${journalProjectsList(j)}</div><div class="card"><h2>Décisions liées</h2>${journalDecisionsList(j)}</div><div class="card"><h2>Documents liés</h2>${journalDocumentsList(j)}</div><div class="card"><h2>Dossiers liés</h2>${linkedFoldersList(j)}</div><div class="card"><h2>Points de vigilance</h2><p>${esc(j.watchPoints || "À compléter")}</p></div><div class="card"><h2>Suites à donner</h2><p>${esc(j.nextSteps || "À compléter")}</p></div><div class="card"><h2>Notes complémentaires</h2><p>${esc(j.notes || "À compléter")}</p></div><div class="card"><h2>Mots-clés</h2>${listItems(j.tags)}</div><div class="card full-span"><h2>Historique chronologique</h2>${journalTimeline(j)}</div></div>`);
+  appHtml(`<div class="card hero manager-hero"><button class="secondary" onclick="renderJournal()">Retour Journal</button><h2>${esc(j.title)}</h2><p>${esc(j.summary || j.content || "")}</p><span class="muted">${esc(j.date || "")} · ${esc(j.entryType || "Note rapide")}</span><span class="meta">ID ${esc(j.id)}</span><div class="row-actions"><button class="action" onclick="editJournal('${j.id}')">Modifier</button><button class="secondary" onclick="startReport('journal','${j.id}')">Générer un compte rendu</button><button class="secondary" onclick="openJournal('${j.id}','action')">Ajouter une action liée</button><button class="secondary" onclick="openJournal('${j.id}','decision')">Ajouter une décision liée</button><button class="secondary" onclick="openJournal('${j.id}','event')">Ajouter un événement</button><button class="danger" onclick="deleteJournal('${j.id}')">Supprimer</button></div></div><div class="grid two">${journalQuickForm(j, mode)}<div class="card"><h2>Résumé</h2><p>${esc(j.summary || "À compléter")}</p></div><div class="card"><h2>Faits observés</h2><p>${esc(j.facts || "À compléter")}</p></div><div class="card"><h2>Analyse du directeur</h2><p>${esc(j.analysis || "À compléter")}</p></div><div class="card"><h2>Décisions prises</h2><p>${esc(j.decisionsText || "À compléter")}</p></div><div class="card"><h2>Actions générées</h2>${journalActionsList(j)}${j.actionsText ? `<p class="muted">${esc(j.actionsText)}</p>` : ""}</div><div class="card"><h2>Managers concernés</h2>${journalManagersList(j)}</div><div class="card"><h2>Projets concernés</h2>${journalProjectsList(j)}</div><div class="card"><h2>Décisions liées</h2>${journalDecisionsList(j)}</div><div class="card"><h2>Documents liés</h2>${journalDocumentsList(j)}</div><div class="card"><h2>Dossiers liés</h2>${linkedFoldersList(j)}</div><div class="card"><h2>Points de vigilance</h2><p>${esc(j.watchPoints || "À compléter")}</p></div><div class="card"><h2>Suites à donner</h2><p>${esc(j.nextSteps || "À compléter")}</p></div><div class="card"><h2>Notes complémentaires</h2><p>${esc(j.notes || "À compléter")}</p></div><div class="card"><h2>Mots-clés</h2>${listItems(j.tags)}</div><div class="card full-span"><h2>Historique chronologique</h2>${journalTimeline(j)}</div></div>`);
 }
 
 function editJournal(id) {
   const j = byId("journal", id);
   if (!j) return;
   document.getElementById("viewTitle").textContent = "Modifier " + j.title;
-  appHtml(`<div class="card"><h2>Modifier entrée Journal</h2><input id="ejTitle" value="${esc(j.title)}" placeholder="Titre"><div class="form-grid"><input id="ejDate" value="${esc(j.date || "")}" placeholder="Date"><select id="ejType">${journalTypes.map(t => `<option value="${esc(t)}" ${j.entryType === t · "selected" : ""}>${esc(t)}</option>`).join("")}</select><input id="ejTags" value="${esc((j.tags || []).join(", "))}" placeholder="Mots-clés" class="full"></div><textarea id="ejSummary" placeholder="Résumé">${esc(j.summary || j.content || "")}</textarea><textarea id="ejFacts" placeholder="Faits observés">${esc(j.facts || "")}</textarea><textarea id="ejAnalysis" placeholder="Analyse du directeur">${esc(j.analysis || "")}</textarea><textarea id="ejDecisionsText" placeholder="Décisions prises">${esc(j.decisionsText || "")}</textarea><textarea id="ejActionsText" placeholder="Actions générées">${esc(j.actionsText || "")}</textarea><textarea id="ejWatch" placeholder="Points de vigilance">${esc(j.watchPoints || "")}</textarea><textarea id="ejNext" placeholder="Suites à donner">${esc(j.nextSteps || "")}</textarea><textarea id="ejNotes" placeholder="Notes complémentaires">${esc(j.notes || "")}</textarea><div class="grid two manager-links"><div><label>Managers concernés</label>${checkboxList("ejManagers", state.managers, j.linkedManagers, m => `${m.name} · ${m.role || ""}`)}</div><div><label>Projets concernés</label>${checkboxList("ejProjects", state.projects, j.linkedProjects, p => p.name)}</div><div><label>Décisions liées</label>${checkboxList("ejDecisions", state.decisions, j.linkedDecisions, d => d.title)}</div><div><label>Actions liées</label>${checkboxList("ejActions", state.actions, j.linkedActions, a => a.title)}</div><div><label>Documents liés</label>${checkboxList("ejDocuments", state.documents, j.linkedDocuments, d => d.title)}</div><div><label>Dossiers liés</label>${folderSelect("ejFolders", j.linkedFolders || [])}</div></div><button class="action" onclick="saveJournal('${j.id}')">Enregistrer</button><button class="secondary" onclick="openJournal('${j.id}')">Annuler</button></div>`);
+  appHtml(`<div class="card"><h2>Modifier entrée Journal</h2><input id="ejTitle" value="${esc(j.title)}" placeholder="Titre"><div class="form-grid"><input id="ejDate" value="${esc(j.date || "")}" placeholder="Date"><select id="ejType">${journalTypes.map(t => `<option value="${esc(t)}" ${j.entryType === t ? "selected" : ""}>${esc(t)}</option>`).join("")}</select><input id="ejTags" value="${esc((j.tags || []).join(", "))}" placeholder="Mots-clés" class="full"></div><textarea id="ejSummary" placeholder="Résumé">${esc(j.summary || j.content || "")}</textarea><textarea id="ejFacts" placeholder="Faits observés">${esc(j.facts || "")}</textarea><textarea id="ejAnalysis" placeholder="Analyse du directeur">${esc(j.analysis || "")}</textarea><textarea id="ejDecisionsText" placeholder="Décisions prises">${esc(j.decisionsText || "")}</textarea><textarea id="ejActionsText" placeholder="Actions générées">${esc(j.actionsText || "")}</textarea><textarea id="ejWatch" placeholder="Points de vigilance">${esc(j.watchPoints || "")}</textarea><textarea id="ejNext" placeholder="Suites à donner">${esc(j.nextSteps || "")}</textarea><textarea id="ejNotes" placeholder="Notes complémentaires">${esc(j.notes || "")}</textarea><div class="grid two manager-links"><div><label>Managers concernés</label>${checkboxList("ejManagers", state.managers, j.linkedManagers, m => `${m.name} ? ${m.role || ""}`)}</div><div><label>Projets concernés</label>${checkboxList("ejProjects", state.projects, j.linkedProjects, p => p.name)}</div><div><label>Décisions liées</label>${checkboxList("ejDecisions", state.decisions, j.linkedDecisions, d => d.title)}</div><div><label>Actions liées</label>${checkboxList("ejActions", state.actions, j.linkedActions, a => a.title)}</div><div><label>Documents liés</label>${checkboxList("ejDocuments", state.documents, j.linkedDocuments, d => d.title)}</div><div><label>Dossiers liés</label>${folderSelect("ejFolders", j.linkedFolders || [])}</div></div><button class="action" onclick="saveJournal('${j.id}')">Enregistrer</button><button class="secondary" onclick="openJournal('${j.id}')">Annuler</button></div>`);
 }
 
 function saveJournal(id) {
@@ -9593,7 +9593,7 @@ function zGemedComplementaryTargetPath(metricKey, periodType = "monthly") {
     .replace(/[^a-z0-9.]+/gi, "_")
     .replace(/_+/g, "_")
     .replace(/^_+|_+$/g, "");
-  return `complementary.zgemed.${key}${periodType === "cumulative" · ".cumulative" : ""}`;
+  return `complementary.zgemed.${key}${periodType === "cumulative" ? ".cumulative" : ""}`;
 }
 
 const zGemedMetricDefinitions = [
@@ -9849,7 +9849,7 @@ function performanceImportTargetFromPath(path) {
 
 function performanceImportConfidenceMeta(score) {
   const value = Number(score || 0);
-  const label = value >= 85 · "élevée" : value >= 60 · "moyenne" : "faible";
+  const label = value >= 85 ? "élevée" : value >= 60 ? "moyenne" : "faible";
   return { score: value, label, text: `${label} (${value}%)` };
 }
 
@@ -9872,7 +9872,7 @@ function performanceImportConfidenceScore(row) {
   if (!indicator || row.action === "ignore") return 0;
   if (Number.isFinite(Number(row.sourceConfidenceScore))) return Number(row.sourceConfidenceScore);
   if (row.targetType === "existing") return 92;
-  if (row.targetType === "complementary") return row.targetId === "complementary.generic" · 62 : 74;
+  if (row.targetType === "complementary") return row.targetId === "complementary.generic" ? 62 : 74;
   if (row.unit && /colis|heure|%|pourcentage|€|euro|kg/i.test(row.unit)) return 58;
   return 40;
 }
@@ -9920,7 +9920,7 @@ function zGemedResolvedMapping(label = "", periodType = "monthly") {
       confidence: "élevée"
     };
   }
-  const targetId = zGemedComplementaryTargetPath(definition.metricKey, periodType === "cumulative" · "cumulative" : "monthly");
+  const targetId = zGemedComplementaryTargetPath(definition.metricKey, periodType === "cumulative" ? "cumulative" : "monthly");
   return {
     metricKey: definition.metricKey,
     category: definition.category,
@@ -9929,8 +9929,8 @@ function zGemedResolvedMapping(label = "", periodType = "monthly") {
     path: targetId,
     targetId,
     targetType: "complementary",
-    targetLabel: periodType === "cumulative" && definition.cumulativeTargetLabel · definition.cumulativeTargetLabel : definition.label,
-    confidence: definition.targetType === "existing" · "élevée" : "moyenne"
+    targetLabel: periodType === "cumulative" && definition.cumulativeTargetLabel ? definition.cumulativeTargetLabel : definition.label,
+    confidence: definition.targetType === "existing" ? "élevée" : "moyenne"
   };
 }
 
@@ -9969,7 +9969,7 @@ function normalizePerformance(item) {
 
 function perfNum(v) {
   const n = Number(String(v || "").replace(",", "."));
-  return Number.isFinite(n) · n : 0;
+  return Number.isFinite(n) ? n : 0;
 }
 
 function perfHas(v) {
@@ -9979,7 +9979,7 @@ function perfHas(v) {
 function perfGap(actual, ref) {
   if (!perfHas(actual) || !perfHas(ref)) return { value: "", pct: "" };
   const a = perfNum(actual), r = perfNum(ref), gap = a - r;
-  return { value: gap, pct: r · gap / r * 100 : "" };
+  return { value: gap, pct: r ? gap / r * 100 : "" };
 }
 
 function perfFmt(v, suffix = "") {
@@ -10021,12 +10021,12 @@ function performanceObjectiveStore() {
 
 function performanceKpiIdFromLabel(label, prefix = "kpi") {
   const key = normalizePerformanceLabel(label).replace(/\s+/g, "_");
-  return key · `${prefix}.${key}` : `${prefix}.inconnu`;
+  return key ? `${prefix}.${key}` : `${prefix}.inconnu`;
 }
 
 function performancePeriodTitle(period) {
   const [month, year] = String(period || "").split("/").map(Number);
-  return month && year · `${perfMonths[month - 1]} ${year}` : (period || "Période à confirmer");
+  return month && year ? `${perfMonths[month - 1]} ${year}` : (period || "Période à confirmer");
 }
 
 function performancePeriodSortValue(period) {
@@ -10082,7 +10082,7 @@ function performanceSourceAuthority(row = {}) {
   const priorityKey = performancePriorityKeyForImportRow(row);
   const metricKey = String(row.metricKey || row.targetId || "").toLowerCase();
   const gpoCorePilotage = source === "GPO" && (metricKey === "quality.total_gains_pertes" || metricKey === "pallet.height");
-  const officialSource = gpoCorePilotage · "GPO" : performanceOfficialSourceForFamily(priorityKey);
+  const officialSource = gpoCorePilotage ? "GPO" : performanceOfficialSourceForFamily(priorityKey);
   const isExistingTarget = row.targetType === "existing" && row.destinationPath && !String(row.destinationPath).startsWith("complementary.");
   const sourceIsOfficial = gpoCorePilotage || !officialSource || source === officialSource;
   return { source, priorityKey, officialSource, isExistingTarget, sourceIsOfficial };
@@ -10111,7 +10111,7 @@ function enforcePerformanceSourceAuthority(row = {}) {
     targetId: analyticalPath,
     targetType: "complementary",
     scope: row.scope || "analysisOnly",
-    confidence: row.confidence === "élevée" · "moyenne" : (row.confidence || "moyenne"),
+    confidence: row.confidence === "élevée" ? "moyenne" : (row.confidence || "moyenne"),
     sourceAuthority: "secondary",
     officialSource: authority.officialSource,
     authorityReason: `Source secondaire : ${performanceSourceLabel(authority.source)}. Source officielle : ${performanceSourceLabel(authority.officialSource)}.`
@@ -10170,8 +10170,8 @@ function performancePrimaryValueForMetric(periodRecord, metricDef) {
   if (!perfHas(value)) return null;
   return {
     value,
-    budget: perfHas(metric.budget) · metric.budget : "",
-    historical: perfHas(metric.historical) · metric.historical : "",
+    budget: perfHas(metric.budget) ? metric.budget : "",
+    historical: perfHas(metric.historical) ? metric.historical : "",
     unit: metricDef.unit || "",
     source: "DEOS",
     sourceLabel: "Saisie DEOS",
@@ -10263,18 +10263,18 @@ function getPreferredPerformanceValue(metricKey, period) {
       historical: "",
       unit: metricDef.unit || "",
       source: priority[0] || "",
-      sourceLabel: priority[0] === "GPO" · "Donnée GPO non disponible" : "Donnée non disponible",
+      sourceLabel: priority[0] === "GPO" ? "Donnée GPO non disponible" : "Donnée non disponible",
       confidence: "faible",
       alternatives,
-      warnings: [...new Set(["Donnée manquante", ...(requiresOfficial · ["Donnée GPO non disponible"] : [])])]
+      warnings: [...new Set(["Donnée manquante", ...(requiresOfficial ? ["Donnée GPO non disponible"] : [])])]
     };
   }
   const alternatives = candidates
     .filter(candidate => candidate !== selected)
     .map(candidate => ({ ...candidate, warnings: performanceCandidateWarnings(candidate, metricDef) }));
   const priorityIndex = priority.indexOf(selected.source);
-  const confidence = priorityIndex === 0 · "élevée" : priorityIndex > 0 · "moyenne" : "faible";
-  const warnings = [...new Set([...performanceCandidateWarnings(selected, metricDef), ...(alternatives.length · ["Sources différentes"] : [])])];
+  const confidence = priorityIndex === 0 ? "élevée" : priorityIndex > 0 ? "moyenne" : "faible";
+  const warnings = [...new Set([...performanceCandidateWarnings(selected, metricDef), ...(alternatives.length ? ["Sources différentes"] : [])])];
   return {
     value: selected.value,
     budget: selected.budget,
@@ -10294,7 +10294,7 @@ function performanceSummaryMetricStatus(metricKey, period, preferredValue) {
   }
   const pseudoRecord = {
     kpiId: metricKey,
-    category: metricKey.startsWith("ipo.") · "IPO" : "",
+    category: metricKey.startsWith("ipo.") ? "IPO" : "",
     value: preferredValue.value,
     objective: preferredValue.budget,
     unit: preferredValue.unit,
@@ -10319,12 +10319,12 @@ function performanceSummaryFormatValue(value, unit, metricKey = "") {
   if (!Number.isFinite(numeric)) return String(value);
   const normalizedUnit = String(unit || "").toLowerCase();
   if (normalizedUnit === "%" || normalizedUnit === "pourcentage") {
-    const ratioValue = numeric >= 0 && numeric <= 1 · numeric * 100 : numeric;
+    const ratioValue = numeric >= 0 && numeric <= 1 ? numeric * 100 : numeric;
     return `${ratioValue.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} %`;
   }
-  const digits = /hours|heures|\bh\b/.test(normalizedUnit) · 2 : (metricKey.startsWith("ipo.") · 2 : 1);
+  const digits = /hours|heures|\bh\b/.test(normalizedUnit) ? 2 : (metricKey.startsWith("ipo.") ? 2 : 1);
   const formatted = numeric.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: digits });
-  return unit · `${formatted} ${unit}` : formatted;
+  return unit ? `${formatted} ${unit}` : formatted;
 }
 
 // V5.28Q : un écart entre deux pourcentages est exprimé en points de pourcentage.
@@ -10344,11 +10344,11 @@ function performanceSummaryBuildRows(period) {
   return performanceSummaryMetricDefinitions.map(def => {
     const preferred = getPreferredPerformanceValue(def.metricKey, period);
     const status = performanceSummaryMetricStatus(def.metricKey, period, preferred);
-    const value = perfHas(preferred.value) · Number(preferred.value) : "";
-    const budget = perfHas(preferred.budget) · Number(preferred.budget) : "";
-    const historical = perfHas(preferred.historical) · Number(preferred.historical) : "";
-    const gap = (Number.isFinite(value) && Number.isFinite(budget)) · value - budget : "";
-    const trend = (Number.isFinite(value) && Number.isFinite(historical)) · value - historical : "";
+    const value = perfHas(preferred.value) ? Number(preferred.value) : "";
+    const budget = perfHas(preferred.budget) ? Number(preferred.budget) : "";
+    const historical = perfHas(preferred.historical) ? Number(preferred.historical) : "";
+    const gap = (Number.isFinite(value) && Number.isFinite(budget)) ? value - budget : "";
+    const trend = (Number.isFinite(value) && Number.isFinite(historical)) ? value - historical : "";
     return {
       metricKey: def.metricKey,
       label: def.label,
@@ -10445,7 +10445,7 @@ function performanceBuildPrimaryRecords() {
       value,
       unit: def.unit || "",
       expectedUnit: def.unit || "",
-      objective: perfHas(metric?.[def.objectiveField || "budget"]) · metric[def.objectiveField || "budget"] : "",
+      objective: perfHas(metric?.[def.objectiveField || "budget"]) ? metric[def.objectiveField || "budget"] : "",
       source: performanceRecordSource(period, def.targetPath, def.destinationLabels || [def.label]),
       targetPath: def.targetPath,
       metricPath: def.metricPath,
@@ -10464,7 +10464,7 @@ function performanceBuildComplementaryRecords() {
     const label = String(row.indicator || row.destinationLabel || "KPI complémentaire").trim();
     return {
       scope: "complementary",
-      kpiId: row.targetId && row.targetId !== "complementary.generic" · row.targetId : performanceKpiIdFromLabel(label, "complementary"),
+      kpiId: row.targetId && row.targetId !== "complementary.generic" ? row.targetId : performanceKpiIdFromLabel(label, "complementary"),
       label,
       sourceLabel: label,
       destinationLabels: [row.destinationLabel || "KPI complémentaire", label],
@@ -10530,8 +10530,8 @@ function performanceAnnotateRecords(records) {
     if (distinctValues.length > 1) flags.push("Conflit entre deux valeurs");
     const units = unitsByKpi.get(record.kpiId) || new Set();
     if (units.size > 1) flags.push("Unité incompatible");
-    const objectiveValue = perfHas(record.objective) · Number(record.objective) : "";
-    const recordValue = perfHas(record.value) · Number(record.value) : "";
+    const objectiveValue = perfHas(record.objective) ? Number(record.objective) : "";
+    const recordValue = perfHas(record.value) ? Number(record.value) : "";
     const hasRule = performanceObjectiveDefinition(record).configured;
     if (record.category === "IPO" && perfHas(record.objective) && !hasRule) {
       if ((Number.isFinite(recordValue) && Number.isFinite(objectiveValue) && recordValue < 0 && objectiveValue > 0) ||
@@ -10583,8 +10583,8 @@ function performancePreviousRecord(records, record) {
 function performanceFormatSignedValue(value, unit = "") {
   if (value === "" || value === null || value === undefined || Number.isNaN(Number(value))) return "À compléter";
   const num = Number(value);
-  const prefix = num > 0 · "+" : "";
-  return `${prefix}${perfFmt(num)}${unit · ` ${unit}` : ""}`;
+  const prefix = num > 0 ? "+" : "";
+  return `${prefix}${perfFmt(num)}${unit ? ` ${unit}` : ""}`;
 }
 
 function performanceDeltaUnit(record = {}) {
@@ -10595,7 +10595,7 @@ function performanceDeltaUnit(record = {}) {
 function performanceHasObjective(record) {
   const definition = performanceObjectiveDefinition(record);
   return definition.mode === "range"
-    · perfHas(definition.min) || perfHas(definition.max)
+    ? perfHas(definition.min) || perfHas(definition.max)
     : perfHas(definition.objective);
 }
 
@@ -10605,19 +10605,19 @@ function performanceGapIsReliable(record) {
 
 function performanceObjectiveDefinition(record) {
   const config = performanceObjectiveStore()[record.kpiId] || {};
-  const baseObjective = perfHas(config.objective) · config.objective : record.objective;
-  const baseMin = perfHas(config.min) · config.min : "";
-  const baseMax = perfHas(config.max) · config.max : "";
+  const baseObjective = perfHas(config.objective) ? config.objective : record.objective;
+  const baseMin = perfHas(config.min) ? config.min : "";
+  const baseMax = perfHas(config.max) ? config.max : "";
   const mode = config.mode || "";
   const configured = Boolean(mode && ((mode === "range" && (perfHas(baseMin) || perfHas(baseMax))) || (mode !== "range" && perfHas(baseObjective))));
   return {
     mode,
-    objective: perfHas(baseObjective) · Number(baseObjective) : "",
-    min: perfHas(baseMin) · Number(baseMin) : "",
-    max: perfHas(baseMax) · Number(baseMax) : "",
+    objective: perfHas(baseObjective) ? Number(baseObjective) : "",
+    min: perfHas(baseMin) ? Number(baseMin) : "",
+    max: perfHas(baseMax) ? Number(baseMax) : "",
     unit: config.unit || record.unit || "",
-    vigilance: perfHas(config.vigilance) · Number(config.vigilance) : "",
-    critical: perfHas(config.critical) · Number(config.critical) : "",
+    vigilance: perfHas(config.vigilance) ? Number(config.vigilance) : "",
+    critical: perfHas(config.critical) ? Number(config.critical) : "",
     configured
   };
 }
@@ -10689,16 +10689,16 @@ function performanceDashboardFilterBar(records) {
   const kpiOptions = performanceSummaryMetricDefinitions.map(def => ({ key: def.metricKey, label: def.label }));
   const sourceKeys = ["all", "GPO", "Z_GEMED", "SUIVI_GA", "CGTAB", "T_BAG", "GA_DETAIL_AGGREGATED", "DEOS"];
   const periodOptions = options.periods
-    .map(period => `<option value="${esc(period)}" ${performanceDashboardFilters.period === period · "selected" : ""}>${esc(performancePeriodTitle(period))}</option>`)
+    .map(period => `<option value="${esc(period)}" ${performanceDashboardFilters.period === period ? "selected" : ""}>${esc(performancePeriodTitle(period))}</option>`)
     .join("");
   const familyOptions = families
-    .map(([key, label]) => `<option value="${esc(key)}" ${performanceDashboardFilters.family === key · "selected" : ""}>${esc(label)}</option>`)
+    .map(([key, label]) => `<option value="${esc(key)}" ${performanceDashboardFilters.family === key ? "selected" : ""}>${esc(label)}</option>`)
     .join("");
   const kpiSelectOptions = kpiOptions
-    .map(kpi => `<option value="${esc(kpi.key)}" ${performanceDashboardFilters.kpi === kpi.key · "selected" : ""}>${esc(kpi.label)}</option>`)
+    .map(kpi => `<option value="${esc(kpi.key)}" ${performanceDashboardFilters.kpi === kpi.key ? "selected" : ""}>${esc(kpi.label)}</option>`)
     .join("");
   const sourceOptions = sourceKeys
-    .map(key => `<option value="${esc(key)}" ${performanceDashboardFilters.source === key · "selected" : ""}>${esc(key === "all" · "Source : toutes" : performanceSourceLabel(key))}</option>`)
+    .map(key => `<option value="${esc(key)}" ${performanceDashboardFilters.source === key ? "selected" : ""}>${esc(key === "all" ? "Source : toutes" : performanceSourceLabel(key))}</option>`)
     .join("");
   return `
     <div class="performance-filter-wrap">
@@ -10714,11 +10714,11 @@ function performanceDashboardFilterBar(records) {
         </select>
         <select class="performance-filter-control" onchange="setPerformanceDashboardFilter('source', this.value)">${sourceOptions}</select>
         <select class="performance-filter-control" onchange="setPerformanceDashboardFilter('view', this.value)">
-          <option value="all" ${performanceDashboardFilters.view === "all" · "selected" : ""}>Vue : complète</option>
-          <option value="direction" ${performanceDashboardFilters.view === "direction" · "selected" : ""}>Vue : direction</option>
+          <option value="all" ${performanceDashboardFilters.view === "all" ? "selected" : ""}>Vue : complète</option>
+          <option value="direction" ${performanceDashboardFilters.view === "direction" ? "selected" : ""}>Vue : direction</option>
         </select>
         <label class="performance-filter-anomaly">
-          <input type="checkbox" ${performanceDashboardFilters.anomalies === "on" · "checked" : ""} onchange="setPerformanceDashboardFilter('anomalies', this.checked · 'on' : 'off')">
+          <input type="checkbox" ${performanceDashboardFilters.anomalies === "on" ? "checked" : ""} onchange="setPerformanceDashboardFilter('anomalies', this.checked ? 'on' : 'off')">
           Anomalies uniquement
         </label>
         <button class="secondary" onclick="resetPerformanceDashboardFilters()">Réinitialiser les filtres</button>
@@ -10775,7 +10775,7 @@ function performanceDirectionCards(period) {
 
 function performanceSummaryCards(records) {
   const period = performanceDashboardFilters.period !== "all"
-    · performanceDashboardFilters.period
+    ? performanceDashboardFilters.period
     : (records.slice().sort((a, b) => performancePeriodSortValue(b.period) - performancePeriodSortValue(a.period))[0]?.period || performancePeriodKey(perfSelected() || {}));
   return performanceDirectionCards(period);
 }
@@ -10791,7 +10791,7 @@ function resetPerformanceDashboardFilters() {
 }
 
 function performanceResolveSelectedKpi(records) {
-  const explicit = performanceDashboardFilters.kpi !== "all" · records.find(record => record.label === performanceDashboardFilters.kpi) : null;
+  const explicit = performanceDashboardFilters.kpi !== "all" ? records.find(record => record.label === performanceDashboardFilters.kpi) : null;
   if (explicit) {
     performanceDashboardSelectedKpi = explicit.kpiId;
     return explicit.kpiId;
@@ -10810,7 +10810,7 @@ function performanceCompatibleSeries(records) {
 
 function performanceTrendSvg(records) {
   if (!records.length) return `<div class="empty">Aucune donnée disponible pour ce KPI.</div>`;
-  if (records.length === 1) return `<div class="performance-chart-single">Une seule donnée disponible : ${esc(records[0].periodTitle)} · ${esc(perfFmt(records[0].value))}${records[0].unit · ` ${esc(records[0].unit)}` : ""}</div>`;
+  if (records.length === 1) return `<div class="performance-chart-single">Une seule donnée disponible : ${esc(records[0].periodTitle)} · ${esc(perfFmt(records[0].value))}${records[0].unit ? ` ${esc(records[0].unit)}` : ""}</div>`;
   const width = 720;
   const height = 260;
   const paddingX = 48;
@@ -10819,8 +10819,8 @@ function performanceTrendSvg(records) {
   const plotHeight = height - 64;
   const objectiveValues = records.map(record => {
     const definition = performanceObjectiveDefinition(record);
-    if (definition.mode === "range") return perfHas(definition.max) · Number(definition.max) : (perfHas(definition.min) · Number(definition.min) : null);
-    return perfHas(definition.objective) · Number(definition.objective) : null;
+    if (definition.mode === "range") return perfHas(definition.max) ? Number(definition.max) : (perfHas(definition.min) ? Number(definition.min) : null);
+    return perfHas(definition.objective) ? Number(definition.objective) : null;
   }).filter(Number.isFinite);
   const values = [...records.map(record => Number(record.value)).filter(Number.isFinite), ...objectiveValues];
   const min = Math.min(...values);
@@ -10834,18 +10834,18 @@ function performanceTrendSvg(records) {
   const objectivePolyline = records.map((record, index) => {
     const definition = performanceObjectiveDefinition(record);
     const currentObjective = definition.mode === "range"
-      · (perfHas(definition.max) · Number(definition.max) : (perfHas(definition.min) · Number(definition.min) : null))
-      : (perfHas(definition.objective) · Number(definition.objective) : null);
-    return currentObjective === null · null : `${xFor(index)},${yFor(currentObjective)}`;
+      ? (perfHas(definition.max) ? Number(definition.max) : (perfHas(definition.min) ? Number(definition.min) : null))
+      : (perfHas(definition.objective) ? Number(definition.objective) : null);
+    return currentObjective === null ? null : `${xFor(index)},${yFor(currentObjective)}`;
   }).filter(Boolean).join(" ");
-  const zeroLine = lower <= 0 && upper >= 0 · yFor(0) : height - 40;
-  return `<svg class="performance-trend-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Évolution du KPI"><line x1="${paddingX}" y1="${zeroLine}" x2="${width - paddingX}" y2="${zeroLine}" class="performance-axis"></line><polyline fill="none" class="performance-line" points="${valuePolyline}"></polyline>${objectivePolyline · `<polyline fill="none" class="performance-line performance-line-objective" points="${objectivePolyline}"></polyline>` : ""}${records.map((record, index) => `<g><circle cx="${xFor(index)}" cy="${yFor(Number(record.value))}" r="4" class="performance-point"></circle><text x="${xFor(index)}" y="${height - 18}" text-anchor="middle" class="performance-label">${esc(record.periodTitle)}</text></g>`).join("")}</svg>`;
+  const zeroLine = lower <= 0 && upper >= 0 ? yFor(0) : height - 40;
+  return `<svg class="performance-trend-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="Évolution du KPI"><line x1="${paddingX}" y1="${zeroLine}" x2="${width - paddingX}" y2="${zeroLine}" class="performance-axis"></line><polyline fill="none" class="performance-line" points="${valuePolyline}"></polyline>${objectivePolyline ? `<polyline fill="none" class="performance-line performance-line-objective" points="${objectivePolyline}"></polyline>` : ""}${records.map((record, index) => `<g><circle cx="${xFor(index)}" cy="${yFor(Number(record.value))}" r="4" class="performance-point"></circle><text x="${xFor(index)}" y="${height - 18}" text-anchor="middle" class="performance-label">${esc(record.periodTitle)}</text></g>`).join("")}</svg>`;
 }
 
 function performanceObjectiveForm(record) {
   if (!record) return `<div class="empty">Aucun KPI sélectionné.</div>`;
   const objective = performanceObjectiveDefinition(record);
-  return `<div class="performance-objective-card"><h3>Objectif et seuils</h3><input id="perfObjectiveKpiId" type="hidden" value="${esc(record.kpiId)}"><div class="form-grid"><select id="perfObjectiveMode"><option value="" ${!objective.mode · "selected" : ""}>Aucun statut configuré</option><option value="higher" ${objective.mode === "higher" · "selected" : ""}>Plus haut est meilleur</option><option value="lower" ${objective.mode === "lower" · "selected" : ""}>Plus bas est meilleur</option><option value="target" ${objective.mode === "target" · "selected" : ""}>Cible exacte</option><option value="range" ${objective.mode === "range" · "selected" : ""}>Plage cible</option></select><input id="perfObjectiveValue" value="${perfHas(objective.objective) · esc(objective.objective) : ""}" placeholder="Objectif"><input id="perfObjectiveMin" value="${perfHas(objective.min) · esc(objective.min) : ""}" placeholder="Min plage"><input id="perfObjectiveMax" value="${perfHas(objective.max) · esc(objective.max) : ""}" placeholder="Max plage"><input id="perfObjectiveUnit" value="${esc(objective.unit || record.unit || "")}" placeholder="Unité"><input id="perfObjectiveVigilance" value="${perfHas(objective.vigilance) · esc(objective.vigilance) : ""}" placeholder="Seuil vigilance"><input id="perfObjectiveCritical" value="${perfHas(objective.critical) · esc(objective.critical) : ""}" placeholder="Seuil critique"></div><div class="row-actions"><button class="action" onclick="savePerformanceDashboardObjective()">Enregistrer</button><button class="secondary" onclick="resetPerformanceDashboardObjective()">Réinitialiser</button></div></div>`;
+  return `<div class="performance-objective-card"><h3>Objectif et seuils</h3><input id="perfObjectiveKpiId" type="hidden" value="${esc(record.kpiId)}"><div class="form-grid"><select id="perfObjectiveMode"><option value="" ${!objective.mode ? "selected" : ""}>Aucun statut configuré</option><option value="higher" ${objective.mode === "higher" ? "selected" : ""}>Plus haut est meilleur</option><option value="lower" ${objective.mode === "lower" ? "selected" : ""}>Plus bas est meilleur</option><option value="target" ${objective.mode === "target" ? "selected" : ""}>Cible exacte</option><option value="range" ${objective.mode === "range" ? "selected" : ""}>Plage cible</option></select><input id="perfObjectiveValue" value="${perfHas(objective.objective) ? esc(objective.objective) : ""}" placeholder="Objectif"><input id="perfObjectiveMin" value="${perfHas(objective.min) ? esc(objective.min) : ""}" placeholder="Min plage"><input id="perfObjectiveMax" value="${perfHas(objective.max) ? esc(objective.max) : ""}" placeholder="Max plage"><input id="perfObjectiveUnit" value="${esc(objective.unit || record.unit || "")}" placeholder="Unité"><input id="perfObjectiveVigilance" value="${perfHas(objective.vigilance) ? esc(objective.vigilance) : ""}" placeholder="Seuil vigilance"><input id="perfObjectiveCritical" value="${perfHas(objective.critical) ? esc(objective.critical) : ""}" placeholder="Seuil critique"></div><div class="row-actions"><button class="action" onclick="savePerformanceDashboardObjective()">Enregistrer</button><button class="secondary" onclick="resetPerformanceDashboardObjective()">Réinitialiser</button></div></div>`;
 }
 
 function performanceAnalysisPanel(records) {
@@ -10855,13 +10855,13 @@ function performanceAnalysisPanel(records) {
   const series = filtered.filter(record => record.kpiId === selectedKpiId).sort((a, b) => a.periodSort - b.periodSort);
   const compatible = performanceCompatibleSeries(series);
   const current = series.slice().sort((a, b) => b.periodSort - a.periodSort)[0] || null;
-  return `<div class="performance-analysis-shell"><div class="performance-analysis-toolbar"><select onchange="setPerformanceAnalysisKpi(this.value)">${selectableKpis.map(record => `<option value="${esc(record.kpiId)}" ${record.kpiId === selectedKpiId · "selected" : ""}>${esc(record.label)}</option>`).join("")}</select><span class="muted">${current · `${esc(current.label)} · ${esc(current.category)}` : "Aucun KPI sélectionné"}</span></div><div class="performance-analysis-grid"><div class="performance-analysis-panel"><h3>Courbe d'évolution</h3>${compatible.warning · `<p class="muted">${esc(compatible.warning)}</p>` : ""}${current · performanceTrendSvg(compatible.records) : `<div class="empty">Aucune donnée disponible.</div>`}</div><div class="performance-analysis-panel"><h3>Configuration</h3>${performanceObjectiveForm(current)}</div></div><div class="performance-analysis-panel"><h3>Historique du KPI</h3><div class="performance-history-table"><table class="perf-table"><thead><tr><th>Période</th><th>Valeur</th><th>Objectif</th><th>Écart</th><th>Source</th><th>Qualité</th></tr></thead><tbody>${series.length · series.map(record => {
+  return `<div class="performance-analysis-shell"><div class="performance-analysis-toolbar"><select onchange="setPerformanceAnalysisKpi(this.value)">${selectableKpis.map(record => `<option value="${esc(record.kpiId)}" ${record.kpiId === selectedKpiId ? "selected" : ""}>${esc(record.label)}</option>`).join("")}</select><span class="muted">${current ? `${esc(current.label)} · ${esc(current.category)}` : "Aucun KPI sélectionné"}</span></div><div class="performance-analysis-grid"><div class="performance-analysis-panel"><h3>Courbe d'évolution</h3>${compatible.warning ? `<p class="muted">${esc(compatible.warning)}</p>` : ""}${current ? performanceTrendSvg(compatible.records) : `<div class="empty">Aucune donnée disponible.</div>`}</div><div class="performance-analysis-panel"><h3>Configuration</h3>${performanceObjectiveForm(current)}</div></div><div class="performance-analysis-panel"><h3>Historique du KPI</h3><div class="performance-history-table"><table class="perf-table"><thead><tr><th>Période</th><th>Valeur</th><th>Objectif</th><th>Écart</th><th>Source</th><th>Qualité</th></tr></thead><tbody>${series.length ? series.map(record => {
     const objective = performanceObjectiveDefinition(record);
     const objectiveLabel = objective.mode === "range"
-      · `${perfHas(objective.min) · perfFmt(objective.min) : "-"} / ${perfHas(objective.max) · perfFmt(objective.max) : "-"}${objective.unit · ` ${objective.unit}` : ""}`
-      : (perfHas(objective.objective) · `${perfFmt(objective.objective)}${objective.unit · ` ${objective.unit}` : ""}` : "À compléter");
+      ? `${perfHas(objective.min) ? perfFmt(objective.min) : "-"} / ${perfHas(objective.max) ? perfFmt(objective.max) : "-"}${objective.unit ? ` ${objective.unit}` : ""}`
+      : (perfHas(objective.objective) ? `${perfFmt(objective.objective)}${objective.unit ? ` ${objective.unit}` : ""}` : "À compléter");
     const gap = performanceObjectiveGap(record);
-    return `<tr><td>${esc(record.periodTitle)}</td><td>${esc(perfFmt(record.value))}${record.unit · ` ${esc(record.unit)}` : ""}</td><td>${esc(objectiveLabel)}</td><td>${gap === "" · "À compléter" : !performanceGapIsReliable(record) · "À vérifier" : esc(performanceFormatSignedValue(gap, objective.unit || performanceDeltaUnit(record)))}</td><td>${esc(record.source || "Saisie / DEOS")}</td><td>${performanceFlagsBadges(record.qualityFlags)}</td></tr>`;
+    return `<tr><td>${esc(record.periodTitle)}</td><td>${esc(perfFmt(record.value))}${record.unit ? ` ${esc(record.unit)}` : ""}</td><td>${esc(objectiveLabel)}</td><td>${gap === "" ? "À compléter" : !performanceGapIsReliable(record) ? "À vérifier" : esc(performanceFormatSignedValue(gap, objective.unit || performanceDeltaUnit(record)))}</td><td>${esc(record.source || "Saisie / DEOS")}</td><td>${performanceFlagsBadges(record.qualityFlags)}</td></tr>`;
   }).join("") : `<tr><td colspan="6">Aucune donnée disponible.</td></tr>`}</tbody></table></div></div></div>`;
 }
 
@@ -10869,11 +10869,11 @@ function performanceComplementarySection(records) {
   const filtered = performanceApplyFilters(records);
   const complementary = filtered.filter(record => record.scope === "complementary");
   const latestComplementary = performanceLatestRecordByKpi(complementary);
-  return `<div class="card full-span"><div class="row"><div><h2>KPI complémentaires</h2><p class="muted">Restitution dédiée des KPI hors catalogue principal. Le remappage ci-dessous prépare les prochains imports sans réécrire l'historique.</p></div><div class="row-actions"><button class="secondary" onclick="togglePerformanceComplementarySection()">${performanceComplementaryExpanded · "Masquer" : "Afficher"}</button></div></div>${performanceComplementaryExpanded · `<div class="performance-history-table"><table class="perf-table"><thead><tr><th>Libellé source</th><th>Dernière valeur</th><th>Période</th><th>Historique</th><th>Source</th><th>Remappage futur</th><th>Qualité</th></tr></thead><tbody>${latestComplementary.length · latestComplementary.map(record => {
+  return `<div class="card full-span"><div class="row"><div><h2>KPI complémentaires</h2><p class="muted">Restitution dédiée des KPI hors catalogue principal. Le remappage ci-dessous prépare les prochains imports sans réécrire l'historique.</p></div><div class="row-actions"><button class="secondary" onclick="togglePerformanceComplementarySection()">${performanceComplementaryExpanded ? "Masquer" : "Afficher"}</button></div></div>${performanceComplementaryExpanded ? `<div class="performance-history-table"><table class="perf-table"><thead><tr><th>Libellé source</th><th>Dernière valeur</th><th>Période</th><th>Historique</th><th>Source</th><th>Remappage futur</th><th>Qualité</th></tr></thead><tbody>${latestComplementary.length ? latestComplementary.map(record => {
     const historyCount = complementary.filter(item => item.kpiId === record.kpiId).length;
     const suggested = performanceImportMappingForLabel(record.sourceLabel);
-    const options = [{ id: "complementary.generic", label: "KPI complémentaire" }, ...performancePrimaryTargetOptions()].map(option => `<option value="${esc(option.id)}" ${(suggested?.id || record.targetId || "complementary.generic") === option.id · "selected" : ""}>${esc(option.label)}</option>`).join("");
-    return `<tr><td>${esc(record.sourceLabel)}</td><td>${esc(perfFmt(record.value))}${record.unit · ` ${esc(record.unit)}` : ""}</td><td>${esc(record.periodTitle)}</td><td>${historyCount} période(s)</td><td>${esc(record.source || "Import")}</td><td><select onchange="setComplementaryKpiMapping(this.dataset.label, this.value)" data-label="${esc(record.sourceLabel)}">${options}</select></td><td>${performanceFlagsBadges(record.qualityFlags)}</td></tr>`;
+    const options = [{ id: "complementary.generic", label: "KPI complémentaire" }, ...performancePrimaryTargetOptions()].map(option => `<option value="${esc(option.id)}" ${(suggested?.id || record.targetId || "complementary.generic") === option.id ? "selected" : ""}>${esc(option.label)}</option>`).join("");
+    return `<tr><td>${esc(record.sourceLabel)}</td><td>${esc(perfFmt(record.value))}${record.unit ? ` ${esc(record.unit)}` : ""}</td><td>${esc(record.periodTitle)}</td><td>${historyCount} période(s)</td><td>${esc(record.source || "Import")}</td><td><select onchange="setComplementaryKpiMapping(this.dataset.label, this.value)" data-label="${esc(record.sourceLabel)}">${options}</select></td><td>${performanceFlagsBadges(record.qualityFlags)}</td></tr>`;
   }).join("") : `<tr><td colspan="7">Aucun KPI complémentaire avec les filtres en cours.</td></tr>`}</tbody></table></div>` : `<div class="muted">${latestComplementary.length} KPI complémentaire(s) disponible(s).</div>`}</div>`;
 }
 
@@ -10902,13 +10902,13 @@ function performanceSummarySectionTable(period, familyKey, rows) {
       <h3>${esc(performanceSummaryFamilyLabels[familyKey])}</h3>
       <div class="row-actions">
         <span class="muted">${familyRows.length} KPI</span>
-        <button class="secondary" onclick="togglePerformanceSummarySection('${esc(familyKey)}')">${collapsed · "Déplier" : "Replier"}</button>
+        <button class="secondary" onclick="togglePerformanceSummarySection('${esc(familyKey)}')">${collapsed ? "Déplier" : "Replier"}</button>
       </div>
     </header>
   `;
   if (collapsed) return `<section class="performance-summary-family">${header}</section>`;
   const bodyRows = familyRows.length
-    · familyRows.map(row => `
+    ? familyRows.map(row => `
       <tr>
         <td>${esc(row.label)}</td>
         <td>${esc(performanceSummaryFormatValue(row.value, row.unit, row.metricKey))}</td>
@@ -10943,7 +10943,7 @@ function performanceSummaryDetailPanel(period, rows) {
   const row = rows.find(item => item.metricKey === performanceSummaryDetailMetricKey);
   if (!row) return "";
   const alternatives = row.alternatives.length
-    · row.alternatives.map(alt => `
+    ? row.alternatives.map(alt => `
       <div class="item">
         <strong>${esc(performanceSourceLabel(alt.source))}</strong>
         <span class="muted">${esc(performanceSummaryFormatValue(alt.value, alt.unit || row.unit, row.metricKey))}</span>
@@ -10983,7 +10983,7 @@ function performanceSummaryFamilies(period, rows) {
 function performanceOverviewSection() {
   const allRecords = performanceAllRecords();
   const selectedPeriod = performanceDashboardFilters.period !== "all"
-    · performanceDashboardFilters.period
+    ? performanceDashboardFilters.period
     : (allRecords.slice().sort((a, b) => performancePeriodSortValue(b.period) - performancePeriodSortValue(a.period))[0]?.period || performancePeriodKey(perfSelected() || {}));
   const importMeta = performanceLatestImportMeta(selectedPeriod);
   const rows = performanceSummaryRowsForPeriod(selectedPeriod);
@@ -11084,7 +11084,7 @@ function renderPerformance() {
   const p = perfSelected();
   const years = [...new Set(state.performance.map(x => x.year))].sort((a, b) => b - a);
   const periods = state.performance.filter(x => Number(x.year) === Number(p.year)).sort((a, b) => a.month - b.month);
-  appHtml(`<div class="card hero performance-hero"><div class="row"><div><h2>Performance</h2><p class="muted">Pilotage mensuel et annuel, saisie manuelle et calculs automatiques.</p></div><div class="row-actions"><button class="action" onclick="newPerformanceMonth()">Nouveau mois</button><button class="secondary" onclick="duplicatePerformancePrevious()">Dupliquer le mois précédent</button><button class="secondary" onclick="startPerformanceRdp('${p.id}')">Générer une synthèse RDP</button><button class="secondary" onclick="startPerformanceImport()">Importer mes données</button></div></div><div class="performance-selectors"><select onchange="selectPerformanceYear(this.value)">${years.map(y => `<option ${Number(p.year) === Number(y) · "selected" : ""}>${y}</option>`).join("")}</select><select onchange="openPerformance(this.value)">${periods.map(m => `<option value="${m.id}" ${p.id === m.id · "selected" : ""}>${esc(perfPeriodLabel(m))}</option>`).join("")}</select></div></div>${performanceEdit · performanceForm(p) : performanceView(p)}`);
+  appHtml(`<div class="card hero performance-hero"><div class="row"><div><h2>Performance</h2><p class="muted">Pilotage mensuel et annuel, saisie manuelle et calculs automatiques.</p></div><div class="row-actions"><button class="action" onclick="newPerformanceMonth()">Nouveau mois</button><button class="secondary" onclick="duplicatePerformancePrevious()">Dupliquer le mois précédent</button><button class="secondary" onclick="startPerformanceRdp('${p.id}')">Générer une synthèse RDP</button><button class="secondary" onclick="startPerformanceImport()">Importer mes données</button></div></div><div class="performance-selectors"><select onchange="selectPerformanceYear(this.value)">${years.map(y => `<option ${Number(p.year) === Number(y) ? "selected" : ""}>${y}</option>`).join("")}</select><select onchange="openPerformance(this.value)">${periods.map(m => `<option value="${m.id}" ${p.id === m.id ? "selected" : ""}>${esc(perfPeriodLabel(m))}</option>`).join("")}</select></div></div>${performanceEdit ? performanceForm(p) : performanceView(p)}`);
 }
 
 function openPerformance(id) {
@@ -11111,8 +11111,8 @@ function newPerformanceMonth() {
 function duplicatePerformancePrevious() {
   const current = perfSelected();
   if (!current) return newPerformanceMonth();
-  const prevMonth = current.month === 1 · 12 : current.month - 1;
-  const prevYear = current.month === 1 · current.year - 1 : current.year;
+  const prevMonth = current.month === 1 ? 12 : current.month - 1;
+  const prevYear = current.month === 1 ? current.year - 1 : current.year;
   const prev = state.performance.find(p => Number(p.month) === prevMonth && Number(p.year) === prevYear);
   if (!prev) return alert("Aucun mois précédent disponible.");
   const copy = normalizePerformance(JSON.parse(JSON.stringify(prev)));
@@ -11206,12 +11206,12 @@ function performanceView(p) {
   const decisions = state.decisions.filter(d => (d.linkedPerformance || []).includes(p.id));
   const documents = state.documents.filter(d => (d.linkedPerformance || []).includes(p.id));
   return `<div class="card"><div class="row"><div><h2>${esc(perfPeriodLabel(p))}</h2><span class="muted">Statut : ${esc(p.status)} · Dernière mise à jour : ${esc(p.updatedAt || "")}</span></div><div class="row-actions"><button class="action" onclick="performanceEdit=true;renderPerformance()">Modifier</button><button class="secondary" onclick="startPerformanceRdp('${p.id}')">Générer une synthèse RDP</button></div></div></div><div class="grid two">${performanceOverviewSection()}<div class="card"><h2>Activité</h2>${perfMetricBlock("Colis", viewP.activity)}</div><div class="card"><h2>IPO</h2>${perfMetricBlock("IPO total", viewP.ipo.total)}${perfMetricBlock("IPO variable", viewP.ipo.variable)}</div><div class="card full-span"><h2>Productivité par métier</h2>${perfProductivityTable(viewP)}</div><div class="card"><h2>Heures</h2>${perfMetricBlock("Heures totales", viewP.hours.total)}${perfMetricBlock("Heures indirectes", viewP.hours.indirect)}</div><div class="card"><h2>Absentéisme</h2>${perfMetricBlock("Absentéisme total", viewP.absenteeism.total)}</div><div class="card"><h2>Qualité et Gains & Pertes</h2>${perfQualitySummary(viewP)}</div><div class="card"><h2>Hauteur palette</h2>${perfPalletSummary(viewP)}</div><div class="card"><h2>Synthèse DE</h2><p>${esc(p.synthesis || buildPerformanceSynthesis(viewP))}</p></div>${performanceSourceBlock(p)}<div class="card"><h2>Actions liées</h2>${actions.map(a => `<div class="item"><strong>${esc(a.title)}</strong><span class="muted">${esc(a.owner || "")} · ${esc(a.due || "")}</span></div>`).join("") || `<div class="empty">Aucune action liée.</div>`}</div><div class="card"><h2>Décisions liées</h2>${decisions.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(decisionStatusLabel(d.status))}</span></div>`).join("") || `<div class="empty">Aucune décision liée.</div>`}</div><div class="card full-span"><h2>Documents et comptes rendus liés</h2>${documents.map(d => `<div class="item clickable" onclick="openDocument('${d.id}')"><strong>${esc(d.title || d.name || "Document")}</strong><span class="muted">${esc(d.type || d.category || "")}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`}</div></div>`;
-  return `<div class="card"><div class="row"><div><h2>${esc(perfPeriodLabel(p))}</h2><span class="muted">Statut : ${esc(p.status)} · Dernière mise à jour : ${esc(p.updatedAt || "")}</span></div><div class="row-actions"><button class="action" onclick="performanceEdit=true;renderPerformance()">Modifier</button><button class="secondary" onclick="startPerformanceRdp('${p.id}')">Générer une synthèse RDP</button></div></div></div><div class="grid two"><div class="card"><h2>Activité</h2>${perfMetricBlock("Colis", viewP.activity)}</div><div class="card"><h2>IPO</h2>${perfMetricBlock("IPO total", viewP.ipo.total)}${perfMetricBlock("IPO variable", viewP.ipo.variable)}</div><div class="card full-span"><h2>Productivité par métier</h2>${perfProductivityTable(viewP)}</div><div class="card"><h2>Heures</h2>${perfMetricBlock("Heures totales", viewP.hours.total)}${perfMetricBlock("Heures indirectes", viewP.hours.indirect)}</div><div class="card"><h2>Absentéisme</h2>${perfMetricBlock("Absentéisme total", viewP.absenteeism.total)}</div><div class="card"><h2>Qualité et Gains & Pertes</h2>${perfQualitySummary(viewP)}</div><div class="card"><h2>Hauteur palette</h2>${perfPalletSummary(viewP)}</div><div class="card"><h2>Synthèse DE</h2><p>${esc(p.synthesis || buildPerformanceSynthesis(viewP))}</p></div><div class="card full-span"><h2>Historique et tendances</h2>${perfCharts()}</div><div class="card"><h2>Actions liées</h2>${actions.map(a => `<div class="item"><strong>${esc(a.title)}</strong><span class="muted">${esc(a.owner || "")} · ${esc(a.due || "")}</span></div>`).join("") || `<div class="empty">Aucune action liée.</div>`}</div><div class="card"><h2>Décisions liées</h2>${decisions.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(decisionStatusLabel(d.status))}</span></div>`).join("") || `<div class="empty">Aucune décision liée.</div>`}</div><div class="card full-span"><h2>Documents et comptes rendus liés</h2>${documents.map(d => `<div class="item clickable" onclick="editDocument('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(d.type || "")} · ${esc(d.category || "")} · ${esc(d.status || "")}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`}</div>${performanceSourceBlock(p)}<div class="card full-span">${performanceImportHistory()}</div></div>`;
+  return `<div class="card"><div class="row"><div><h2>${esc(perfPeriodLabel(p))}</h2><span class="muted">Statut : ${esc(p.status)} ? Dernière mise à jour : ${esc(p.updatedAt || "")}</span></div><div class="row-actions"><button class="action" onclick="performanceEdit=true;renderPerformance()">Modifier</button><button class="secondary" onclick="startPerformanceRdp('${p.id}')">Générer une synthèse RDP</button></div></div></div><div class="grid two"><div class="card"><h2>Activité</h2>${perfMetricBlock("Colis", viewP.activity)}</div><div class="card"><h2>IPO</h2>${perfMetricBlock("IPO total", viewP.ipo.total)}${perfMetricBlock("IPO variable", viewP.ipo.variable)}</div><div class="card full-span"><h2>Productivité par métier</h2>${perfProductivityTable(viewP)}</div><div class="card"><h2>Heures</h2>${perfMetricBlock("Heures totales", viewP.hours.total)}${perfMetricBlock("Heures indirectes", viewP.hours.indirect)}</div><div class="card"><h2>Absentéisme</h2>${perfMetricBlock("Absentéisme total", viewP.absenteeism.total)}</div><div class="card"><h2>Qualité et Gains & Pertes</h2>${perfQualitySummary(viewP)}</div><div class="card"><h2>Hauteur palette</h2>${perfPalletSummary(viewP)}</div><div class="card"><h2>Synthèse DE</h2><p>${esc(p.synthesis || buildPerformanceSynthesis(viewP))}</p></div><div class="card full-span"><h2>Historique et tendances</h2>${perfCharts()}</div><div class="card"><h2>Actions liées</h2>${actions.map(a => `<div class="item"><strong>${esc(a.title)}</strong><span class="muted">${esc(a.owner || "")} · ${esc(a.due || "")}</span></div>`).join("") || `<div class="empty">Aucune action liée.</div>`}</div><div class="card"><h2>Décisions liées</h2>${decisions.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(decisionStatusLabel(d.status))}</span></div>`).join("") || `<div class="empty">Aucune décision liée.</div>`}</div><div class="card full-span"><h2>Documents et comptes rendus liés</h2>${documents.map(d => `<div class="item clickable" onclick="editDocument('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(d.type || "")} · ${esc(d.category || "")} · ${esc(d.status || "")}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`}</div>${performanceSourceBlock(p)}<div class="card full-span">${performanceImportHistory()}</div></div>`;
 }
 
 function performanceSourceBlock(p) {
   const imports = performanceImportsForPeriod(p);
-  const legacySources = imports.length · [] : compactLegacyPerformanceSources(p);
+  const legacySources = imports.length ? [] : compactLegacyPerformanceSources(p);
   if (!imports.length && !legacySources.length) return "";
   return `<div class="card full-span"><h2>Sources importées</h2>${imports.map(item => performanceImportSummaryCard(item, p)).join("")}${legacySources.map(item => performanceLegacyImportSummaryCard(item)).join("")}</div>`;
 }
@@ -11231,9 +11231,9 @@ function importMatchesPeriod(item, period) {
 }
 
 function performanceImportPeriodTitle(item, p) {
-  const period = importMatchesPeriod(item, performancePeriodKey(p)) · performancePeriodKey(p) : (ensureArray(item.periods)[0] || item.period || "");
+  const period = importMatchesPeriod(item, performancePeriodKey(p)) ? performancePeriodKey(p) : (ensureArray(item.periods)[0] || item.period || "");
   const [month, year] = String(period).split("/").map(Number);
-  return month && year · `${perfMonths[month - 1]} ${year}` : period || perfPeriodLabel(p);
+  return month && year ? `${perfMonths[month - 1]} ${year}` : period || perfPeriodLabel(p);
 }
 
 function performanceImportSummaryCard(item, p) {
@@ -11246,18 +11246,18 @@ function performanceImportSummaryCard(item, p) {
   const updatedLabels = ensureArray(item.updatedMetricLabels).filter(Boolean);
   const unchangedCount = Math.max(0, detected - imported);
   const importStatusText = imported === 0 && detected > 0 && conflicts === 0
-    · `${detected} indicateur(s) déjà à jour · aucune modification`
+    ? `${detected} indicateur(s) déjà à jour · aucune modification`
     : imported > 0 && conflicts === 0
-      · `${imported} indicateur(s) mis à jour · ${unchangedCount} déjà à jour${updatedLabels.length · ` · ${updatedLabels.join(", ")}` : ""}`
+      ? `${imported} indicateur(s) mis à jour · ${unchangedCount} déjà à jour${updatedLabels.length ? ` · ${updatedLabels.join(", ")}` : ""}`
       : `${imported} indicateur(s) importé(s) · ${detected} détecté(s) · ${conflicts} conflit(s)`;
   return `<div class="item import-summary">
     <div>
       <strong>Source : ${esc(performanceImportSourceLabel(item))} — ${esc(performanceImportPeriodTitle(item, p))}</strong>
       <span class="muted">${esc(importStatusText)}</span>
-      <span class="meta">${esc(item.sourceFile || "")}${item.site · " · Site " + esc(item.site) : ""}${item.importDate · " · " + esc(item.importDate) : ""}</span>
+      <span class="meta">${esc(item.sourceFile || "")}${item.site ? " · Site " + esc(item.site) : ""}${item.importDate ? " · " + esc(item.importDate) : ""}</span>
     </div>
-    <div class="row-actions"><button class="secondary" onclick="togglePerformanceImportDetail('${esc(item.id)}')">${expanded · "Masquer le détail" : "Voir le détail"}</button></div>
-    ${expanded · performanceImportInlineDetail(indicators) : ""}
+    <div class="row-actions"><button class="secondary" onclick="togglePerformanceImportDetail('${esc(item.id)}')">${expanded ? "Masquer le détail" : "Voir le détail"}</button></div>
+    ${expanded ? performanceImportInlineDetail(indicators) : ""}
   </div>`;
 }
 
@@ -11269,11 +11269,11 @@ function performanceImportInlineDetail(indicators) {
 
 function performanceImportSourceLabel(item) {
   const label = item.sourceType || item.source || "Import";
-  return isZGemedSourceLabel(label) · "Z GEMED" : label;
+  return isZGemedSourceLabel(label) ? "Z GEMED" : label;
 }
 
 function togglePerformanceImportDetail(id) {
-  expandedPerformanceImportId = expandedPerformanceImportId === id · "" : id;
+  expandedPerformanceImportId = expandedPerformanceImportId === id ? "" : id;
   renderPerformance();
 }
 
@@ -11296,13 +11296,13 @@ function performanceLegacyImportSummaryCard(item) {
   }).join("");
   const id = `legacy-${perfKey(`${item.source}-${item.file}-${item.importDate}-${item.period}`)}`;
   const expanded = expandedPerformanceImportId === id;
-  return `<div class="item import-summary"><div><strong>Source : ${esc(item.source || "Import")} — ${esc(item.period || "")}</strong><span class="muted">${esc(item.importedCount || 0)} indicateur(s) importé(s)</span><span class="meta">${esc(item.file || "")} · ${esc(item.importDate || "")}</span></div><div class="row-actions"><button class="secondary" onclick="togglePerformanceImportDetail('${id}')">${expanded · "Masquer le détail" : "Voir le détail"}</button></div>${expanded · `<div class="import-detail"><table class="perf-table"><thead><tr><th>Indicateur source</th><th>Indicateur DEOS cible</th><th>Valeur importée</th><th>Période</th><th>Confiance</th></tr></thead><tbody>${detailRows || `<tr><td colspan="5">Détail non disponible.</td></tr>`}</tbody></table></div>` : ""}</div>`;
+  return `<div class="item import-summary"><div><strong>Source : ${esc(item.source || "Import")} — ${esc(item.period || "")}</strong><span class="muted">${esc(item.importedCount || 0)} indicateur(s) importé(s)</span><span class="meta">${esc(item.file || "")} · ${esc(item.importDate || "")}</span></div><div class="row-actions"><button class="secondary" onclick="togglePerformanceImportDetail('${id}')">${expanded ? "Masquer le détail" : "Voir le détail"}</button></div>${expanded ? `<div class="import-detail"><table class="perf-table"><thead><tr><th>Indicateur source</th><th>Indicateur DEOS cible</th><th>Valeur importée</th><th>Période</th><th>Confiance</th></tr></thead><tbody>${detailRows || `<tr><td colspan="5">Détail non disponible.</td></tr>`}</tbody></table></div>` : ""}</div>`;
 }
 
 function perfMetricBlock(label, metric) {
   const rb = perfGap(metric.actual, metric.budget);
   const rh = perfGap(metric.actual, metric.historical);
-  return `<div class="performance-metric"><strong>${esc(label)}</strong><span>Historique ${perfFmt(metric.historical)} · Budget ${perfFmt(metric.budget)} · Réalisé ${perfFmt(metric.actual)}</span><small>Écart budget ${perfFmt(rb.value)} (${perfFmt(rb.pct, "%")}) · Écart historique ${perfFmt(rh.value)} (${perfFmt(rh.pct, "%")})</small></div>`;
+  return `<div class="performance-metric"><strong>${esc(label)}</strong><span>Historique ${perfFmt(metric.historical)} ? Budget ${perfFmt(metric.budget)} ? Réalisé ${perfFmt(metric.actual)}</span><small>Écart budget ${perfFmt(rb.value)} (${perfFmt(rb.pct, "%")}) ? Écart historique ${perfFmt(rh.value)} (${perfFmt(rh.pct, "%")})</small></div>`;
 }
 
 function perfProductivityTable(p) {
@@ -11324,7 +11324,7 @@ function perfPalletSummary(p) {
 }
 
 function performanceForm(p) {
-  return `<div class="card"><h2>Modifier ${esc(perfPeriodLabel(p))}</h2><div class="form-grid"><input id="pfYear" type="number" value="${p.year}"><select id="pfMonth">${perfMonths.map((m, i) => `<option value="${i + 1}" ${Number(p.month) === i + 1 · "selected" : ""}>${m}</option>`).join("")}</select><select id="pfStatus"><option ${p.status === "Brouillon" · "selected" : ""}>Brouillon</option><option ${p.status === "En cours d'analyse" · "selected" : ""}>En cours d'analyse</option><option ${p.status === "Validé" · "selected" : ""}>Validé</option><option ${p.status === "Archivé" · "selected" : ""}>Archivé</option></select></div>${perfMetricForm("Activité colis", "activity", p.activity, ["comment", "highlights", "causes", "projection"])}${perfIpoForm(p)}${perfJobsForm(p)}${perfHoursForm(p)}${perfAbsForm(p)}${perfQualityForm(p)}${perfPalletForm(p)}<div class="card"><h2>Synthèse DE</h2><textarea id="pfSynthesis">${esc(p.synthesis || buildPerformanceSynthesis(viewP))}</textarea></div><div class="grid three manager-links"><div><label>Managers liés</label>${checkboxList("pfManagers", state.managers, p.linkedManagers, m => m.name)}</div><div><label>Projets liés</label>${checkboxList("pfProjects", state.projects, p.linkedProjects, pr => pr.name)}</div><div><label>Dossiers liés</label>${folderSelect("pfFolders", p.linkedFolders)}</div></div><button class="action" onclick="savePerformance('${p.id}')">Enregistrer</button><button class="secondary" onclick="performanceEdit=false;renderPerformance()">Annuler</button></div>`;
+  return `<div class="card"><h2>Modifier ${esc(perfPeriodLabel(p))}</h2><div class="form-grid"><input id="pfYear" type="number" value="${p.year}"><select id="pfMonth">${perfMonths.map((m, i) => `<option value="${i + 1}" ${Number(p.month) === i + 1 ? "selected" : ""}>${m}</option>`).join("")}</select><select id="pfStatus"><option ${p.status === "Brouillon" ? "selected" : ""}>Brouillon</option><option ${p.status === "En cours d'analyse" ? "selected" : ""}>En cours d'analyse</option><option ${p.status === "Validé" ? "selected" : ""}>Validé</option><option ${p.status === "Archivé" ? "selected" : ""}>Archivé</option></select></div>${perfMetricForm("Activité colis", "activity", p.activity, ["comment", "highlights", "causes", "projection"])}${perfIpoForm(p)}${perfJobsForm(p)}${perfHoursForm(p)}${perfAbsForm(p)}${perfQualityForm(p)}${perfPalletForm(p)}<div class="card"><h2>Synthèse DE</h2><textarea id="pfSynthesis">${esc(p.synthesis || buildPerformanceSynthesis(viewP))}</textarea></div><div class="grid three manager-links"><div><label>Managers liés</label>${checkboxList("pfManagers", state.managers, p.linkedManagers, m => m.name)}</div><div><label>Projets liés</label>${checkboxList("pfProjects", state.projects, p.linkedProjects, pr => pr.name)}</div><div><label>Dossiers liés</label>${folderSelect("pfFolders", p.linkedFolders)}</div></div><button class="action" onclick="savePerformance('${p.id}')">Enregistrer</button><button class="secondary" onclick="performanceEdit=false;renderPerformance()">Annuler</button></div>`;
 }
 
 function perfMetricForm(title, path, m, textFields = []) {
@@ -11336,7 +11336,7 @@ function perfIpoForm(p) {
 }
 
 function perfJobsForm(p) {
-  return `<div class="card full-span"><h2>Productivité par métier</h2>${perfJobs.map(job => { const m = p.productivity[job], key = `prod_${perfKey(job)}`; return `<h3>${esc(job)}</h3><div class="form-grid"><input id="${key}_historical" type="number" value="${esc(m.historical)}" placeholder="Historique"><input id="${key}_budget" type="number" value="${esc(m.budget)}" placeholder="Budget"><input id="${key}_actual" type="number" value="${esc(m.actual)}" placeholder="Réalisé"><input id="${key}_hoursBudgetGap" type="number" value="${esc(m.hoursBudgetGap)}" placeholder="Heures écart budget"><input id="${key}_hoursHistoricalGap" type="number" value="${esc(m.hoursHistoricalGap)}" placeholder="Heures écart historique"></div>${job === "Préparation" · `<div class="form-grid"><input id="${key}_cdiProductivity" value="${esc(m.cdiProductivity)}" placeholder="Productivité CDI"><input id="${key}_cddProductivity" value="${esc(m.cddProductivity)}" placeholder="Productivité CDD"><input id="${key}_ettProductivity" value="${esc(m.ettProductivity)}" placeholder="Productivité ETT"><input id="${key}_totalProductivity" value="${esc(m.totalProductivity)}" placeholder="Productivité totale"><input id="${key}_cdiHoursShare" value="${esc(m.cdiHoursShare)}" placeholder="Part heures CDI"><input id="${key}_cddHoursShare" value="${esc(m.cddHoursShare)}" placeholder="Part heures CDD"><input id="${key}_ettHoursShare" value="${esc(m.ettHoursShare)}" placeholder="Part heures ETT"><input id="${key}_bicReference" value="${esc(m.bicReference)}" placeholder="Référence BIC"><input id="${key}_supplyAverage" value="${esc(m.supplyAverage)}" placeholder="Moyenne Supply"></div>` : ""}<textarea id="${key}_comment" placeholder="Commentaire">${esc(m.comment)}</textarea><textarea id="${key}_causes" placeholder="Causes">${esc(m.causes)}</textarea><textarea id="${key}_actions" placeholder="Actions engagées">${esc(m.actions)}</textarea>`; }).join("")}</div>`;
+  return `<div class="card full-span"><h2>Productivité par métier</h2>${perfJobs.map(job => { const m = p.productivity[job], key = `prod_${perfKey(job)}`; return `<h3>${esc(job)}</h3><div class="form-grid"><input id="${key}_historical" type="number" value="${esc(m.historical)}" placeholder="Historique"><input id="${key}_budget" type="number" value="${esc(m.budget)}" placeholder="Budget"><input id="${key}_actual" type="number" value="${esc(m.actual)}" placeholder="Réalisé"><input id="${key}_hoursBudgetGap" type="number" value="${esc(m.hoursBudgetGap)}" placeholder="Heures écart budget"><input id="${key}_hoursHistoricalGap" type="number" value="${esc(m.hoursHistoricalGap)}" placeholder="Heures écart historique"></div>${job === "Préparation" ? `<div class="form-grid"><input id="${key}_cdiProductivity" value="${esc(m.cdiProductivity)}" placeholder="Productivité CDI"><input id="${key}_cddProductivity" value="${esc(m.cddProductivity)}" placeholder="Productivité CDD"><input id="${key}_ettProductivity" value="${esc(m.ettProductivity)}" placeholder="Productivité ETT"><input id="${key}_totalProductivity" value="${esc(m.totalProductivity)}" placeholder="Productivité totale"><input id="${key}_cdiHoursShare" value="${esc(m.cdiHoursShare)}" placeholder="Part heures CDI"><input id="${key}_cddHoursShare" value="${esc(m.cddHoursShare)}" placeholder="Part heures CDD"><input id="${key}_ettHoursShare" value="${esc(m.ettHoursShare)}" placeholder="Part heures ETT"><input id="${key}_bicReference" value="${esc(m.bicReference)}" placeholder="Référence BIC"><input id="${key}_supplyAverage" value="${esc(m.supplyAverage)}" placeholder="Moyenne Supply"></div>` : ""}<textarea id="${key}_comment" placeholder="Commentaire">${esc(m.comment)}</textarea><textarea id="${key}_causes" placeholder="Causes">${esc(m.causes)}</textarea><textarea id="${key}_actions" placeholder="Actions engagées">${esc(m.actions)}</textarea>`; }).join("")}</div>`;
 }
 
 function perfHoursForm(p) {
@@ -11415,7 +11415,7 @@ function perfChart(label, path) {
   const rows = state.performance.slice().sort((a, b) => a.year - b.year || a.month - b.month).map(p => ({ p, m: perfPath(p, path) })).filter(x => x.m && (perfHas(x.m.historical) || perfHas(x.m.budget) || perfHas(x.m.actual)));
   if (rows.length < 1) return `<div class="perf-chart"><strong>${esc(label)}</strong><div class="empty">Données insuffisantes</div></div>`;
   const max = Math.max(1, ...rows.flatMap(x => [perfNum(x.m.historical), perfNum(x.m.budget), perfNum(x.m.actual)]));
-  return `<div class="perf-chart"><strong>${esc(label)}</strong>${rows.map(x => `<div class="perf-bars"><span>${esc(perfMonths[x.p.month - 1].slice(0, 3))}</span><i style="height:${perfNum(x.m.historical) / max * 70}px"></i><i class="budget" style="height:${perfNum(x.m.budget) / max * 70}px"></i><i class="actual" style="height:${perfNum(x.m.actual) / max * 70}px"></i></div>`).join("")}<small>Historique · Budget · Réalisé</small></div>`;
+  return `<div class="perf-chart"><strong>${esc(label)}</strong>${rows.map(x => `<div class="perf-bars"><span>${esc(perfMonths[x.p.month - 1].slice(0, 3))}</span><i style="height:${perfNum(x.m.historical) / max * 70}px"></i><i class="budget" style="height:${perfNum(x.m.budget) / max * 70}px"></i><i class="actual" style="height:${perfNum(x.m.actual) / max * 70}px"></i></div>`).join("")}<small>Historique ? Budget ? Réalisé</small></div>`;
 }
 
 function performanceIndicatorAction(id, label) {
@@ -11484,7 +11484,7 @@ function performanceImportDistinctSiteCodes(values = []) {
 function detectCompactImportPeriod(value = "") {
   const text = String(value || "");
   const hit = text.match(/(?:^|[^0-9])(0?[1-9]|1[0-2])[-_ ]?(20\d{2})(?:[^0-9]|$)/);
-  return hit · `${String(Number(hit[1])).padStart(2, "0")}/${hit[2]}` : "";
+  return hit ? `${String(Number(hit[1])).padStart(2, "0")}/${hit[2]}` : "";
 }
 
 function detectGpoPdf(file) {
@@ -11500,11 +11500,11 @@ function detectZGemedExcel(file) {
     ...file,
     source: "Z GEMED",
     sourceType: "Z GEMED Excel",
-    status: binary · "à confirmer" : (likely · "probablement reconnu" : "à confirmer"),
-    confidence: binary || likely · "moyenne" : "faible",
+    status: binary ? "à confirmer" : (likely ? "probablement reconnu" : "à confirmer"),
+    confidence: binary || likely ? "moyenne" : "faible",
     period: detectImportPeriod(file.name),
-    site: /st[-_ ]?gilles|saint[-_ ]?gilles/.test(name) · "Saint-Gilles" : "",
-    message: binary · "Fichier Z GEMED binaire détecté." : "Analyse locale avec contrôle du site."
+    site: /st[-_ ]?gilles|saint[-_ ]?gilles/.test(name) ? "Saint-Gilles" : "",
+    message: binary ? "Fichier Z GEMED binaire détecté." : "Analyse locale avec contrôle du site."
   };
 }
 function detectCgtab(file) {
@@ -11514,10 +11514,10 @@ function detectCgtab(file) {
     ...importDetection(file, "CGTAB", "analyse locale agrégée (anonymisée)"),
     source: "CGTAB",
     sourceType: "CGTAB XLSB",
-    status: isXlsb · "à confirmer" : "probablement reconnu",
-    confidence: isXlsb · "moyenne" : "faible",
+    status: isXlsb ? "à confirmer" : "probablement reconnu",
+    confidence: isXlsb ? "moyenne" : "faible",
     message: isXlsb
-      · "Format XLSB détecté. V5.18.6 agrège uniquement des KPI RH anonymisés (aucune donnée nominative persistée)."
+      ? "Format XLSB détecté. V5.18.6 agrège uniquement des KPI RH anonymisés (aucune donnée nominative persistée)."
       : "Format détecté. Pour V5.18.6, l'extraction validée cible le classeur XLSB CGTAB Saint-Gilles."
   };
 }
@@ -11526,17 +11526,17 @@ function detectGa(file) {
   const isXlsb = ext.endsWith("xlsb") || ext === "xlsb";
   const isDetail = /detail\s+par\s+salari/i.test(normalizeText(file.name || ""));
   return {
-    ...importDetection(file, "GA", isDetail · "analyse locale agrégée du détail GA nominatif" : "analyse locale dédiée Suivi GA"),
-    source: isDetail · "GA_DETAIL_AGGREGATED" : "SUIVI_GA",
-    sourceType: isDetail · "Suivi GA détail salarié" : "Suivi GA",
-    status: isXlsb · "à confirmer" : "probablement reconnu",
-    confidence: isXlsb · "moyenne" : "faible",
+    ...importDetection(file, "GA", isDetail ? "analyse locale agrégée du détail GA nominatif" : "analyse locale dédiée Suivi GA"),
+    source: isDetail ? "GA_DETAIL_AGGREGATED" : "SUIVI_GA",
+    sourceType: isDetail ? "Suivi GA détail salarié" : "Suivi GA",
+    status: isXlsb ? "à confirmer" : "probablement reconnu",
+    confidence: isXlsb ? "moyenne" : "faible",
     message: isXlsb
-      · (isDetail
-        · "Format XLSB détecté. Le détail salarié GA sera lu puis agrégé en mémoire, sans aucune persistance nominative."
+      ? (isDetail
+        ? "Format XLSB détecté. Le détail salarié GA sera lu puis agrégé en mémoire, sans aucune persistance nominative."
         : "Format XLSB détecté. Extraction locale activée pour le modèle validé St Gilles.")
       : (isDetail
-        · "Format détecté. Pour V5.18.8, seule une extraction agrégée et anonymisée du détail salarié est autorisée."
+        ? "Format détecté. Pour V5.18.8, seule une extraction agrégée et anonymisée du détail salarié est autorisée."
         : "Format détecté. Pour V5.18.5, l'extraction validée cible le classeur XLSB St Gilles.")
   };
 }
@@ -11547,17 +11547,17 @@ function detectTBag(file) {
     ...importDetection(file, "T-Bag", "analyse locale préparation détaillée"),
     source: "T_BAG",
     sourceType: "T-Bag XLSB",
-    status: isXlsb · "à confirmer" : "probablement reconnu",
-    confidence: isXlsb · "moyenne" : "faible",
+    status: isXlsb ? "à confirmer" : "probablement reconnu",
+    confidence: isXlsb ? "moyenne" : "faible",
     message: isXlsb
-      · "Format XLSB détecté. Analyse détaillée Préparation (agrégée, non nominative)."
+      ? "Format XLSB détecté. Analyse détaillée Préparation (agrégée, non nominative)."
       : "Format détecté. Pour V5.18.7, l'extraction validée cible le classeur XLSB T-Bag."
   };
 }
 function detectLitiges(file) { return importDetection(file, "Litiges", "extraction à développer"); }
 
 function importDetection(file, source, message) {
-  return { ...file, source, status: file.typeDetected === "non reconnu" · "non reconnu" : "à confirmer", period: detectImportPeriod(file.name), message };
+  return { ...file, source, status: file.typeDetected === "non reconnu" ? "non reconnu" : "à confirmer", period: detectImportPeriod(file.name), message };
 }
 
 function detectImportType(name = "") {
@@ -11578,7 +11578,7 @@ function detectImportPeriod(name = "") {
   const month = name.match(/(20\d{2})[-_ ]?(0[1-9]|1[0-2])/);
   if (month) return `${month[2]}/${month[1]}`;
   const fr = name.match(/(janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)[-_ ]?(20\d{2})/i);
-  return fr · `${fr[1]} ${fr[2]}` : "";
+  return fr ? `${fr[1]} ${fr[2]}` : "";
 }
 
 function periodMonthFromFrenchLabel(label = "") {
@@ -11648,7 +11648,7 @@ function detectPerformanceImportFile(file) {
 
 function sourceKeyForLabel(label = "") {
   const found = performanceImportSources.find(s => s.label === label);
-  return found · found.key : "manual";
+  return found ? found.key : "manual";
 }
 
 function startPerformanceImport() {
@@ -11662,7 +11662,7 @@ function cancelPerformanceImport() {
 }
 
 function performanceImportSteps() {
-  return ["Fichiers", "Sources", "Aperçu", "Validation"].map((label, i) => `<span class="${performanceImportWizard.step === i + 1 · "active-step" : ""}">${i + 1}. ${label}</span>`).join("");
+  return ["Fichiers", "Sources", "Aperçu", "Validation"].map((label, i) => `<span class="${performanceImportWizard.step === i + 1 ? "active-step" : ""}">${i + 1}. ${label}</span>`).join("");
 }
 
 function renderPerformanceImportWizard() {
@@ -11692,8 +11692,8 @@ function performanceImportStepFiles() {
 function performanceImportFilesList() {
   return `<div class="card"><h2>Fichiers sélectionnés</h2>${performanceImportWizard.files.map(f => {
     const detectedSites = performanceImportDistinctSiteCodes(f.detectedSiteCodes || []);
-    const siteMeta = detectedSites.length · ` · Codes détectés : ${detectedSites.join(", ")}` : "";
-    return `<div class="item"><strong>${esc(f.name)}</strong><span class="muted">${esc(f.typeDetected)} · ${esc(f.source)} · ${esc(f.period || f.periods?.join(", ") || "Période à confirmer")} · Confiance ${esc(f.confidence || "moyenne")}</span><span class="meta">Site retenu : ${esc(f.site || "à confirmer")}${f.siteCode · ` (${esc(f.siteCode)})` : ""}${esc(siteMeta)}</span><span class="meta">${esc(f.status)} · ${esc(f.message || "")}</span></div>`;
+    const siteMeta = detectedSites.length ? ` · Codes détectés : ${detectedSites.join(", ")}` : "";
+    return `<div class="item"><strong>${esc(f.name)}</strong><span class="muted">${esc(f.typeDetected)} · ${esc(f.source)} · ${esc(f.period || f.periods?.join(", ") || "Période à confirmer")} · Confiance ${esc(f.confidence || "moyenne")}</span><span class="meta">Site retenu : ${esc(f.site || "à confirmer")}${f.siteCode ? ` (${esc(f.siteCode)})` : ""}${esc(siteMeta)}</span><span class="meta">${esc(f.status)} · ${esc(f.message || "")}</span></div>`;
   }).join("") || `<div class="empty">Aucun fichier ajouté.</div>`}${performanceImportWizard.errors.map(e => `<div class="item alert-red"><strong>${esc(e.title)}</strong><span class="muted">${esc(e.detail)}</span></div>`).join("")}</div>`;
 }
 
@@ -11725,7 +11725,7 @@ function setPerformanceImportStep(step) {
 }
 
 function performanceImportStepSources() {
-  return `<div class="card"><h2>Identification de la source</h2>${performanceImportWizard.files.map(file => `<div class="item"><strong>${esc(file.name)}</strong><span class="muted">Type détecté : ${esc(file.typeDetected)} · Source supposée : ${esc(file.source)} · Statut : ${esc(file.status || "à confirmer")} · Confiance ${esc(file.confidence || "moyenne")}</span><span class="meta">Site retenu : ${esc(file.site || "à confirmer")}${file.siteCode · ` (${esc(file.siteCode)})` : ""} · Périodes : ${esc(ensureArray(file.periods).join(", ") || file.period || "à confirmer")} · Onglets : ${esc(ensureArray(file.sheets).join(", ") || "non disponible")}</span>${ensureArray(file.periods).length · `<div class="manager-links">${file.periods.map(p => `<label style="display:grid;grid-template-columns:22px minmax(90px,160px);align-items:center;gap:10px;width:max-content;margin:6px 0"><input type="checkbox" checked onchange="toggleImportPeriod('${esc(file.id)}','${esc(p)}',this.checked)"><span>${esc(p)}</span></label>`).join("")}</div>` : ""}${file.message · `<span class="meta">${esc(file.message)}</span>` : ""}</div>`).join("") || `<div class="empty">Aucun fichier à identifier.</div>`}<div class="row-actions"><button class="secondary" onclick="setPerformanceImportStep(1)">Retour</button><button class="secondary" onclick="cancelPerformanceImport()">Annuler</button><button class="action" onclick="setPerformanceImportStep(3)">Créer l'aperçu</button></div></div>`;
+  return `<div class="card"><h2>Identification de la source</h2>${performanceImportWizard.files.map(file => `<div class="item"><strong>${esc(file.name)}</strong><span class="muted">Type détecté : ${esc(file.typeDetected)} · Source supposée : ${esc(file.source)} · Statut : ${esc(file.status || "à confirmer")} · Confiance ${esc(file.confidence || "moyenne")}</span><span class="meta">Site retenu : ${esc(file.site || "à confirmer")}${file.siteCode ? ` (${esc(file.siteCode)})` : ""} · Périodes : ${esc(ensureArray(file.periods).join(", ") || file.period || "à confirmer")} · Onglets : ${esc(ensureArray(file.sheets).join(", ") || "non disponible")}</span>${ensureArray(file.periods).length ? `<div class="manager-links">${file.periods.map(p => `<label style="display:grid;grid-template-columns:22px minmax(90px,160px);align-items:center;gap:10px;width:max-content;margin:6px 0"><input type="checkbox" checked onchange="toggleImportPeriod('${esc(file.id)}','${esc(p)}',this.checked)"><span>${esc(p)}</span></label>`).join("")}</div>` : ""}${file.message ? `<span class="meta">${esc(file.message)}</span>` : ""}</div>`).join("") || `<div class="empty">Aucun fichier à identifier.</div>`}<div class="row-actions"><button class="secondary" onclick="setPerformanceImportStep(1)">Retour</button><button class="secondary" onclick="cancelPerformanceImport()">Annuler</button><button class="action" onclick="setPerformanceImportStep(3)">Créer l'aperçu</button></div></div>`;
 }
 
 function buildPerformanceImportPreview() {
@@ -11735,7 +11735,7 @@ function buildPerformanceImportPreview() {
     file.detectedIndicators = rows;
     const selected = ensureArray(file.selectedPeriods || file.periods).map(period => normalizeImportPeriod(period) || String(period || "").trim()).filter(Boolean);
     const selectedSet = new Set(selected);
-    const filtered = selectedSet.size · rows.filter(row => {
+    const filtered = selectedSet.size ? rows.filter(row => {
       if (!row.period || row.period === IMPORT_PERIOD_PENDING) return true;
       const rowPeriod = normalizeImportPeriod(row.period) || String(row.period || "").trim();
       return selectedSet.has(rowPeriod) || selectedSet.has(String(row.period || "").trim());
@@ -11747,8 +11747,8 @@ function buildPerformanceImportPreview() {
 function gaDetailComparisonPreviewCards() {
   const files = ensureArray(performanceImportWizard?.files).filter(file => ensureArray(file.comparisonSummary).length);
   if (!files.length) return "";
-  const fmt = value => value === null || value === undefined || value === "" · "" : perfFmt(value);
-  const fmtMaybe = value => value === null || value === undefined || value === "" · "—" : perfFmt(value);
+  const fmt = value => value === null || value === undefined || value === "" ? "" : perfFmt(value);
+  const fmtMaybe = value => value === null || value === undefined || value === "" ? "—" : perfFmt(value);
   return files.map(file => {
     const sections = ensureArray(file.comparisonSummary).map(summary => {
       const legacyRows = [
@@ -11760,7 +11760,7 @@ function gaDetailComparisonPreviewCards() {
       const onlyDetail = ensureArray(summary.singleSourceCenters?.detailOnly || []);
       const onlySuivi = ensureArray(summary.singleSourceCenters?.consolidatedOnly || []);
       const perimeterWarning = summary.flags?.perimetersEquivalent
-        · ""
+        ? ""
         : `<div class="item alert-orange"><strong>Périmètres différents</strong><span class="muted">L'écart global n'est pas interprétable comme rapprochement fiable hors périmètre commun.</span></div>`;
       return `<div class="item"><strong>Période ${esc(summary.period || "")}</strong>${perimeterWarning}<div class="meta">DIRECT — Total GA détail tous centres: ${esc(fmt(summary.detailTotals?.allCenters?.direct) || "0")} · Total GA détail centres comparables Direct: ${esc(fmt(summary.detailTotals?.comparableDirect?.direct) || "0")} · Total Suivi GA centres comparables Direct: ${esc(fmt(summary.consolidatedTotals?.comparableDirect?.direct) || "0")} · Écart: ${esc(fmt(summary.axisCommon?.direct?.delta) || "0")}</div><div class="meta">DIRECT — Centres comparables: ${esc(ensureArray(summary.axisCommon?.direct?.comparableCenters).join(", ") || "aucun")}</div><div class="meta">DIRECT — Centres non comparables: ${esc(ensureArray(summary.axisCommon?.direct?.nonComparableCenters).join(", ") || "aucun")}</div><div class="meta">INDIRECT — Total GA détail tous centres: ${esc(fmt(summary.detailTotals?.allCenters?.indirect) || "0")} · Total GA détail centres comparables Indirect: ${esc(fmt(summary.detailTotals?.comparableIndirect?.indirect) || "0")} · Total Suivi GA centres comparables Indirect: ${esc(fmt(summary.consolidatedTotals?.comparableIndirect?.indirect) || "0")} · Écart: ${esc(fmt(summary.axisCommon?.indirect?.delta) || "0")}</div><div class="meta">INDIRECT — Centres comparables: ${esc(ensureArray(summary.axisCommon?.indirect?.comparableCenters).join(", ") || "aucun")}</div><div class="meta">INDIRECT — Centres non comparables: ${esc(ensureArray(summary.axisCommon?.indirect?.nonComparableCenters).join(", ") || "aucun")}</div><div class="meta">4. Centres présents dans une seule source: GA détail uniquement = ${esc(onlyDetail.join(", ") || "aucun")}; Suivi GA uniquement = ${esc(onlySuivi.join(", ") || "aucun")}</div><div class="meta">5. Règle anti-doublon: ${esc(summary.antiDoubleCountRule || "")}</div>${legacyTable}<table class="perf-table import-preview-table"><thead><tr><th>Centre de coûts</th><th>Direct GA détail</th><th>Direct Suivi GA</th><th>Écart Direct</th><th>Indirect GA détail</th><th>Indirect Suivi GA</th><th>Écart Indirect</th><th>Statut Direct</th><th>Statut Indirect</th></tr></thead><tbody>${centerRows || `<tr><td colspan="9">Aucun centre commun disponible.</td></tr>`}</tbody></table></div>`;
     }).join("");
@@ -11776,12 +11776,12 @@ function performanceImportStepPreview() {
   const hasAggregatedPrivacyRows = performanceImportWizard.preview.some(row => String(row.privacyLevel || "") === "aggregated" || /CGTAB/i.test(String(row.source || row.sourceType || "")));
   const hasTbagRows = performanceImportWizard.preview.some(row => /T_BAG|T-Bag/i.test(String(row.source || row.sourceType || "")));
   const hasGaDetailRows = performanceImportWizard.preview.some(row => /GA_DETAIL_AGGREGATED|détail salarié/i.test(String(row.source || row.sourceType || "")));
-  const privacyBanner = hasAggregatedPrivacyRows · `<div class="item alert-blue"><strong>Données individuelles non conservées — import agrégé uniquement</strong><span class="muted">Aucun nom, matricule ou ligne salarié n'est persisté. Seules des sommes/comptages agrégés sont proposés.</span></div>` : "";
-  const tbagPrivacyBanner = hasTbagRows · `<div class="item alert-blue"><strong>Données agrégées Préparation — aucune donnée individuelle conservée</strong><span class="muted">Les informations T-Bag sont normalisées en agrégats par période, population et bannière.</span></div>` : "";
-  const gaDetailPrivacyBanner = hasGaDetailRows · `<div class="item alert-blue"><strong>Analyse agrégée et anonymisée — aucun détail individuel conservé</strong><span class="muted">Les groupes à moins de 5 salariés sont masqués ou exclus de l'aperçu importable.</span></div>` : "";
+  const privacyBanner = hasAggregatedPrivacyRows ? `<div class="item alert-blue"><strong>Données individuelles non conservées — import agrégé uniquement</strong><span class="muted">Aucun nom, matricule ou ligne salarié n'est persisté. Seules des sommes/comptages agrégés sont proposés.</span></div>` : "";
+  const tbagPrivacyBanner = hasTbagRows ? `<div class="item alert-blue"><strong>Données agrégées Préparation — aucune donnée individuelle conservée</strong><span class="muted">Les informations T-Bag sont normalisées en agrégats par période, population et bannière.</span></div>` : "";
+  const gaDetailPrivacyBanner = hasGaDetailRows ? `<div class="item alert-blue"><strong>Analyse agrégée et anonymisée — aucun détail individuel conservé</strong><span class="muted">Les groupes à moins de 5 salariés sont masqués ou exclus de l'aperçu importable.</span></div>` : "";
   const gaDetailComparisonCards = gaDetailComparisonPreviewCards();
   const maskedGroups = performanceImportWizard.files.flatMap(file => ensureArray(file.maskedGroups || []).map(item => ({ ...item, fileName: file.name || "" })));
-  const typeLabel = row => row.periodType === "cumulative" · "Cumul" : "Mensuel";
+  const typeLabel = row => row.periodType === "cumulative" ? "Cumul" : "Mensuel";
   const categoryLabel = row => ({
     activity: "Activité",
     hours_direct: "Heures directes",
@@ -11799,11 +11799,11 @@ function performanceImportStepPreview() {
   const formatImportNumber = value => {
     if (value === null || value === undefined || value === "") return "";
     const numeric = normalizeImportNullableNumericValue(value);
-    return typeof numeric === "number" && Number.isFinite(numeric) · perfFmt(numeric) : value;
+    return typeof numeric === "number" && Number.isFinite(numeric) ? perfFmt(numeric) : value;
   };
   const deltaLabel = (value, percent) => {
-    const base = value === null || value === undefined || value === "" · "" : perfFmt(value);
-    const pct = percent === null || percent === undefined || percent === "" · "" : `${perfFmt(percent)}%`;
+    const base = value === null || value === undefined || value === "" ? "" : perfFmt(value);
+    const pct = percent === null || percent === undefined || percent === "" ? "" : `${perfFmt(percent)}%`;
     return [base, pct].filter(Boolean).join(" · ") || "";
   };
   const formatImportActualDisplay = row => {
@@ -11821,27 +11821,27 @@ function performanceImportStepPreview() {
     if (row.action === "keep" || row.action === "ignore") return "Conserver";
     if ((row.status === "Conflit" || row.status === "Différente") && row.recommendedSourceReplacement) return "Remplacer (GPO recommandé)";
     if (row.status === "Conflit" || row.status === "Différente") return "Remplacer";
-    return row.action === "use" · "Ajouter" : "Conserver";
+    return row.action === "use" ? "Ajouter" : "Conserver";
   };
   const rows = mappedRows.map(row => {
     const currentTargetId = row.targetId || row.destinationId || (performanceImportTargetFromPath(row.destinationPath)?.id || "");
     const statusText = row.status || performanceImportStatusLabel(row.status);
     const selectable = row.targetType !== "ignore";
     const roleHint = gaRoleLabel(row);
-    const targetHint = row.targetType === "complementary" · "KPI complémentaire · À vérifier" : row.targetType === "existing" · "KPI DEOS existant" : "À vérifier";
+    const targetHint = row.targetType === "complementary" ? "KPI complémentaire · À vérifier" : row.targetType === "existing" ? "KPI DEOS existant" : "À vérifier";
     const catalogHasCurrentTarget = targetOptions.some(target => target.id === currentTargetId);
     const dynamicTargetOption = currentTargetId && !catalogHasCurrentTarget
-      · `<option value="${esc(currentTargetId)}" selected>${esc(row.destinationLabel || row.label || row.indicator || currentTargetId)}</option>`
+      ? `<option value="${esc(currentTargetId)}" selected>${esc(row.destinationLabel || row.label || row.indicator || currentTargetId)}</option>`
       : "";
-    const selectHtml = dynamicTargetOption + targetOptions.map(target => `<option value="${esc(target.id)}" ${currentTargetId === target.id · "selected" : ""}>${esc(target.label)}</option>`).join("");
+    const selectHtml = dynamicTargetOption + targetOptions.map(target => `<option value="${esc(target.id)}" ${currentTargetId === target.id ? "selected" : ""}>${esc(target.label)}</option>`).join("");
     const explicitGpoMapping = performanceSourceKey(row.source || row.sourceType || "") === "GPO" && Boolean(currentTargetId) && Boolean(row.destinationPath);
     const destinationHtml = explicitGpoMapping
-      · `<div class="import-target-select"><strong>${esc(row.destinationLabel || row.label || row.indicator || currentTargetId)}</strong><small class="muted">Mapping GPO explicite${row.confidenceText · ` · confiance ${esc(row.confidenceText)}` : ""}</small></div>`
-      : `<div class="import-target-select"><select onchange="setImportPreviewTarget('${row.id}', this.value)">${selectHtml}</select><small class="muted">${esc(targetHint)}${row.confidenceText · ` · confiance ${esc(row.confidenceText)}` : ""}</small></div>`;
-    return `<tr class="import-${esc(row.tone)}"><td><input type="checkbox" ${row.selected · "checked" : ""} onchange="toggleImportPreviewRow('${row.id}',this.checked)" ${selectable · "" : "disabled"}></td><td>${esc(row.period || "à confirmer")}</td><td>${esc(typeLabel(row))}</td><td>${esc(categoryLabel(row))}${roleHint · `<br><small class="muted">${esc(roleHint)}</small>` : ""}</td><td>${esc(row.population || "")}</td><td>${esc(row.banner || "")}</td><td>${esc(row.costCenter || "")}</td><td>${esc(row.directness || "")}</td><td>${esc(row.label || row.indicator)}</td><td>${esc(formatImportActualDisplay(row))}</td><td>${esc(formatImportNumber(row.budget))}</td><td>${esc(formatImportNumber(row.historical))}</td><td>${esc(deltaLabel(row.deltaBudget, row.deltaBudgetPercent))}</td><td>${esc(deltaLabel(row.deltaHistorical, row.deltaHistoricalPercent))}</td><td>${esc(row.unit || "")}</td><td>${esc(row.aggregationType || "")}</td><td>${esc(row.employeeCount ?? "")}</td><td>${esc(row.privacyRule || "")}</td><td>${esc(row.sourceColumns || "")}</td><td>${esc(row.privacyLevel || "")}</td><td>${esc(row.sourceSheet || row.sourcePage || "")}</td><td>${esc(row.sourceCell || row.pageSource || row.sourceRef || "")}</td><td>${destinationHtml}</td><td>${esc(row.currentValue === "" || row.currentValue === null || row.currentValue === undefined · "" : perfFmt(row.currentValue))}</td><td>${esc(row.confidenceText || "")}</td><td><strong>${esc(plannedActionLabel(row))}</strong><br><small>${esc(statusText)}</small>${row.status === "Conflit" || row.status === "Différente" · `<select onchange="setImportPreviewAction('${row.id}',this.value)"><option value="keep" ${row.action === "keep" · "selected" : ""}>Conserver DEOS</option><option value="use" ${row.action === "use" · "selected" : ""}>Remplacer</option><option value="ignore" ${row.action === "ignore" · "selected" : ""}>Ne pas importer</option></select>` : `<select onchange="setImportPreviewAction('${row.id}',this.value)"><option value="use" ${row.action === "use" · "selected" : ""}>Utiliser source</option><option value="ignore" ${row.action === "ignore" · "selected" : ""}>Ne pas importer</option></select>`}</td></tr>`;
+      ? `<div class="import-target-select"><strong>${esc(row.destinationLabel || row.label || row.indicator || currentTargetId)}</strong><small class="muted">Mapping GPO explicite${row.confidenceText ? ` · confiance ${esc(row.confidenceText)}` : ""}</small></div>`
+      : `<div class="import-target-select"><select onchange="setImportPreviewTarget('${row.id}', this.value)">${selectHtml}</select><small class="muted">${esc(targetHint)}${row.confidenceText ? ` · confiance ${esc(row.confidenceText)}` : ""}</small></div>`;
+    return `<tr class="import-${esc(row.tone)}"><td><input type="checkbox" ${row.selected ? "checked" : ""} onchange="toggleImportPreviewRow('${row.id}',this.checked)" ${selectable ? "" : "disabled"}></td><td>${esc(row.period || "à confirmer")}</td><td>${esc(typeLabel(row))}</td><td>${esc(categoryLabel(row))}${roleHint ? `<br><small class="muted">${esc(roleHint)}</small>` : ""}</td><td>${esc(row.population || "")}</td><td>${esc(row.banner || "")}</td><td>${esc(row.costCenter || "")}</td><td>${esc(row.directness || "")}</td><td>${esc(row.label || row.indicator)}</td><td>${esc(formatImportActualDisplay(row))}</td><td>${esc(formatImportNumber(row.budget))}</td><td>${esc(formatImportNumber(row.historical))}</td><td>${esc(deltaLabel(row.deltaBudget, row.deltaBudgetPercent))}</td><td>${esc(deltaLabel(row.deltaHistorical, row.deltaHistoricalPercent))}</td><td>${esc(row.unit || "")}</td><td>${esc(row.aggregationType || "")}</td><td>${esc(row.employeeCount ?? "")}</td><td>${esc(row.privacyRule || "")}</td><td>${esc(row.sourceColumns || "")}</td><td>${esc(row.privacyLevel || "")}</td><td>${esc(row.sourceSheet || row.sourcePage || "")}</td><td>${esc(row.sourceCell || row.pageSource || row.sourceRef || "")}</td><td>${destinationHtml}</td><td>${esc(row.currentValue === "" || row.currentValue === null || row.currentValue === undefined ? "" : perfFmt(row.currentValue))}</td><td>${esc(row.confidenceText || "")}</td><td><strong>${esc(plannedActionLabel(row))}</strong><br><small>${esc(statusText)}</small>${row.status === "Conflit" || row.status === "Différente" ? `<select onchange="setImportPreviewAction('${row.id}',this.value)"><option value="keep" ${row.action === "keep" ? "selected" : ""}>Conserver DEOS</option><option value="use" ${row.action === "use" ? "selected" : ""}>Remplacer</option><option value="ignore" ${row.action === "ignore" ? "selected" : ""}>Ne pas importer</option></select>` : `<select onchange="setImportPreviewAction('${row.id}',this.value)"><option value="use" ${row.action === "use" ? "selected" : ""}>Utiliser source</option><option value="ignore" ${row.action === "ignore" ? "selected" : ""}>Ne pas importer</option></select>`}</td></tr>`;
   }).join("");
-  const unmappedTable = unmappedRows.length · `<div class="card"><h3>Indicateurs détectés mais non mappés</h3><table class="perf-table import-preview-table"><thead><tr><th>Période</th><th>Type</th><th>Catégorie</th><th>Population</th><th>Bannière</th><th>Centre de coûts</th><th>Direct.</th><th>Indicateur source</th><th>Réel</th><th>Budget</th><th>Historique</th><th>Écart Budget</th><th>Écart Historique</th><th>Unité</th><th>Agrégation</th><th>Contributeurs</th><th>Règle confidentialité</th><th>Colonnes source</th><th>Niveau privacy</th><th>Feuille</th><th>Cellule</th><th>Confiance</th><th>Destination</th></tr></thead><tbody>${unmappedRows.map(row => `<tr class="import-orange"><td>${esc(row.period || "à confirmer")}</td><td>${esc(typeLabel(row))}</td><td>${esc(row.category || "")}</td><td>${esc(row.population || "")}</td><td>${esc(row.banner || "")}</td><td>${esc(row.costCenter || "")}</td><td>${esc(row.directness || "")}</td><td>${esc(row.label || row.indicator)}</td><td>${esc(formatImportActualDisplay(row))}</td><td>${esc(row.budget ?? "")}</td><td>${esc(row.historical ?? "")}</td><td>${esc(deltaLabel(row.deltaBudget, row.deltaBudgetPercent))}</td><td>${esc(deltaLabel(row.deltaHistorical, row.deltaHistoricalPercent))}</td><td>${esc(row.unit || "")}</td><td>${esc(row.aggregationType || "")}</td><td>${esc(row.employeeCount ?? "")}</td><td>${esc(row.privacyRule || "")}</td><td>${esc(row.sourceColumns || "")}</td><td>${esc(row.privacyLevel || "")}</td><td>${esc(row.sourceSheet || row.sourcePage || "")}</td><td>${esc(row.sourceCell || row.pageSource || row.sourceRef || "")}</td><td>${esc(row.confidenceText || "")}</td><td><select onchange="setImportPreviewTarget('${row.id}', this.value)">${targetOptions.map(target => `<option value="${esc(target.id)}" ${(row.targetId || row.destinationId || "ignore") === target.id · "selected" : ""}>${esc(target.label)}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table></div>` : "";
-  const maskedGroupsTable = maskedGroups.length · `<div class="card"><h3>Groupes masqués pour confidentialité</h3><table class="perf-table import-preview-table"><thead><tr><th>Période</th><th>Type</th><th>Valeur</th><th>Contributeurs</th><th>Règle</th><th>Feuille</th></tr></thead><tbody>${maskedGroups.map(row => `<tr class="import-gray"><td>${esc(row.period || "")}</td><td>${esc(row.groupType || "")}</td><td>${esc(row.label || row.value || "")}</td><td>${esc(row.employeeCount || "")}</td><td>${esc(row.rule || "")}</td><td>${esc(row.sourceSheet || "")}</td></tr>`).join("")}</tbody></table></div>` : "";
+  const unmappedTable = unmappedRows.length ? `<div class="card"><h3>Indicateurs détectés mais non mappés</h3><table class="perf-table import-preview-table"><thead><tr><th>Période</th><th>Type</th><th>Catégorie</th><th>Population</th><th>Bannière</th><th>Centre de coûts</th><th>Direct.</th><th>Indicateur source</th><th>Réel</th><th>Budget</th><th>Historique</th><th>Écart Budget</th><th>Écart Historique</th><th>Unité</th><th>Agrégation</th><th>Contributeurs</th><th>Règle confidentialité</th><th>Colonnes source</th><th>Niveau privacy</th><th>Feuille</th><th>Cellule</th><th>Confiance</th><th>Destination</th></tr></thead><tbody>${unmappedRows.map(row => `<tr class="import-orange"><td>${esc(row.period || "à confirmer")}</td><td>${esc(typeLabel(row))}</td><td>${esc(row.category || "")}</td><td>${esc(row.population || "")}</td><td>${esc(row.banner || "")}</td><td>${esc(row.costCenter || "")}</td><td>${esc(row.directness || "")}</td><td>${esc(row.label || row.indicator)}</td><td>${esc(formatImportActualDisplay(row))}</td><td>${esc(row.budget ?? "")}</td><td>${esc(row.historical ?? "")}</td><td>${esc(deltaLabel(row.deltaBudget, row.deltaBudgetPercent))}</td><td>${esc(deltaLabel(row.deltaHistorical, row.deltaHistoricalPercent))}</td><td>${esc(row.unit || "")}</td><td>${esc(row.aggregationType || "")}</td><td>${esc(row.employeeCount ?? "")}</td><td>${esc(row.privacyRule || "")}</td><td>${esc(row.sourceColumns || "")}</td><td>${esc(row.privacyLevel || "")}</td><td>${esc(row.sourceSheet || row.sourcePage || "")}</td><td>${esc(row.sourceCell || row.pageSource || row.sourceRef || "")}</td><td>${esc(row.confidenceText || "")}</td><td><select onchange="setImportPreviewTarget('${row.id}', this.value)">${targetOptions.map(target => `<option value="${esc(target.id)}" ${(row.targetId || row.destinationId || "ignore") === target.id ? "selected" : ""}>${esc(target.label)}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table></div>` : "";
+  const maskedGroupsTable = maskedGroups.length ? `<div class="card"><h3>Groupes masqués pour confidentialité</h3><table class="perf-table import-preview-table"><thead><tr><th>Période</th><th>Type</th><th>Valeur</th><th>Contributeurs</th><th>Règle</th><th>Feuille</th></tr></thead><tbody>${maskedGroups.map(row => `<tr class="import-gray"><td>${esc(row.period || "")}</td><td>${esc(row.groupType || "")}</td><td>${esc(row.label || row.value || "")}</td><td>${esc(row.employeeCount || "")}</td><td>${esc(row.rule || "")}</td><td>${esc(row.sourceSheet || "")}</td></tr>`).join("")}</tbody></table></div>` : "";
   const emptyDiagnostic = performanceImportEmptyDiagnostic();
   return `<div class="card"><h2>Aperçu avant import</h2><p class="muted">Aucune donnée Performance existante ne sera écrasée silencieusement. Les correspondances sont proposées, révisables et mémorisées uniquement si vous les validez.</p><div class="item alert-blue"><strong>Règle V5.28O</strong><span class="muted">Les 21 KPI GPO reconnus utilisent désormais un mapping explicite. CGTAB est traité comme analytique mensuel et n’écrase jamais les KPI cumulés GPO. Les anciennes valeurs DEOS restent comparées, mais les destinations GPO ne sont plus proposées via une liste générique. Vous gardez la validation finale.</span></div>${privacyBanner}${tbagPrivacyBanner}${gaDetailPrivacyBanner}${gaDetailComparisonCards}${periodSelector}<table class="perf-table import-preview-table"><thead><tr><th></th><th>Période</th><th>Type</th><th>Catégorie</th><th>Population</th><th>Bannière</th><th>Centre de coûts</th><th>Direct.</th><th>KPI</th><th>Réel</th><th>Budget</th><th>Historique</th><th>Écart Budget</th><th>Écart Historique</th><th>Unité</th><th>Agrégation</th><th>Contributeurs</th><th>Règle confidentialité</th><th>Colonnes source</th><th>Niveau privacy</th><th>Feuille</th><th>Cellule</th><th>Destination DEOS</th><th>Valeur DEOS</th><th>Confiance</th><th>Action prévue</th></tr></thead><tbody>${rows || `<tr><td colspan="26">${emptyDiagnostic}</td></tr>`}</tbody></table>${maskedGroupsTable}${unmappedTable}<div class="row-actions"><button class="secondary" onclick="setPerformanceImportStep(2)">Retour</button><button class="secondary" onclick="cancelPerformanceImport()">Annuler</button><button class="action" onclick="setPerformanceImportStep(4)">Valider l'aperçu</button></div></div>`;
 }
@@ -11859,16 +11859,16 @@ function firstImportValue(source, keys) {
 }
 
 function normalizeImportNumericValue(value) {
-  if (typeof value === "number") return Number.isFinite(value) · value : "";
+  if (typeof value === "number") return Number.isFinite(value) ? value : "";
   const parsed = parseZGemedNumber(value);
-  return parsed !== "" · parsed : String(value ?? "").trim();
+  return parsed !== "" ? parsed : String(value ?? "").trim();
 }
 
 function normalizeImportNullableNumericValue(value) {
   if (value === null || value === undefined || String(value).trim() === "") return null;
-  if (typeof value === "number") return Number.isFinite(value) · value : null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
   const parsed = parseZGemedNumber(value);
-  return parsed !== "" · parsed : String(value ?? "").trim();
+  return parsed !== "" ? parsed : String(value ?? "").trim();
 }
 
 function normalizeImportDestination(path = "", destinationField = "") {
@@ -11900,31 +11900,31 @@ function normalizePerformanceImportIndicators(rows, file) {
     const rawValue = firstImportValue(raw, ["value", "currentValue", "actual", "real", "reel", "detectedValue", "valeur"]);
     if (!indicator) return null;
     const destinationPath = firstImportValue(raw, ["destinationPath", "path", "targetPath", "deosPath"]);
-    const destinationLabel = firstImportValue(raw, ["destinationLabel", "destination", "target", "deosIndicator"]) || (destinationPath · indicator : "KPI complémentaire");
+    const destinationLabel = firstImportValue(raw, ["destinationLabel", "destination", "target", "deosIndicator"]) || (destinationPath ? indicator : "KPI complémentaire");
     const targetFromPath = performanceImportTargetFromPath(destinationPath);
     const sourceType = raw.sourceType || file.sourceType || file.source || "";
     const explicitTargetId = firstImportValue(raw, ["targetId", "destinationId"]);
     const explicitTargetType = firstImportValue(raw, ["targetType"]);
     const hasExplicitTargetType = Object.prototype.hasOwnProperty.call(raw, "targetType") && String(explicitTargetType).trim() !== "";
     let targetFromLabel = hasExplicitTargetType
-      · null
+      ? null
       : (isZGemedSourceLabel(sourceType)
-        · (explicitTargetId · performanceImportTargetById(explicitTargetId) : null)
+        ? (explicitTargetId ? performanceImportTargetById(explicitTargetId) : null)
         : performanceImportDestinationFromRow({ indicator, unit: firstImportValue(raw, ["unit", "unite"]) || "" }));
     if (/gpo/i.test(sourceType) && targetFromLabel?.id === "complementary.generic" && !destinationPath) targetFromLabel = null;
     const target = hasExplicitTargetType
-      · (explicitTargetId · performanceImportTargetById(explicitTargetId) : null)
+      ? (explicitTargetId ? performanceImportTargetById(explicitTargetId) : null)
       : (targetFromPath || targetFromLabel);
-    const targetType = explicitTargetType || (target · target.type : (destinationPath · "existing" : "complementary"));
-    const targetId = explicitTargetId || (target · target.id : "");
-    const mappedPathRaw = destinationPath || (hasExplicitTargetType · "" : (target · target.path : ""));
+    const targetType = explicitTargetType || (target ? target.type : (destinationPath ? "existing" : "complementary"));
+    const targetId = explicitTargetId || (target ? target.id : "");
+    const mappedPathRaw = destinationPath || (hasExplicitTargetType ? "" : (target ? target.path : ""));
     const normalizedDestination = normalizeImportDestination(mappedPathRaw, raw.destinationField || "");
-    const mappedLabel = firstImportValue(raw, ["destinationLabel", "destination", "target", "deosIndicator"]) || (target · target.label : "KPI complémentaire");
-    const sourceConfidenceScore = Number.isFinite(Number(raw.sourceConfidenceScore)) · Number(raw.sourceConfidenceScore) : null;
-    const confidenceMeta = performanceImportConfidenceMeta(sourceConfidenceScore ?? (targetType === "existing" · 92 : targetType === "complementary" · (targetId === "complementary.generic" · 62 : 74) : 40));
-    const selected = raw.selected !== undefined · Boolean(raw.selected) : targetType !== "ignore";
+    const mappedLabel = firstImportValue(raw, ["destinationLabel", "destination", "target", "deosIndicator"]) || (target ? target.label : "KPI complémentaire");
+    const sourceConfidenceScore = Number.isFinite(Number(raw.sourceConfidenceScore)) ? Number(raw.sourceConfidenceScore) : null;
+    const confidenceMeta = performanceImportConfidenceMeta(sourceConfidenceScore ?? (targetType === "existing" ? 92 : targetType === "complementary" ? (targetId === "complementary.generic" ? 62 : 74) : 40));
+    const selected = raw.selected !== undefined ? Boolean(raw.selected) : targetType !== "ignore";
     const period = normalizeImportPeriod(raw.period || raw.date || file.period || ensureArray(file.periods)[0]) || IMPORT_PERIOD_PENDING;
-    const source = /gpo/i.test(sourceType) · "GPO" : (isZGemedSourceLabel(raw.source || file.source || file.sourceType || "") · "Z_GEMED" : (raw.source || file.source || file.sourceType || "Import"));
+    const source = /gpo/i.test(sourceType) ? "GPO" : (isZGemedSourceLabel(raw.source || file.source || file.sourceType || "") ? "Z_GEMED" : (raw.source || file.source || file.sourceType || "Import"));
     const population = firstImportValue(raw, ["population", "populationType"]) || "";
     const banner = firstImportValue(raw, ["banner", "brand"]) || "";
     const actual = normalizeImportNullableNumericValue(rawValue);
@@ -11932,10 +11932,10 @@ function normalizePerformanceImportIndicators(rows, file) {
     const historical = normalizeImportNullableNumericValue(firstImportValue(raw, ["historical", "histo", "history"]));
     const rawUnit = firstImportValue(raw, ["unit", "unite"]) || "";
     const metricKey = firstImportValue(raw, ["metricKey", "metric", "metric_key"]) || normalizePerformanceLabel(indicator).replace(/\s+/g, "_");
-    const unit = isIpoMetricDescriptor({ metricKey, destinationPath: normalizedDestination.path, targetId, label: indicator, category: firstImportValue(raw, ["category", "group"]) || "" }) · IPO_UNIT : rawUnit;
+    const unit = isIpoMetricDescriptor({ metricKey, destinationPath: normalizedDestination.path, targetId, label: indicator, category: firstImportValue(raw, ["category", "group"]) || "" }) ? IPO_UNIT : rawUnit;
     const sourcePage = firstImportValue(raw, ["sourcePage", "pageSource", "page", "sourceRef"]);
     const explicitActionProvided = Object.prototype.hasOwnProperty.call(raw, "action");
-    const action = explicitActionProvided · String(raw.action || "") : (targetType === "ignore" · "ignore" : "use");
+    const action = explicitActionProvided ? String(raw.action || "") : (targetType === "ignore" ? "ignore" : "use");
     return {
       ...raw,
       id: raw.id || newId("preview"),
@@ -12000,14 +12000,14 @@ function performanceImportPeriodSelector() {
   const months = ["01 - Janvier", "02 - Février", "03 - Mars", "04 - Avril", "05 - Mai", "06 - Juin", "07 - Juillet", "08 - Août", "09 - Septembre", "10 - Octobre", "11 - Novembre", "12 - Décembre"];
   const selectedMonth = performanceImportWizard.manualMonth || "06";
   const selectedYear = performanceImportWizard.manualYear || String(new Date().getFullYear());
-  return `<div class="item alert-orange"><strong>Période à confirmer</strong><span class="muted">Les KPI restent visibles. Sélectionner le mois et l'année avant validation si la période n'a pas été détectée automatiquement.</span><div class="row-actions"><select id="piManualMonth" onchange="setPendingImportPeriod()">${months.map(m => `<option value="${m.slice(0, 2)}" ${m.startsWith(selectedMonth) · "selected" : ""}>${m}</option>`).join("")}</select><select id="piManualYear" onchange="setPendingImportPeriod()">${years.map(y => `<option value="${y}" ${String(y) === String(selectedYear) · "selected" : ""}>${y}</option>`).join("")}</select><button class="secondary" onclick="setPendingImportPeriod()">Appliquer la période</button></div></div>`;
+  return `<div class="item alert-orange"><strong>Période à confirmer</strong><span class="muted">Les KPI restent visibles. Sélectionner le mois et l'année avant validation si la période n'a pas été détectée automatiquement.</span><div class="row-actions"><select id="piManualMonth" onchange="setPendingImportPeriod()">${months.map(m => `<option value="${m.slice(0, 2)}" ${m.startsWith(selectedMonth) ? "selected" : ""}>${m}</option>`).join("")}</select><select id="piManualYear" onchange="setPendingImportPeriod()">${years.map(y => `<option value="${y}" ${String(y) === String(selectedYear) ? "selected" : ""}>${y}</option>`).join("")}</select><button class="secondary" onclick="setPendingImportPeriod()">Appliquer la période</button></div></div>`;
 }
 
 function performanceImportEmptyDiagnostic() {
   const extracted = performanceImportWizard.files.reduce((sum, file) => sum + performanceImportRawIndicators(file).length, 0);
   const normalized = performanceImportWizard.files.reduce((sum, file) => sum + normalizePerformanceImportIndicators(performanceImportRawIndicators(file), file).length, 0);
   const selected = performanceImportWizard.files.map(file => ensureArray(file.selectedPeriods || file.periods).join(", ") || "aucune").join(" · ");
-  return extracted · `${extracted} KPI extrait(s), ${normalized} KPI normalisé(s), 0 transmis à l'aperçu. Périodes sélectionnées : ${esc(selected)}.` : "Aucun indicateur exploitable détecté.";
+  return extracted ? `${extracted} KPI extrait(s), ${normalized} KPI normalisé(s), 0 transmis à l'aperçu. Périodes sélectionnées : ${esc(selected)}.` : "Aucun indicateur exploitable détecté.";
 }
 
 function setPendingImportPeriod() {
@@ -12017,11 +12017,11 @@ function setPendingImportPeriod() {
   performanceImportWizard.manualMonth = month;
   performanceImportWizard.manualYear = year;
   performanceImportWizard.files.forEach(file => {
-    file.detectedIndicators = ensureArray(file.detectedIndicators).map(row => (!row.period || row.period === IMPORT_PERIOD_PENDING) · { ...row, period } : row);
-    file.period = file.period && file.period !== IMPORT_PERIOD_PENDING · file.period : period;
-    file.periods = ensureArray(file.periods).map(p => p === IMPORT_PERIOD_PENDING · period : p);
+    file.detectedIndicators = ensureArray(file.detectedIndicators).map(row => (!row.period || row.period === IMPORT_PERIOD_PENDING) ? { ...row, period } : row);
+    file.period = file.period && file.period !== IMPORT_PERIOD_PENDING ? file.period : period;
+    file.periods = ensureArray(file.periods).map(p => p === IMPORT_PERIOD_PENDING ? period : p);
     if (!file.periods.length) file.periods = [period];
-    file.selectedPeriods = ensureArray(file.selectedPeriods).map(p => p === IMPORT_PERIOD_PENDING · period : p);
+    file.selectedPeriods = ensureArray(file.selectedPeriods).map(p => p === IMPORT_PERIOD_PENDING ? period : p);
     if (!file.selectedPeriods.length) file.selectedPeriods = [period];
   });
   buildPerformanceImportPreview();
@@ -12044,7 +12044,7 @@ function performanceImportStepValidate() {
   const selected = performanceImportWizard.preview.filter(x => x.selected && x.destinationPath);
   const conflicts = performanceImportWizard.preview.filter(x => x.status === "Conflit" || x.status === "Différente");
   const validationError = performanceImportWizard.validationError
-    · `<div class="item alert-red"><strong>Import non enregistré</strong><span class="muted">${esc(performanceImportWizard.validationError)}</span></div>`
+    ? `<div class="item alert-red"><strong>Import non enregistré</strong><span class="muted">${esc(performanceImportWizard.validationError)}</span></div>`
     : "";
   return `<div class="card"><h2>Validation</h2><p>La validation alimente réellement Performance uniquement avec les lignes cochées. Les lignes en conflit restent conservées côté DEOS sauf choix « Utiliser source ».</p>${validationError}<div class="form-grid"><input id="piValidatedBy" value="${esc(performanceImportWizard.validatedBy || identityName())}" placeholder="Utilisateur ayant validé"><select id="piStatus"><option value="validé">validé</option><option value="brouillon">brouillon</option><option value="rejeté">rejeté</option></select><textarea id="piComments" class="full" placeholder="Commentaires">${esc(performanceImportWizard.comments || "")}</textarea></div><div class="item"><strong>${selected.length} indicateur(s) importable(s)</strong><span class="muted">${conflicts.length} conflit(s) ou différence(s) · ${performanceImportWizard.files.length} fichier(s) source(s)</span></div><div class="row-actions"><button class="secondary" onclick="setPerformanceImportStep(3)">Retour</button><button class="secondary" onclick="cancelPerformanceImport()">Annuler</button><button class="action" onclick="validatePerformanceImport()">Valider l'import</button></div></div>`;
 }
@@ -12075,7 +12075,7 @@ function compactPerformanceImportIndicator(row = {}) {
 }
 
 function compactPerformanceImportPayload(item = {}) {
-  const sourceRows = ensureArray(item.indicators).length · ensureArray(item.indicators) : ensureArray(item.preview);
+  const sourceRows = ensureArray(item.indicators).length ? ensureArray(item.indicators) : ensureArray(item.preview);
   const sourceFile = String(item.sourceFile || ensureArray(item.files).map(file => file?.name || "").filter(Boolean).join(", ")).trim();
   return normalizeEntity("performance_imports", {
     id: item.id || newId("perfimport"),
@@ -12208,7 +12208,7 @@ function openPerformanceImportDetail(id) {
 
 async function analyzePerformanceImportFile(file, sourceKey) {
   const detected = detectPerformanceImportFile(file);
-  detected.selectedPeriods = ensureArray(detected.periods).length · ensureArray(detected.periods) : (detected.period · [detected.period] : []);
+  detected.selectedPeriods = ensureArray(detected.periods).length ? ensureArray(detected.periods) : (detected.period ? [detected.period] : []);
   const shouldAnalyzeGpo = sourceKey === "gpo" || (sourceKey === "guide" && (detected.extension || "").toLowerCase() === "pdf");
   if (shouldAnalyzeGpo) {
     try {
@@ -12221,7 +12221,7 @@ async function analyzePerformanceImportFile(file, sourceKey) {
   if (sourceKey === "ga") {
     try {
       return isGaDetailFileName(file.name || detected.name || "")
-        · await analyzeGaDetailAggregatedFile(file, detected)
+        ? await analyzeGaDetailAggregatedFile(file, detected)
         : await analyzeSuiviGaFile(file, detected);
     } catch (error) {
       performanceImportWizard.errors.push({ title: "Analyse Suivi GA impossible", detail: error.message || String(error) });
@@ -12336,8 +12336,8 @@ async function analyzeGpoPdfFile(file, detected) {
     ...detected,
     source: "GPO PDF",
     sourceType: "GPO PDF régional",
-    status: hitCount >= 4 && indicators.length · "reconnu" : indicators.length · "probablement reconnu" : "non reconnu",
-    confidence: hitCount >= 4 && indicators.length · "élevée" : indicators.length · "moyenne" : "faible",
+    status: hitCount >= 4 && indicators.length ? "reconnu" : indicators.length ? "probablement reconnu" : "non reconnu",
+    confidence: hitCount >= 4 && indicators.length ? "élevée" : indicators.length ? "moyenne" : "faible",
     site: "Saint-Gilles",
     scope: "FRY8MC",
     period,
@@ -12450,7 +12450,7 @@ function gpoIndicatorRow(period, metric, values, sourcePage, confidence = "moyen
     unit: metric.unit,
     sourcePage,
     pageSource: sourcePage,
-    sourceRef: sourcePage · `PDF ${sourcePage}` : "",
+    sourceRef: sourcePage ? `PDF ${sourcePage}` : "",
     destinationPath: destination.path,
     destinationLabel: target?.label || metric.label,
     destinationField: destination.field,
@@ -12459,7 +12459,7 @@ function gpoIndicatorRow(period, metric, values, sourcePage, confidence = "moyen
     targetType: target?.type || "ignore",
     confidence,
     selected: Boolean(target?.path),
-    action: target?.path · "" : "ignore"
+    action: target?.path ? "" : "ignore"
   };
 }
 
@@ -12511,13 +12511,13 @@ function gpoPlausibility(metricKey, values) {
   const present = [values?.historical, values?.budget, values?.actual].filter(value => value !== "" && value !== null && value !== undefined).map(Number).filter(Number.isFinite);
   if (!present.length) return { ok: false, score: 25 };
   const ok = present.every(value => value >= rule[0] && value <= rule[1]);
-  return { ok, score: ok · 94 : 25 };
+  return { ok, score: ok ? 94 : 25 };
 }
 
 function gpoMetricConfidence(metricKey, values, layoutBased = false) {
   const check = gpoPlausibility(metricKey, values);
   if (!check.ok) return { label: "faible", score: 25, selected: false, action: "ignore", warning: "Valeur incohérente avec la plage métier" };
-  const score = layoutBased · 96 : Math.min(88, check.score);
+  const score = layoutBased ? 96 : Math.min(88, check.score);
   return { label: performanceImportConfidenceMeta(score).label, score, selected: true, action: "" };
 }
 
@@ -12562,7 +12562,7 @@ function extractGpoSaintGillesLayout(page) {
     out.pallet_height = gpoLayoutTriple(page, [[651, 353], [664, 340], [683, 333]], { xTolerance: 28, yTolerance: 16, min: 70, max: 130 });
     out.pallet_height.objective = gpoLayoutNearestNumber(page, 40, 337, { xTolerance: 24, yTolerance: 18, min: 70, max: 130 });
   }
-  return Object.keys(out).length · out : null;
+  return Object.keys(out).length ? out : null;
 }
 
 function extractGpoIndicators(pages, period) {
@@ -12693,17 +12693,17 @@ function extractGpoIpoValues(text) {
 
   const bBefore = matchNumberBefore(text, /IPO\s*BUDGET/i);
   const b = bBefore !== ""
-    · bBefore
+    ? bBefore
     : matchNumberAfter(text, /IPO\s*BUDGET/i);
 
   const hAfter = matchNumberAfter(text, /IPO\s*HISTO/i);
   const h = hAfter !== ""
-    · hAfter
+    ? hAfter
     : matchNumberBefore(text, /IPO\s*HISTO/i);
 
   const rAfter = matchNumberAfter(text, /IPO\s*R[ÉE]ALIS[ÉE]/i);
   const r = rAfter !== ""
-    · rAfter
+    ? rAfter
     : matchNumberBefore(text, /IPO\s*R[ÉE]ALIS[ÉE]/i);
 
   return { historical: h, budget: b, actual: r };
@@ -12720,7 +12720,7 @@ function extractGpoTripleAround(text, labelPattern, options = {}) {
   const re = new RegExp(labelPattern, "i");
   const source = String(text);
   const matches = [...source.matchAll(new RegExp(labelPattern, "ig"))];
-  const candidates = matches.length · matches : [];
+  const candidates = matches.length ? matches : [];
   const match = candidates.find(item => {
     if (!options.preferDecimal) return true;
     const beforeNums = gpoNumbers(source.slice(Math.max(0, item.index - 90), item.index)).filter(v => v !== "");
@@ -12744,7 +12744,7 @@ function extractGpoHoursValues(text) {
   if (idx < 0) return { total: { historical: "", budget: "", actual: "" }, direct: { historical: "", budget: "", actual: "" }, indirect: { historical: "", budget: "", actual: "" } };
   const segment = String(text).slice(Math.max(0, idx - 240), idx);
   const nums = [...segment.matchAll(/[+-]?\s?\d{1,3}\s\d{3}/g)].map(match => parseZGemedNumber(match[0])).filter(v => v !== "").slice(-9);
-  const groups = nums.length >= 9 · [nums.slice(0, 3), nums.slice(3, 6), nums.slice(6, 9)] : [];
+  const groups = nums.length >= 9 ? [nums.slice(0, 3), nums.slice(3, 6), nums.slice(6, 9)] : [];
   const toValues = values => ({ historical: values?.[0] ?? "", budget: values?.[1] ?? "", actual: values?.[2] ?? "" });
   return { total: toValues(groups[0]), direct: toValues(groups[1]), indirect: toValues(groups[2]) };
 }
@@ -12775,7 +12775,7 @@ function extractGpoGpValues(text) {
   // On préfère donc le nombre précédent et on conserve un fallback arrière.
   const around = regex => {
     const before = matchNumberBefore(text, regex);
-    return before !== "" · before : matchNumberAfter(text, regex);
+    return before !== "" ? before : matchNumberAfter(text, regex);
   };
   const h = around(/G&P\s*H/i);
   const b = around(/G&P\s*B/i);
@@ -12786,7 +12786,7 @@ function extractGpoGpValues(text) {
 function extractGpoPalletValues(text) {
   const objective = matchNumberAfter(text, /Objectif annuel/i);
   const idx = text.search(/HISTO\s+BUD\s+REEL/i);
-  const segment = idx >= 0 · text.slice(Math.max(0, idx - 160), idx) : text;
+  const segment = idx >= 0 ? text.slice(Math.max(0, idx - 160), idx) : text;
   const nums = gpoNumbers(segment).filter(v => v !== "").slice(-3);
   return { historical: nums[0] ?? "", budget: nums[1] ?? "", actual: nums[2] ?? "", objective };
 }
@@ -12794,12 +12794,12 @@ function extractGpoPalletValues(text) {
 function extractGpoIndirectPercent(text) {
   const segment = (text.match(/% HEURES\s+INDIRECTES\s+TOTALES([\s\S]{0,220})Cumul/i) || [])[1] || "";
   const nums = gpoNumbers(segment).filter(v => v !== "");
-  return nums.length · nums[nums.length - 1] : "";
+  return nums.length ? nums[nums.length - 1] : "";
 }
 
 function extractGpoMajorHours(text) {
   const blocks = [...String(text).matchAll(/Cumul\s+à\s+date\s+([+-]?\s?\d+(?:\s\d{3})?)\s+([+-]?\s?\d+(?:\s\d{3})?)/gi)];
-  const actual = index => blocks[index] · parseZGemedNumber(blocks[index][2]) : "";
+  const actual = index => blocks[index] ? parseZGemedNumber(blocks[index][2]) : "";
   return { night: actual(0), overtime: actual(1), sundays: actual(2) };
 }
 
@@ -12851,12 +12851,12 @@ function tbagCellNumber(sheet, row1Based, col1Based) {
   const cell = tbagReadCell(sheet, row1Based, col1Based);
   if (!cell) return null;
   const numeric = normalizeImportNullableNumericValue(cell.v);
-  return typeof numeric === "number" && Number.isFinite(numeric) · numeric : null;
+  return typeof numeric === "number" && Number.isFinite(numeric) ? numeric : null;
 }
 
 function tbagCellFormula(sheet, row1Based, col1Based) {
   const cell = tbagReadCell(sheet, row1Based, col1Based);
-  return cell?.f · `=${cell.f}` : "";
+  return cell?.f ? `=${cell.f}` : "";
 }
 
 function tbagCanonicalPeriod(mmToken = "", year = "") {
@@ -12870,14 +12870,14 @@ function tbagCanonicalPeriod(mmToken = "", year = "") {
 
 function tbagDestinationPath(metricKey = "", population = "", banner = "") {
   const metricPart = normalizePerformanceLabel(metricKey).replace(/\s+/g, "_") || "metric";
-  const popPart = population · `.pop_${tbagSlug(population)}` : "";
-  const bannerPart = banner · `.banner_${tbagSlug(banner)}` : "";
+  const popPart = population ? `.pop_${tbagSlug(population)}` : "";
+  const bannerPart = banner ? `.banner_${tbagSlug(banner)}` : "";
   return `complementary.tbag.${metricPart}${popPart}${bannerPart}`;
 }
 
 function tbagIdentityKey(population = "", banner = "") {
-  const pop = population · `pop:${tbagSlug(population)}` : "pop:all";
-  const ban = banner · `banner:${tbagSlug(banner)}` : "banner:all";
+  const pop = population ? `pop:${tbagSlug(population)}` : "pop:all";
+  const ban = banner ? `banner:${tbagSlug(banner)}` : "banner:all";
   return `${pop}|${ban}`;
 }
 
@@ -12887,16 +12887,16 @@ function tbagBuildRow({ period, metricKey, label, value, unit, population = "", 
   const isNativeProductivityTotal = metricKey === "preparation.productivity.total" && isTotalScope;
   const isBannerHoursDetail = metricKey === "preparation.banner.hours";
   const destinationPath = isNativeProductivityTotal
-    · "productivity.Préparation.actual"
+    ? "productivity.Préparation.actual"
     : tbagDestinationPath(metricKey, population, banner);
   const destinationLabel = isNativeProductivityTotal
-    · "Productivité Préparation"
+    ? "Productivité Préparation"
     : `${label} · Préparation`;
   const targetId = isNativeProductivityTotal
-    · "productivity.preparation"
+    ? "productivity.preparation"
     : destinationPath;
-  const targetType = isNativeProductivityTotal · "existing" : "complementary";
-  const category = metricKey.includes("productivity") · "preparation_productivity" : metricKey.includes("volume") · "preparation_volume" : "preparation_hours";
+  const targetType = isNativeProductivityTotal ? "existing" : "complementary";
+  const category = metricKey.includes("productivity") ? "preparation_productivity" : metricKey.includes("volume") ? "preparation_volume" : "preparation_hours";
   return {
     id: newId("preview"),
     period,
@@ -12931,7 +12931,7 @@ function tbagBuildRow({ period, metricKey, label, value, unit, population = "", 
     destinationId: targetId,
     targetId,
     targetType,
-    analyticalRole: isBannerHoursDetail · "detail" : (isTotalScope · "total" : "analytic"),
+    analyticalRole: isBannerHoursDetail ? "detail" : (isTotalScope ? "total" : "analytic"),
     analysisOnly: isBannerHoursDetail,
     selected: true,
     action: ""
@@ -13058,7 +13058,7 @@ function tbagAnalyzeRows(sheet, sheetName, headerRow, year, monthCols, range, ta
       }
 
       if (isProdPop && pop) {
-        rows.push(tbagBuildRow({ period, metricKey: `preparation.productivity.${pop.toLowerCase()}`, label: `Préparation - Productivité ${pop}`, value, unit: "colis/h", population: pop, banner: "TOTAL BANNIERE", aggregationType: "ratio", confidence: sourceFormula · "élevée" : "moyenne", sourceSheet: sheetName, sourceCell, sourceColumns: `NATURE=${nature}`, sourceFormula }));
+        rows.push(tbagBuildRow({ period, metricKey: `preparation.productivity.${pop.toLowerCase()}`, label: `Préparation - Productivité ${pop}`, value, unit: "colis/h", population: pop, banner: "TOTAL BANNIERE", aggregationType: "ratio", confidence: sourceFormula ? "élevée" : "moyenne", sourceSheet: sheetName, sourceCell, sourceColumns: `NATURE=${nature}`, sourceFormula }));
       }
     }
   }
@@ -13117,8 +13117,8 @@ async function analyzeTBagFile(file, detected) {
     ...detected,
     source: "T_BAG",
     sourceType: "T-Bag XLSB",
-    status: analyzed.rows.length · "reconnu" : "probablement reconnu",
-    confidence: analyzed.rows.length · "élevée" : "moyenne",
+    status: analyzed.rows.length ? "reconnu" : "probablement reconnu",
+    confidence: analyzed.rows.length ? "élevée" : "moyenne",
     site: PERFORMANCE_IMPORT_SITE.name,
     siteCode: PERFORMANCE_IMPORT_SITE.code,
     detectedSiteCodes,
@@ -13206,13 +13206,13 @@ function gaDetailCell(sheet, row1Based, col1Based) {
 
 function gaDetailText(sheet, row1Based, col1Based) {
   const cell = gaDetailCell(sheet, row1Based, col1Based);
-  return cell · String(cell.w ?? cell.v ?? "").trim() : "";
+  return cell ? String(cell.w ?? cell.v ?? "").trim() : "";
 }
 
 function gaDetailNumber(sheet, row1Based, col1Based) {
   const cell = gaDetailCell(sheet, row1Based, col1Based);
   const numeric = normalizeImportNullableNumericValue(cell?.v);
-  return typeof numeric === "number" && Number.isFinite(numeric) · numeric : null;
+  return typeof numeric === "number" && Number.isFinite(numeric) ? numeric : null;
 }
 
 function gaDetailPeriod(year = "", month = "") {
@@ -13227,11 +13227,11 @@ function gaDetailPeriod(year = "", month = "") {
 function gaDetailDestinationPath(metricKey = "", dims = {}) {
   const parts = [
     `complementary.ga_detail.${gaDetailSlug(metricKey)}`,
-    dims.scope · `scope_${gaDetailSlug(dims.scope)}` : "",
-    dims.costCenter · `cc_${gaDetailSlug(dims.costCenter)}` : "",
-    dims.directness · `dir_${gaDetailSlug(dims.directness)}` : "",
-    dims.activity · `act_${gaDetailSlug(dims.activity)}` : "",
-    dims.population · `pop_${gaDetailSlug(dims.population)}` : ""
+    dims.scope ? `scope_${gaDetailSlug(dims.scope)}` : "",
+    dims.costCenter ? `cc_${gaDetailSlug(dims.costCenter)}` : "",
+    dims.directness ? `dir_${gaDetailSlug(dims.directness)}` : "",
+    dims.activity ? `act_${gaDetailSlug(dims.activity)}` : "",
+    dims.population ? `pop_${gaDetailSlug(dims.population)}` : ""
   ].filter(Boolean);
   return parts.join(".");
 }
@@ -13250,7 +13250,7 @@ function gaDetailBuildRow({ period, metricKey, label, actual, unit = "h", scope,
     periodType: "monthly",
     source: "GA_DETAIL_AGGREGATED",
     sourceType: "Suivi GA détail salarié",
-    category: metricKey.startsWith("ga_detail.population") · "ga_detail_population" : metricKey.startsWith("ga_detail.activity") · "ga_detail_activity" : metricKey.startsWith("ga_detail.cost_center") · "ga_detail_cost_center" : "ga_detail_summary",
+    category: metricKey.startsWith("ga_detail.population") ? "ga_detail_population" : metricKey.startsWith("ga_detail.activity") ? "ga_detail_activity" : metricKey.startsWith("ga_detail.cost_center") ? "ga_detail_cost_center" : "ga_detail_summary",
     metricKey,
     indicator: label,
     label,
@@ -13265,7 +13265,7 @@ function gaDetailBuildRow({ period, metricKey, label, actual, unit = "h", scope,
     directness,
     population,
     aggregationType,
-    employeeCount: employeeCount === null · null : employeeCount,
+    employeeCount: employeeCount === null ? null : employeeCount,
     privacyRule,
     sourceSheet,
     sourceColumns,
@@ -13274,10 +13274,10 @@ function gaDetailBuildRow({ period, metricKey, label, actual, unit = "h", scope,
     confidence,
     sourceRef: `${sourceSheet} · ${sourceCell}`,
     destinationPath,
-    destinationLabel: coreTarget · coreTarget.label : `${label} · ${scope}`,
-    destinationId: coreTarget · coreTarget.id : destinationPath,
-    targetId: coreTarget · coreTarget.id : destinationPath,
-    targetType: coreTarget · "existing" : "complementary",
+    destinationLabel: coreTarget ? coreTarget.label : `${label} · ${scope}`,
+    destinationId: coreTarget ? coreTarget.id : destinationPath,
+    targetId: coreTarget ? coreTarget.id : destinationPath,
+    targetType: coreTarget ? "existing" : "complementary",
     selected: true,
     action: ""
   };
@@ -13294,7 +13294,7 @@ function gaDetailMaskedEntry(period, sourceSheet, groupType, label, contributors
 
 function gaDetailToNumber(value) {
   const numeric = normalizeImportNullableNumericValue(value);
-  return typeof numeric === "number" && Number.isFinite(numeric) · numeric : 0;
+  return typeof numeric === "number" && Number.isFinite(numeric) ? numeric : 0;
 }
 
 function gaDetailRound(value, digits = 4) {
@@ -13305,7 +13305,7 @@ function gaDetailRound(value, digits = 4) {
 
 function gaDetailCostCenterFromPath(path = "") {
   const hit = String(path || "").match(/(?:^|\.)cc_([a-z0-9_]+)/i);
-  return hit · String(hit[1] || "").replace(/_+/g, "").toUpperCase() : "";
+  return hit ? String(hit[1] || "").replace(/_+/g, "").toUpperCase() : "";
 }
 
 function gaDetailResolveCostCenter(row = {}) {
@@ -13327,23 +13327,23 @@ function gaDetailBuildConsolidatedCenterSnapshot(rows, costCenter) {
   const directDetailRows = rows.filter(row => row.metricKey !== "hours_direct.total" && String(row.directness || "").toLowerCase() === "direct");
   const indirectDetailRows = rows.filter(row => row.metricKey !== "hours_indirect.total" && String(row.directness || "").toLowerCase() === "indirect");
 
-  const directRowsUsed = directTotalRows.length · directTotalRows : directDetailRows;
-  const indirectRowsUsed = indirectTotalRows.length · indirectTotalRows : indirectDetailRows;
+  const directRowsUsed = directTotalRows.length ? directTotalRows : directDetailRows;
+  const indirectRowsUsed = indirectTotalRows.length ? indirectTotalRows : indirectDetailRows;
   const directAvailable = directRowsUsed.length > 0;
   const indirectAvailable = indirectRowsUsed.length > 0;
-  const directMode = directTotalRows.length · "total" : (directDetailRows.length · "detail" : "missing");
-  const indirectMode = indirectTotalRows.length · "total" : (indirectDetailRows.length · "detail" : "missing");
+  const directMode = directTotalRows.length ? "total" : (directDetailRows.length ? "detail" : "missing");
+  const indirectMode = indirectTotalRows.length ? "total" : (indirectDetailRows.length ? "detail" : "missing");
   const directValue = directAvailable
-    · directRowsUsed.reduce((sum, row) => sum + gaDetailToNumber(row.actual ?? row.value ?? 0), 0)
+    ? directRowsUsed.reduce((sum, row) => sum + gaDetailToNumber(row.actual ?? row.value ?? 0), 0)
     : null;
   const indirectValue = indirectAvailable
-    · indirectRowsUsed.reduce((sum, row) => sum + gaDetailToNumber(row.actual ?? row.value ?? 0), 0)
+    ? indirectRowsUsed.reduce((sum, row) => sum + gaDetailToNumber(row.actual ?? row.value ?? 0), 0)
     : null;
 
   return {
     costCenter,
-    direct: directAvailable · gaDetailRound(directValue) : null,
-    indirect: indirectAvailable · gaDetailRound(indirectValue) : null,
+    direct: directAvailable ? gaDetailRound(directValue) : null,
+    indirect: indirectAvailable ? gaDetailRound(indirectValue) : null,
     directAvailable,
     indirectAvailable,
     directMode,
@@ -13351,14 +13351,14 @@ function gaDetailBuildConsolidatedCenterSnapshot(rows, costCenter) {
     directRowsUsed,
     indirectRowsUsed,
     directFormula: directMode === "total"
-      · "SUM(hours_direct.total) sur le centre (détails exclus pour éviter doublon)"
+      ? "SUM(hours_direct.total) sur le centre (détails exclus pour éviter doublon)"
       : (directMode === "detail"
-        · "SUM(lignes directes du centre car total direct absent)"
+        ? "SUM(lignes directes du centre car total direct absent)"
         : "Aucune donnée directe disponible pour ce centre"),
     indirectFormula: indirectMode === "total"
-      · "SUM(hours_indirect.total) sur le centre (détails exclus pour éviter doublon)"
+      ? "SUM(hours_indirect.total) sur le centre (détails exclus pour éviter doublon)"
       : (indirectMode === "detail"
-        · "SUM(lignes indirectes du centre car total indirect absent)"
+        ? "SUM(lignes indirectes du centre car total indirect absent)"
         : "Aucune donnée indirecte disponible pour ce centre"),
     hasAnyValue: directAvailable || indirectAvailable
   };
@@ -13415,16 +13415,16 @@ function gaDetailCompareWithConsolidated(period, costCenterAggregates) {
   }, { direct: 0, indirect: 0 });
 
   const consolidatedAvailable = [...consolidatedCenterSnapshots.values()].reduce((acc, snapshot) => {
-    acc.direct += snapshot.directAvailable · gaDetailToNumber(snapshot.direct) : 0;
-    acc.indirect += snapshot.indirectAvailable · gaDetailToNumber(snapshot.indirect) : 0;
+    acc.direct += snapshot.directAvailable ? gaDetailToNumber(snapshot.direct) : 0;
+    acc.indirect += snapshot.indirectAvailable ? gaDetailToNumber(snapshot.indirect) : 0;
     return acc;
   }, { direct: 0, indirect: 0 });
 
   const consolidatedCommon = commonCenters.reduce((acc, center) => {
     const snapshot = consolidatedCenterSnapshots.get(center);
     if (!snapshot) return acc;
-    acc.direct += snapshot.directAvailable · gaDetailToNumber(snapshot.direct) : 0;
-    acc.indirect += snapshot.indirectAvailable · gaDetailToNumber(snapshot.indirect) : 0;
+    acc.direct += snapshot.directAvailable ? gaDetailToNumber(snapshot.direct) : 0;
+    acc.indirect += snapshot.indirectAvailable ? gaDetailToNumber(snapshot.indirect) : 0;
     return acc;
   }, { direct: 0, indirect: 0 });
 
@@ -13466,16 +13466,16 @@ function gaDetailCompareWithConsolidated(period, costCenterAggregates) {
     const suivi = consolidatedCenterSnapshots.get(center) || { direct: null, indirect: null, directAvailable: false, indirectAvailable: false };
     const detailDirect = gaDetailRound(gaDetailToNumber(detail.directHours));
     const detailIndirect = gaDetailRound(gaDetailToNumber(detail.indirectHours));
-    const suiviDirect = suivi.directAvailable · gaDetailRound(gaDetailToNumber(suivi.direct)) : null;
-    const suiviIndirect = suivi.indirectAvailable · gaDetailRound(gaDetailToNumber(suivi.indirect)) : null;
+    const suiviDirect = suivi.directAvailable ? gaDetailRound(gaDetailToNumber(suivi.direct)) : null;
+    const suiviIndirect = suivi.indirectAvailable ? gaDetailRound(gaDetailToNumber(suivi.indirect)) : null;
     return {
       costCenter: center,
       detailDirect,
       suiviDirect,
-      directDelta: suiviDirect === null · null : gaDetailRound(detailDirect - suiviDirect),
+      directDelta: suiviDirect === null ? null : gaDetailRound(detailDirect - suiviDirect),
       detailIndirect,
       suiviIndirect,
-      indirectDelta: suiviIndirect === null · null : gaDetailRound(detailIndirect - suiviIndirect)
+      indirectDelta: suiviIndirect === null ? null : gaDetailRound(detailIndirect - suiviIndirect)
     };
   });
 
@@ -13486,24 +13486,24 @@ function gaDetailCompareWithConsolidated(period, costCenterAggregates) {
       const suivi = consolidatedCenterSnapshots.get(center);
       const detailPresent = Boolean(detail);
       const suiviPresent = Boolean(suivi);
-      const detailDirect = detailPresent · gaDetailRound(gaDetailToNumber(detail.directHours)) : null;
-      const detailIndirect = detailPresent · gaDetailRound(gaDetailToNumber(detail.indirectHours)) : null;
-      const suiviDirect = suiviPresent && suivi.directAvailable · gaDetailRound(gaDetailToNumber(suivi.direct)) : null;
-      const suiviIndirect = suiviPresent && suivi.indirectAvailable · gaDetailRound(gaDetailToNumber(suivi.indirect)) : null;
+      const detailDirect = detailPresent ? gaDetailRound(gaDetailToNumber(detail.directHours)) : null;
+      const detailIndirect = detailPresent ? gaDetailRound(gaDetailToNumber(detail.indirectHours)) : null;
+      const suiviDirect = suiviPresent && suivi.directAvailable ? gaDetailRound(gaDetailToNumber(suivi.direct)) : null;
+      const suiviIndirect = suiviPresent && suivi.indirectAvailable ? gaDetailRound(gaDetailToNumber(suivi.indirect)) : null;
       return {
         costCenter: center,
         detailDirect,
         suiviDirect,
-        directDelta: detailPresent && suiviDirect !== null · gaDetailRound(detailDirect - suiviDirect) : null,
+        directDelta: detailPresent && suiviDirect !== null ? gaDetailRound(detailDirect - suiviDirect) : null,
         detailIndirect,
         suiviIndirect,
-        indirectDelta: detailPresent && suiviIndirect !== null · gaDetailRound(detailIndirect - suiviIndirect) : null,
+        indirectDelta: detailPresent && suiviIndirect !== null ? gaDetailRound(detailIndirect - suiviIndirect) : null,
         directStatus: detailPresent
-          · (suiviDirect !== null · "Direct comparable" : "Non disponible dans le Suivi GA")
-          : (suiviDirect !== null · "Absent du GA détail" : "Absent des deux axes"),
+          ? (suiviDirect !== null ? "Direct comparable" : "Non disponible dans le Suivi GA")
+          : (suiviDirect !== null ? "Absent du GA détail" : "Absent des deux axes"),
         indirectStatus: detailPresent
-          · (suiviIndirect !== null · "Indirect comparable" : "Non disponible dans le Suivi GA")
-          : (suiviIndirect !== null · "Absent du GA détail" : "Absent des deux axes")
+          ? (suiviIndirect !== null ? "Indirect comparable" : "Non disponible dans le Suivi GA")
+          : (suiviIndirect !== null ? "Absent du GA détail" : "Absent des deux axes")
       };
     });
 
@@ -13616,7 +13616,7 @@ function cgtabCellValue(sheet, rowIndex1Based, colIndex1Based) {
 
 function cgtabNumeric(value) {
   const normalized = normalizeImportNullableNumericValue(value);
-  return typeof normalized === "number" && Number.isFinite(normalized) · normalized : null;
+  return typeof normalized === "number" && Number.isFinite(normalized) ? normalized : null;
 }
 
 function cgtabResolveHeaders(sheet, range) {
@@ -13640,7 +13640,7 @@ function cgtabFindEmployeeRows(sheet, range, headerMap, targetSiteCode = PERFORM
     const matricule = String(cgtabCellValue(sheet, r, matriculeCol) ?? "").trim();
     const nomPrenom = String(cgtabCellValue(sheet, r, nomCol) ?? "").trim();
     if (!matricule && !nomPrenom) continue;
-    const siteCode = alCol · performanceImportSiteCode(cgtabCellValue(sheet, r, alCol)) : "";
+    const siteCode = alCol ? performanceImportSiteCode(cgtabCellValue(sheet, r, alCol)) : "";
     if (siteCode && siteCode !== performanceImportSiteCode(targetSiteCode)) continue;
     rows.push(r);
   }
@@ -13675,9 +13675,9 @@ function cgtabDetectPeriod(sheet, headerMap, employeeRows, fileName = "") {
   const debutCol = headerMap.get("Debut")?.[0] || headerMap.get("Début")?.[0] || 0;
   const finCol = headerMap.get("Fin")?.[0] || 0;
   for (const r of ensureArray(employeeRows).slice(0, 20)) {
-    const fromStart = debutCol · cgtabPeriodFromDateValue(cgtabCellValue(sheet, r, debutCol)) : "";
+    const fromStart = debutCol ? cgtabPeriodFromDateValue(cgtabCellValue(sheet, r, debutCol)) : "";
     if (fromStart) return fromStart;
-    const fromEnd = finCol · cgtabPeriodFromDateValue(cgtabCellValue(sheet, r, finCol)) : "";
+    const fromEnd = finCol ? cgtabPeriodFromDateValue(cgtabCellValue(sheet, r, finCol)) : "";
     if (fromEnd) return fromEnd;
   }
   return detectCompactImportPeriod(fileName) || canonicalPerformancePeriod(detectImportPeriod(fileName)) || IMPORT_PERIOD_PENDING;
@@ -13715,7 +13715,7 @@ function cgtabBuildSourceColumns(headers, headerMap) {
   return headers.map(token => {
     const { header, col } = cgtabResolveHeaderToken(token, headerMap);
     const letter = cgtabColLetter(col);
-    return `${header}${letter · ` [col. ${letter}]` : ""}`;
+    return `${header}${letter ? ` [col. ${letter}]` : ""}`;
   }).join(" | ");
 }
 
@@ -13760,7 +13760,7 @@ function cgtabAggregateForMetric(definition, employeeRows, sheet, headerMap) {
   }
   const firstCol = resolvedCols[0].col;
   return {
-    actual: definition.aggregationType === "count" · contributors : cgtabRound(sum, 2),
+    actual: definition.aggregationType === "count" ? contributors : cgtabRound(sum, 2),
     contributors,
     sourceColumns: cgtabBuildSourceColumns(definition.headers, headerMap),
     sourceCell: `${cgtabColLetter(firstCol)}${CGTAB_HEADER_ROW_1_BASED}`
@@ -13773,7 +13773,7 @@ function cgtabDestinationPath(metricKey = "") {
 }
 
 function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skippedMetrics = []) {
-  // V5.30Q4 — CGTAB = analytique MENSUEL.
+  // V5.30Q3B — CGTAB = analytique MENSUEL.
   // IMPORTANT : ne jamais écrire les heures mensuelles CGTAB dans les KPI cumulés GPO.
   // Toutes les valeurs CGTAB restent donc dans un espace complémentaire mensuel dédié.
   const monthlyLabelByMetricKey = {
@@ -13819,15 +13819,15 @@ function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skipped
       deltaHistoricalPercent: null,
       unit: definition.unit,
       scope: CGTAB_SCOPE,
-      activityType: definition.category === "workforce" · "workforce" : "aggregated",
-      directness: definition.metricKey === "hours.productive" · "direct" : definition.metricKey === "hours.non_productive" · "indirect" : "",
+      activityType: definition.category === "workforce" ? "workforce" : "aggregated",
+      directness: definition.metricKey === "hours.productive" ? "direct" : definition.metricKey === "hours.non_productive" ? "indirect" : "",
       costCenter: "",
       aggregationType: definition.aggregationType,
       employeeCount: normalizeImportNullableNumericValue(aggregate.contributors),
       sourceColumns: aggregate.sourceColumns,
       privacyLevel: "aggregated",
       confidence: "élevée",
-      sourceConfidenceScore: monthlyLabelByMetricKey[definition.metricKey] · 98 : 92,
+      sourceConfidenceScore: monthlyLabelByMetricKey[definition.metricKey] ? 98 : 92,
       sourceSheet: CGTAB_REQUIRED_SHEET,
       sourceCell: aggregate.sourceCell,
       sourceRef: `CGTAB · ${aggregate.sourceColumns}`,
@@ -13844,7 +13844,7 @@ function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skipped
 
   const sumMetrics = metricKeys => metricKeys.reduce((total, key) => {
     const value = normalizeImportNullableNumericValue(aggregatesByMetricKey.get(key)?.aggregate?.actual);
-    return total + (typeof value === "number" && Number.isFinite(value) · value : 0);
+    return total + (typeof value === "number" && Number.isFinite(value) ? value : 0);
   }, 0);
 
   const sourceColumnsFor = metricKeys => metricKeys
@@ -14014,7 +14014,7 @@ function gaCategoryFromType(type = "") {
 function gaDestinationPath(metricKey, costCenter = "") {
   const base = normalizePerformanceLabel(metricKey).replace(/\s+/g, "_") || "metric";
   const cc = normalizePerformanceLabel(costCenter).replace(/\s+/g, "_") || "global";
-  return costCenter · `complementary.ga.${base}.cc_${cc}` : `complementary.ga.${base}`;
+  return costCenter ? `complementary.ga.${base}.cc_${cc}` : `complementary.ga.${base}`;
 }
 
 function gaResolveMetric(row = {}) {
@@ -14083,8 +14083,8 @@ function gaBuildIndicatorRow(row, period) {
   const sourceLabel = String(row.label || row.colB || metricKey || "").trim();
   const rawCostCenter = String(row.costCenter || "").trim();
   const category = mapping?.category || gaCategoryFromType(String(row.type || ""));
-  const costCenter = category === "activity" · "" : rawCostCenter;
-  const destinationPath = mapping · gaDestinationPath(metricKey, costCenter) : "";
+  const costCenter = category === "activity" ? "" : rawCostCenter;
+  const destinationPath = mapping ? gaDestinationPath(metricKey, costCenter) : "";
   return {
     id: newId("preview"),
     period,
@@ -14093,7 +14093,7 @@ function gaBuildIndicatorRow(row, period) {
     sourceType: "Suivi GA XLSB",
     category,
     metricKey,
-    aggregationRole: category === "hours_indirect_detail" · "detail" : (category === "hours_indirect" · "total" : "value"),
+    aggregationRole: category === "hours_indirect_detail" ? "detail" : (category === "hours_indirect" ? "total" : "value"),
     analysisOnly: category === "hours_indirect_detail",
     indicator: sourceLabel,
     label: sourceLabel,
@@ -14105,22 +14105,22 @@ function gaBuildIndicatorRow(row, period) {
     deltaHistorical: normalizeImportNullableNumericValue(row.deltaHistorical),
     deltaBudgetPercent: null,
     deltaHistoricalPercent: null,
-    unit: mapping?.unit || (category === "activity" · "UO" : "h"),
-    scope: category === "activity" · "site:st_gilles" : (costCenter · `cost_center:${costCenter}` : "site:st_gilles"),
-    activityType: String(row.section || "").toUpperCase() === "DIR" · "direct" : String(row.section || "").toUpperCase() === "IND" · "indirect" : "activity",
+    unit: mapping?.unit || (category === "activity" ? "UO" : "h"),
+    scope: category === "activity" ? "site:st_gilles" : (costCenter ? `cost_center:${costCenter}` : "site:st_gilles"),
+    activityType: String(row.section || "").toUpperCase() === "DIR" ? "direct" : String(row.section || "").toUpperCase() === "IND" ? "indirect" : "activity",
     directness: mapping?.directness || "",
     costCenter,
-    confidence: mapping · "élevée" : "moyenne",
+    confidence: mapping ? "élevée" : "moyenne",
     sourceSheet: "St Gilles",
     sourceCell: row.sourceCell || `ligne ${row.row || ""}`,
     sourceRef: `St Gilles · ${row.sourceCell || `ligne ${row.row || ""}`}`,
     destinationPath,
-    destinationLabel: mapping · `${sourceLabel}${costCenter · ` · ${costCenter}` : ""}${category === "hours_indirect_detail" · " · détail analytique" : category === "hours_indirect" · " · total centre" : ""}` : "KPI complémentaire — non mappé",
-    destinationId: mapping · destinationPath : "",
-    targetId: mapping · destinationPath : "",
-    targetType: mapping · "complementary" : "ignore",
+    destinationLabel: mapping ? `${sourceLabel}${costCenter ? ` · ${costCenter}` : ""}${category === "hours_indirect_detail" ? " · détail analytique" : category === "hours_indirect" ? " · total centre" : ""}` : "KPI complémentaire — non mappé",
+    destinationId: mapping ? destinationPath : "",
+    targetId: mapping ? destinationPath : "",
+    targetType: mapping ? "complementary" : "ignore",
     selected: Boolean(mapping),
-    action: mapping · "" : "ignore"
+    action: mapping ? "" : "ignore"
   };
 }
 
@@ -14153,7 +14153,7 @@ async function analyzeCgtabFile(file, detected) {
     period, periods: [period], selectedPeriods: [period], sheets: ensureArray(workbook.SheetNames || []), selectedSheet: sheetName,
     sourceRowCount: employeeRows.length, excludedNominativeColumns: CGTAB_EXCLUDED_NOMINATIVE_COLUMNS, detectedIndicators: dedupeImportRows(indicators),
     skippedMetrics,
-    message: `${indicators.length} agrégat(s) RH anonymisé(s) depuis CGTAB pour ${performanceImportSiteLabel()} (${employeeRows.length} lignes retenues).${skippedLabels.length · ` KPI non disponible(s) dans ce fichier : ${skippedLabels.join(", ")}.` : ""}`
+    message: `${indicators.length} agrégat(s) RH anonymisé(s) depuis CGTAB pour ${performanceImportSiteLabel()} (${employeeRows.length} lignes retenues).${skippedLabels.length ? ` KPI non disponible(s) dans ce fichier : ${skippedLabels.join(", ")}.` : ""}`
   };
 }
 
@@ -14227,10 +14227,10 @@ function gaExtractMonthlyCandidates(sheet) {
     const colC = gaWorkbookCellText(sheet, r, 3);
     if (/^\d{4,6}$/.test(colA)) currentCostCenter = colA;
     if (/^(DIR|IND)$/i.test(colB)) currentSection = colB.toUpperCase();
-    const label = colC || (/^Total\s+(DIR|IND)$/i.test(colB) · colB : "");
+    const label = colC || (/^Total\s+(DIR|IND)$/i.test(colB) ? colB : "");
     if (!label) continue;
     if (/^BUDGET$/i.test(label)) continue;
-    rows.push({ row: r, type: currentSection === "DIR" · "hours_direct" : currentSection === "IND" · "hours_indirect" : "", section: currentSection, costCenter: currentCostCenter, colB, label, historical: gaWorkbookCellText(sheet, r, 4), budget: gaWorkbookCellText(sheet, r, 5), actual: gaWorkbookCellText(sheet, r, 6), deltaBudget: gaWorkbookCellText(sheet, r, 7), deltaHistorical: gaWorkbookCellText(sheet, r, 8), sourceCell: `C${r}` });
+    rows.push({ row: r, type: currentSection === "DIR" ? "hours_direct" : currentSection === "IND" ? "hours_indirect" : "", section: currentSection, costCenter: currentCostCenter, colB, label, historical: gaWorkbookCellText(sheet, r, 4), budget: gaWorkbookCellText(sheet, r, 5), actual: gaWorkbookCellText(sheet, r, 6), deltaBudget: gaWorkbookCellText(sheet, r, 7), deltaHistorical: gaWorkbookCellText(sheet, r, 8), sourceCell: `C${r}` });
   }
   return rows;
 }
@@ -14250,7 +14250,7 @@ async function analyzeSuiviGaFile(file, detected) {
   const candidates = gaExtractMonthlyCandidates(siteSheet.sheet);
   const indicators = candidates.filter(row => !gaIsDuplicateShadowRow(row)).filter(row => gaHasUsefulValues(row)).map(row => gaBuildIndicatorRow(row, period));
   return {
-    ...detected, source: "SUIVI_GA", sourceType: "Suivi GA XLSB", status: indicators.length · "reconnu" : "probablement reconnu", confidence: indicators.length · "élevée" : "moyenne",
+    ...detected, source: "SUIVI_GA", sourceType: "Suivi GA XLSB", status: indicators.length ? "reconnu" : "probablement reconnu", confidence: indicators.length ? "élevée" : "moyenne",
     site: PERFORMANCE_IMPORT_SITE.name, siteCode: PERFORMANCE_IMPORT_SITE.code, detectedSiteCodes, period, periods: [period], selectedPeriods: [period],
     sheets: ensureArray(workbook.SheetNames || []), selectedSheet: siteSheet.sheetName, detectedIndicators: dedupeImportRows(indicators),
     message: `${indicators.length} indicateur(s) extrait(s) directement depuis l'onglet ${siteSheet.sheetName} pour ${performanceImportSiteLabel()} · période ${period}.`
@@ -14352,12 +14352,12 @@ async function analyzeGaDetailAggregatedFile(file, detected) {
     rows.push(gaDetailBuildRow({ period, metricKey: "ga_detail.hours.direct", label: "GA détail - Heures directes", actual: Number(bucket.directHours.toFixed(4)), scope, directness: "DIR", aggregationType: "sum", employeeCount: bucket.employees.size, sourceColumns: "DIR/IND|Somme de tte", sourceCell: "DATA aggregated" }));
     rows.push(gaDetailBuildRow({ period, metricKey: "ga_detail.hours.indirect", label: "GA détail - Heures indirectes", actual: Number(bucket.indirectHours.toFixed(4)), scope, directness: "IND", aggregationType: "sum", employeeCount: bucket.employees.size, sourceColumns: "DIR/IND|Somme de tte", sourceCell: "DATA aggregated" }));
 
-    const avgActivities = bucket.employees.size · [...bucket.employeeActivities.values()].reduce((sum, set) => sum + set.size, 0) / bucket.employees.size : 0;
+    const avgActivities = bucket.employees.size ? [...bucket.employeeActivities.values()].reduce((sum, set) => sum + set.size, 0) / bucket.employees.size : 0;
     const multiActivityCount = [...bucket.employeeActivities.values()].filter(set => set.size > 1).length;
     const top10Indirect = [...bucket.employeeIndirect.values()].sort((a, b) => b - a).slice(0, 10).reduce((sum, value) => sum + value, 0);
     rows.push(gaDetailBuildRow({ period, metricKey: "ga_detail.workforce.avg_activities", label: "GA détail - Activités moyennes par salarié", actual: Number(avgActivities.toFixed(4)), unit: "activities/employee", scope, aggregationType: "average", employeeCount: bucket.employees.size, sourceColumns: "mle|Libellé Cdc u", sourceCell: "DATA aggregated" }));
-    rows.push(gaDetailBuildRow({ period, metricKey: "ga_detail.workforce.multi_activity_rate", label: "GA détail - Part salariés multi-activités", actual: bucket.employees.size · Number((multiActivityCount / bucket.employees.size).toFixed(6)) : 0, unit: "%", scope, aggregationType: "ratio", employeeCount: bucket.employees.size, sourceColumns: "mle|Libellé Cdc u", sourceCell: "DATA aggregated" }));
-    rows.push(gaDetailBuildRow({ period, metricKey: "ga_detail.indirect.concentration_top10", label: "GA détail - Concentration heures indirectes top10", actual: bucket.indirectHours · Number((top10Indirect / bucket.indirectHours).toFixed(6)) : 0, unit: "%", scope, directness: "IND", aggregationType: "ratio", employeeCount: bucket.employees.size, sourceColumns: "mle|DIR/IND|Somme de tte", sourceCell: "DATA aggregated" }));
+    rows.push(gaDetailBuildRow({ period, metricKey: "ga_detail.workforce.multi_activity_rate", label: "GA détail - Part salariés multi-activités", actual: bucket.employees.size ? Number((multiActivityCount / bucket.employees.size).toFixed(6)) : 0, unit: "%", scope, aggregationType: "ratio", employeeCount: bucket.employees.size, sourceColumns: "mle|Libellé Cdc u", sourceCell: "DATA aggregated" }));
+    rows.push(gaDetailBuildRow({ period, metricKey: "ga_detail.indirect.concentration_top10", label: "GA détail - Concentration heures indirectes top10", actual: bucket.indirectHours ? Number((top10Indirect / bucket.indirectHours).toFixed(6)) : 0, unit: "%", scope, directness: "IND", aggregationType: "ratio", employeeCount: bucket.employees.size, sourceColumns: "mle|DIR/IND|Somme de tte", sourceCell: "DATA aggregated" }));
 
     for (const [costCenter, aggregate] of bucket.costCenters.entries()) {
       const contributors = aggregate.employees.size;
@@ -14368,7 +14368,7 @@ async function analyzeGaDetailAggregatedFile(file, detected) {
       rows.push(gaDetailBuildRow({ period, metricKey: "ga_detail.cost_center.hours", label: "GA détail - Heures centre de coûts", actual: Number(aggregate.totalHours.toFixed(4)), scope, costCenter, aggregationType: "sum", employeeCount: contributors, sourceColumns: "Dep OK|Somme de tte", sourceCell: "DATA aggregated" }));
       rows.push(gaDetailBuildRow({ period, metricKey: "ga_detail.cost_center.direct_hours", label: "GA détail - Heures directes centre de coûts", actual: Number(aggregate.directHours.toFixed(4)), scope, costCenter, directness: "DIR", aggregationType: "sum", employeeCount: contributors, sourceColumns: "Dep OK|DIR/IND|Somme de tte", sourceCell: "DATA aggregated" }));
       rows.push(gaDetailBuildRow({ period, metricKey: "ga_detail.cost_center.indirect_hours", label: "GA détail - Heures indirectes centre de coûts", actual: Number(aggregate.indirectHours.toFixed(4)), scope, costCenter, directness: "IND", aggregationType: "sum", employeeCount: contributors, sourceColumns: "Dep OK|DIR/IND|Somme de tte", sourceCell: "DATA aggregated" }));
-      rows.push(gaDetailBuildRow({ period, metricKey: "ga_detail.cost_center.indirect_share", label: "GA détail - Part heures indirectes centre de coûts", actual: aggregate.totalHours · Number((aggregate.indirectHours / aggregate.totalHours).toFixed(6)) : 0, unit: "%", scope, costCenter, directness: "IND", aggregationType: "ratio", employeeCount: contributors, sourceColumns: "Dep OK|DIR/IND|Somme de tte", sourceCell: "DATA aggregated" }));
+      rows.push(gaDetailBuildRow({ period, metricKey: "ga_detail.cost_center.indirect_share", label: "GA détail - Part heures indirectes centre de coûts", actual: aggregate.totalHours ? Number((aggregate.indirectHours / aggregate.totalHours).toFixed(6)) : 0, unit: "%", scope, costCenter, directness: "IND", aggregationType: "ratio", employeeCount: contributors, sourceColumns: "Dep OK|DIR/IND|Somme de tte", sourceCell: "DATA aggregated" }));
     }
 
     for (const [activityKey, aggregate] of bucket.activities.entries()) {
@@ -14400,8 +14400,8 @@ async function analyzeGaDetailAggregatedFile(file, detected) {
     ...detected,
     source: "GA_DETAIL_AGGREGATED",
     sourceType: "Suivi GA détail salarié",
-    status: rows.length · "reconnu" : "probablement reconnu",
-    confidence: rows.length · "élevée" : "moyenne",
+    status: rows.length ? "reconnu" : "probablement reconnu",
+    confidence: rows.length ? "élevée" : "moyenne",
     site: scope,
     siteCode: GA_DETAIL_TARGET_ETAB,
     detectedSiteCodes: [GA_DETAIL_TARGET_ETAB],
@@ -14580,7 +14580,7 @@ function readFileArrayBuffer(file) {
 }
 
 function parseCsvText(text) {
-  const delimiter = text.includes(";") · ";" : ",";
+  const delimiter = text.includes(";") ? ";" : ",";
   return text.split(/\r?\n/).filter(Boolean).map((line, lineIndex) => {
     const out = [];
     let cur = "", quoted = false;
@@ -14589,7 +14589,7 @@ function parseCsvText(text) {
       if (ch === '"' && quoted && next === '"') { cur += '"'; i++; continue; }
       if (ch === '"') { quoted = !quoted; continue; }
       if (ch === delimiter && !quoted) { out.push(cur); cur = ""; continue; }
-      out.push · null : null;
+      out.push ? null : null;
       cur += ch;
     }
     out.push(cur);
@@ -14639,7 +14639,7 @@ function parseXlsxSheetRows(xml, shared) {
       const col = xlsxColIndex(ref);
       const type = (attrs.match(/t="([^"]+)"/) || [])[1] || "";
       const raw = (body.match(/<v>([\s\S]*?)<\/v>/) || body.match(/<t[^>]*>([\s\S]*?)<\/t>/) || [])[1] || "";
-      row[col] = type === "s" · (shared[Number(raw)] || "") : xmlDecode(raw);
+      row[col] = type === "s" ? (shared[Number(raw)] || "") : xmlDecode(raw);
       row.__cellRefs[col] = fullRef;
     });
     const normalizedRow = [];
@@ -14670,21 +14670,21 @@ function analyzeZGemedWorkbook(workbook, detected, sourceFormat) {
   const sheets = ensureArray(workbook?.sheets);
   const sheetSite = sheet => detectZGemedSite([sheet]);
   const explicitSiteSheets = sheets.filter(sheet => Boolean(sheetSite(sheet)));
-  const selectedSheets = explicitSiteSheets.length · explicitSiteSheets.filter(sheet => performanceImportSiteMatches(sheetSite(sheet))) : sheets;
+  const selectedSheets = explicitSiteSheets.length ? explicitSiteSheets.filter(sheet => performanceImportSiteMatches(sheetSite(sheet))) : sheets;
   const detectedSiteLabels = [...new Set(explicitSiteSheets.map(sheetSite).filter(Boolean))];
   if (explicitSiteSheets.length && !selectedSheets.length) return { ...detected, typeDetected: "Z GEMED Excel", source: "Z_GEMED", status: "non reconnu", confidence: "faible", detectedSites: detectedSiteLabels, message: `Aucune feuille Z GEMED pour ${performanceImportSiteLabel()} détectée.` };
-  const site = selectedSheets.length · PERFORMANCE_IMPORT_SITE.name : (detectZGemedSite(sheets) || detected.site || "");
-  const periods = detectZGemedPeriods(selectedSheets.length · selectedSheets : sheets, detected.name);
+  const site = selectedSheets.length ? PERFORMANCE_IMPORT_SITE.name : (detectZGemedSite(sheets) || detected.site || "");
+  const periods = detectZGemedPeriods(selectedSheets.length ? selectedSheets : sheets, detected.name);
   const detectedIndicators = [];
   let headerCount = 0;
-  (selectedSheets.length · selectedSheets : sheets).forEach(sheet => {
+  (selectedSheets.length ? selectedSheets : sheets).forEach(sheet => {
     const extracted = extractZGemedIndicatorsFromSheet(sheet.rows || [], periods[0] || detected.period || "", sourceFormat, sheet.name || sourceFormat);
     headerCount += extracted.headerCount; detectedIndicators.push(...extracted.rows);
   });
   if (!headerCount) return { ...detected, status: "non reconnu", confidence: "faible", source: "Z_GEMED", sheets: sheets.map(sheet => sheet.name || sourceFormat), site, periods, selectedPeriods: periods, detectedIndicators: [], message: "Aucun en-tête Z GEMED exploitable détecté." };
-  const score = Math.max(0, ...(selectedSheets.length · selectedSheets : sheets).map(sheet => zgemedRowsScore(sheet.rows || [])));
+  const score = Math.max(0, ...(selectedSheets.length ? selectedSheets : sheets).map(sheet => zgemedRowsScore(sheet.rows || [])));
   const dedupedIndicators = dedupeImportRows(detectedIndicators);
-  return { ...detected, typeDetected: "Z GEMED Excel", source: "Z_GEMED", status: score >= 5 · "reconnu" : "probablement reconnu", confidence: score >= 5 · "élevée" : "moyenne", site, siteCode: performanceImportSiteMatches(site) · PERFORMANCE_IMPORT_SITE.code : "", detectedSites: detectedSiteLabels, periods, selectedPeriods: periods, sheets: sheets.map(sheet => sheet.name || sourceFormat), detectedIndicators: dedupedIndicators, message: `${dedupedIndicators.length} indicateur(s) extrait(s) depuis ${(selectedSheets.length || sheets.length || 1)} feuille(s) ${sourceFormat} pour ${site || "site à confirmer"}.` };
+  return { ...detected, typeDetected: "Z GEMED Excel", source: "Z_GEMED", status: score >= 5 ? "reconnu" : "probablement reconnu", confidence: score >= 5 ? "élevée" : "moyenne", site, siteCode: performanceImportSiteMatches(site) ? PERFORMANCE_IMPORT_SITE.code : "", detectedSites: detectedSiteLabels, periods, selectedPeriods: periods, sheets: sheets.map(sheet => sheet.name || sourceFormat), detectedIndicators: dedupedIndicators, message: `${dedupedIndicators.length} indicateur(s) extrait(s) depuis ${(selectedSheets.length || sheets.length || 1)} feuille(s) ${sourceFormat} pour ${site || "site à confirmer"}.` };
 }
 
 function normalizeText(text) {
@@ -14715,10 +14715,10 @@ function managerDisplayLabel(manager) {
 
 function detectZGemedSite(sheets) {
   const rows = Array.isArray(sheets) && Array.isArray(sheets[0]?.rows)
-    · sheets.flatMap(sheet => ensureArray(sheet.rows).slice(0, 20))
+    ? sheets.flatMap(sheet => ensureArray(sheet.rows).slice(0, 20))
     : ensureArray(sheets).slice(0, 20);
   for (const row of rows) {
-    if (normalizeText(row[0]) === "site" && row[1]) return /gilles/i.test(row[1]) · "Saint-Gilles" : String(row[1]).trim();
+    if (normalizeText(row[0]) === "site" && row[1]) return /gilles/i.test(row[1]) ? "Saint-Gilles" : String(row[1]).trim();
     if (normalizeText(row.join(" ")).includes("saint gilles") || normalizeText(row.join(" ")).includes("st gilles")) return "Saint-Gilles";
   }
   return "";
@@ -14756,11 +14756,11 @@ function detectZGemedPeriods(sheets, fileName = "") {
 
 function detectImportYear(name = "") {
   const y = String(name).match(/20\d{2}/);
-  return y · Number(y[0]) : new Date().getFullYear();
+  return y ? Number(y[0]) : new Date().getFullYear();
 }
 
 function zgemedPeriodLabel(month, year) {
-  return month >= 1 && month <= 12 · `${String(month).padStart(2, "0")}/${year || new Date().getFullYear()}` : "";
+  return month >= 1 && month <= 12 ? `${String(month).padStart(2, "0")}/${year || new Date().getFullYear()}` : "";
 }
 
 function zGemedHeaderMap(row = []) {
@@ -14787,25 +14787,25 @@ function zGemedIsHeaderRow(row = []) {
 }
 
 function zGemedCellRef(row, index) {
-  return ensureArray(row?.__cellRefs)[index] || (row?.__rowNumber · `L${row.__rowNumber}C${index + 1}` : "");
+  return ensureArray(row?.__cellRefs)[index] || (row?.__rowNumber ? `L${row.__rowNumber}C${index + 1}` : "");
 }
 
 function zGemedComputeGap(actual, reference) {
-  return Number.isFinite(actual) && Number.isFinite(reference) · actual - reference : null;
+  return Number.isFinite(actual) && Number.isFinite(reference) ? actual - reference : null;
 }
 
 function zGemedComputeGapPercent(actual, reference) {
-  return Number.isFinite(actual) && Number.isFinite(reference) && reference !== 0 · ((actual - reference) / reference) * 100 : null;
+  return Number.isFinite(actual) && Number.isFinite(reference) && reference !== 0 ? ((actual - reference) / reference) * 100 : null;
 }
 
 function zGemedInferUnit(definition, rows, headerIndex, rowIndex) {
   const context = [rows[headerIndex - 1], rows[headerIndex], rows[rowIndex]].flat().join(" ");
   if (definition.metricKey === "ratio.hauteur_palette") {
     const match = context.match(/\b(mm|cm|m)\b/i);
-    return match · match[1].toLowerCase() : definition.unit;
+    return match ? match[1].toLowerCase() : definition.unit;
   }
-  if (definition.metricKey.startsWith("ratio.")) return /%|pourcentage/i.test(context) · "%" : (definition.unit || "ratio");
-  if (/k€|keur|k eur/i.test(context)) return definition.unit === "€/colis" · "k€/colis" : "k€";
+  if (definition.metricKey.startsWith("ratio.")) return /%|pourcentage/i.test(context) ? "%" : (definition.unit || "ratio");
+  if (/k€|keur|k eur/i.test(context)) return definition.unit === "€/colis" ? "k€/colis" : "k€";
   if (/€|\beur\b|euro/i.test(context)) return definition.unit || "€";
   return definition.unit || "";
 }
@@ -14815,7 +14815,7 @@ function extractZGemedIndicatorsFromSheet(rows, defaultPeriod, sourceFormat, sou
   let headerMap = null;
   let headerIndex = -1;
   let headerCount = 0;
-  let periodType = /cumul/i.test(sourceSheet) · "cumulative" : "monthly";
+  let periodType = /cumul/i.test(sourceSheet) ? "cumulative" : "monthly";
   let acceptsLabelWithoutCode = false;
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i];
@@ -14853,10 +14853,10 @@ function extractZGemedIndicatorsFromSheet(rows, defaultPeriod, sourceFormat, sou
     const budget = normalizeImportNullableNumericValue(row[headerMap.budget]);
     const historical = normalizeImportNullableNumericValue(row[headerMap.historical]);
     if (actual === "" && budget === null && historical === null) continue;
-    const deltaBudget = headerMap.deltaBudget >= 0 · normalizeImportNullableNumericValue(row[headerMap.deltaBudget]) : zGemedComputeGap(actual, budget);
-    const deltaHistorical = headerMap.deltaHistorical >= 0 · normalizeImportNullableNumericValue(row[headerMap.deltaHistorical]) : zGemedComputeGap(actual, historical);
-    const deltaBudgetPercent = headerMap.deltaBudgetPercent >= 0 · normalizeImportNullableNumericValue(row[headerMap.deltaBudgetPercent]) : zGemedComputeGapPercent(actual, budget);
-    const deltaHistoricalPercent = headerMap.deltaHistoricalPercent >= 0 · normalizeImportNullableNumericValue(row[headerMap.deltaHistoricalPercent]) : zGemedComputeGapPercent(actual, historical);
+    const deltaBudget = headerMap.deltaBudget >= 0 ? normalizeImportNullableNumericValue(row[headerMap.deltaBudget]) : zGemedComputeGap(actual, budget);
+    const deltaHistorical = headerMap.deltaHistorical >= 0 ? normalizeImportNullableNumericValue(row[headerMap.deltaHistorical]) : zGemedComputeGap(actual, historical);
+    const deltaBudgetPercent = headerMap.deltaBudgetPercent >= 0 ? normalizeImportNullableNumericValue(row[headerMap.deltaBudgetPercent]) : zGemedComputeGapPercent(actual, budget);
+    const deltaHistoricalPercent = headerMap.deltaHistoricalPercent >= 0 ? normalizeImportNullableNumericValue(row[headerMap.deltaHistoricalPercent]) : zGemedComputeGapPercent(actual, historical);
     const sourceCells = [zGemedCellRef(row, headerMap.actual), zGemedCellRef(row, headerMap.budget), zGemedCellRef(row, headerMap.historical)].filter(Boolean).join(" / ");
     out.push({
       id: newId("preview"),
@@ -14877,12 +14877,12 @@ function extractZGemedIndicatorsFromSheet(rows, defaultPeriod, sourceFormat, sou
       deltaHistorical,
       deltaBudgetPercent,
       deltaHistoricalPercent,
-      unit: definition · zGemedInferUnit(definition, rows, headerIndex, i) : "",
-      scope: mapping?.targetType === "existing" · "principal" : "complementary",
+      unit: definition ? zGemedInferUnit(definition, rows, headerIndex, i) : "",
+      scope: mapping?.targetType === "existing" ? "principal" : "complementary",
       confidence: mapping?.confidence || "faible",
       sourceSheet,
       sourceCell: sourceCells,
-      sourceRef: `${sourceSheet}${sourceCells · ` · ${sourceCells}` : ` ligne ${i + 1}`}`,
+      sourceRef: `${sourceSheet}${sourceCells ? ` · ${sourceCells}` : ` ligne ${i + 1}`}`,
       destinationPath: mapping?.path || "",
       destinationLabel: mapping?.targetLabel || "KPI complémentaire — non mappé",
       destinationId: mapping?.targetId || "",
@@ -14901,44 +14901,44 @@ function parseZGemedNumber(value) {
   const clean = raw.replace(/[\u00a0\s]/g, "").replace(/(k€|€|eur|euro|h|hr|hrs|jours?|%)/gi, "").replace(/,/g, ".").replace(/[^0-9.+-]/g, "");
   if (!clean || clean === "-" || clean === "+") return "";
   const n = Number(clean);
-  return Number.isFinite(n) · n : "";
+  return Number.isFinite(n) ? n : "";
 }
 
 function mapZGemedIndicator(label, periodType = "monthly") {
   const mapping = zGemedResolvedMapping(label, periodType);
-  return mapping · { path: mapping.path, label: mapping.targetLabel, confidence: mapping.confidence, targetId: mapping.targetId, targetType: mapping.targetType, metricKey: mapping.metricKey, category: mapping.category, unit: mapping.unit } : { path: "", label: "KPI complémentaire — non mappé", confidence: "faible", targetId: "", targetType: "unknown" };
+  return mapping ? { path: mapping.path, label: mapping.targetLabel, confidence: mapping.confidence, targetId: mapping.targetId, targetType: mapping.targetType, metricKey: mapping.metricKey, category: mapping.category, unit: mapping.unit } : { path: "", label: "KPI complémentaire — non mappé", confidence: "faible", targetId: "", targetType: "unknown" };
 }
 
 function decoratePerformancePreviewRow(row) {
   row = enforcePerformanceSourceAuthority(row);
   const field = row.destinationField || "actual";
-  const current = row.destinationPath · getPerformanceCurrentValue(row.period, row.destinationPath, field) : "";
-  const currentBudget = !row.destinationField && row.destinationPath · getPerformanceCurrentValue(row.period, row.destinationPath, "budget") : "";
-  const currentHistorical = !row.destinationField && row.destinationPath · getPerformanceCurrentValue(row.period, row.destinationPath, "historical") : "";
+  const current = row.destinationPath ? getPerformanceCurrentValue(row.period, row.destinationPath, field) : "";
+  const currentBudget = !row.destinationField && row.destinationPath ? getPerformanceCurrentValue(row.period, row.destinationPath, "budget") : "";
+  const currentHistorical = !row.destinationField && row.destinationPath ? getPerformanceCurrentValue(row.period, row.destinationPath, "historical") : "";
   const hasCurrent = current !== "";
   const same = hasCurrent
     && Number(current) === Number(row.value)
     && (row.destinationField || ((row.budget === null || row.budget === "" || Number(currentBudget) === Number(row.budget)) && (row.historical === null || row.historical === "" || Number(currentHistorical) === Number(row.historical))));
-  const targetType = row.targetType || (row.destinationPath?.startsWith("complementary.") · "complementary" : row.destinationPath · "existing" : "ignore");
+  const targetType = row.targetType || (row.destinationPath?.startsWith("complementary.") ? "complementary" : row.destinationPath ? "existing" : "ignore");
   const confidenceScore = row.confidenceScore ?? performanceImportConfidenceScore(row);
   const confidenceMeta = performanceImportConfidenceMeta(confidenceScore);
   const status = row.action === "ignore" || targetType === "ignore"
-    · "Ne pas importer"
+    ? "Ne pas importer"
     : !row.destinationPath
-      · "À vérifier"
+      ? "À vérifier"
       : !hasCurrent
-        · (targetType === "complementary" · "Ajouter" : "Mappé")
+        ? (targetType === "complementary" ? "Ajouter" : "Mappé")
         : same
-          · "Identique"
-          : (targetType === "complementary" · "Conflit" : (confidenceMeta.label === "faible" · "Conflit" : "Différente"));
-  const tone = status === "Ne pas importer" · "gray" : status === "Conflit" · "red" : status === "Différente" || confidenceMeta.label === "moyenne" · "orange" : "green";
+          ? "Identique"
+          : (targetType === "complementary" ? "Conflit" : (confidenceMeta.label === "faible" ? "Conflit" : "Différente"));
+  const tone = status === "Ne pas importer" ? "gray" : status === "Conflit" ? "red" : status === "Différente" || confidenceMeta.label === "moyenne" ? "orange" : "green";
   const reliableGpoReplacement = performanceSourceKey(row.source || row.sourceType || "") === "GPO"
     && targetType === "existing"
     && confidenceMeta.score >= 85
     && hasCurrent
     && !same;
-  const defaultAction = same · "ignore" : (hasCurrent · (reliableGpoReplacement · "use" : "keep") : "use");
-  return { ...row, currentValue: current, status, tone, targetId: row.targetId || row.destinationId || "", targetType, confidenceScore: confidenceMeta.score, confidenceLabel: confidenceMeta.label, confidenceText: confidenceMeta.text, selected: row.selected !== undefined · Boolean(row.selected) : (targetType !== "ignore" && !same), action: row.action || defaultAction, recommendedSourceReplacement: reliableGpoReplacement };
+  const defaultAction = same ? "ignore" : (hasCurrent ? (reliableGpoReplacement ? "use" : "keep") : "use");
+  return { ...row, currentValue: current, status, tone, targetId: row.targetId || row.destinationId || "", targetType, confidenceScore: confidenceMeta.score, confidenceLabel: confidenceMeta.label, confidenceText: confidenceMeta.text, selected: row.selected !== undefined ? Boolean(row.selected) : (targetType !== "ignore" && !same), action: row.action || defaultAction, recommendedSourceReplacement: reliableGpoReplacement };
 }
 
 function getPerformanceByPeriod(period) {
@@ -14956,17 +14956,17 @@ function getPerformanceCurrentValue(period, path, key = "actual") {
     const item = ensureArray(perf.complementaryKpis).find(entry => String(entry.destinationPath || entry.targetId || "") === String(path || "") && String(entry.period || "") === String(period || ""));
     if (!item) return "";
     if (key === "actual") return item.actual ?? item.value ?? "";
-    return item[key] !== undefined · item[key] : "";
+    return item[key] !== undefined ? item[key] : "";
   }
-  const target = perf · perfPath(perf, path) : null;
-  return target && target[key] !== undefined · target[key] : "";
+  const target = perf ? perfPath(perf, path) : null;
+  return target && target[key] !== undefined ? target[key] : "";
 }
 
 function toggleImportPeriod(fileId, period, checked) {
   const file = performanceImportWizard.files.find(f => f.id === fileId);
   if (!file) return;
   const set = new Set(ensureArray(file.selectedPeriods));
-  checked · set.add(period) : set.delete(period);
+  checked ? set.add(period) : set.delete(period);
   file.selectedPeriods = [...set];
   buildPerformanceImportPreview();
 }
@@ -14976,7 +14976,7 @@ function toggleImportPreviewRow(id, checked) {
   if (row) {
     row.selected = checked;
     if (!checked) row.action = "ignore";
-    if (checked && row.action === "ignore") row.action = row.destinationPath · "use" : "ignore";
+    if (checked && row.action === "ignore") row.action = row.destinationPath ? "use" : "ignore";
     Object.assign(row, decoratePerformancePreviewRow(row));
   }
 }
@@ -15008,7 +15008,7 @@ function setImportPreviewTarget(id, targetId) {
   row.targetId = target.id;
   row.destinationId = target.id;
   row.targetType = target.type;
-  const confidenceMeta = performanceImportConfidenceMeta(target.type === "existing" · 92 : target.id === "complementary.generic" · 62 : 74);
+  const confidenceMeta = performanceImportConfidenceMeta(target.type === "existing" ? 92 : target.id === "complementary.generic" ? 62 : 74);
   row.confidenceScore = confidenceMeta.score;
   row.confidenceLabel = confidenceMeta.label;
   row.confidenceText = confidenceMeta.text;
@@ -15149,8 +15149,8 @@ function applyImportedValueToPerformance(perf, row) {
   }
   if (!target || typeof target !== "object") return false;
   const importsMetricTriplet = field === "actual" && (row.budget !== undefined || row.historical !== undefined);
-  const nextBudget = row.budget !== null && row.budget !== undefined && row.budget !== "" · row.budget : target.budget;
-  const nextHistorical = row.historical !== null && row.historical !== undefined && row.historical !== "" · row.historical : target.historical;
+  const nextBudget = row.budget !== null && row.budget !== undefined && row.budget !== "" ? row.budget : target.budget;
+  const nextHistorical = row.historical !== null && row.historical !== undefined && row.historical !== "" ? row.historical : target.historical;
   const unchanged = String(target[field] ?? "") === String(row.value ?? "")
     && (!importsMetricTriplet || (String(target.budget ?? "") === String(nextBudget ?? "") && String(target.historical ?? "") === String(nextHistorical ?? "")));
   if (unchanged) return false;
@@ -15163,7 +15163,7 @@ function applyImportedValueToPerformance(perf, row) {
   }
   if (destinationPath === "palletHeight" && row.objective !== undefined && row.objective !== "") target.objective = row.objective;
   const sourceComment = `Source : ${row.source || "Import"} · ${row.sourceRef || ""}`.trim();
-  if (!String(target.comment || "").includes(sourceComment)) target.comment = `${target.comment · target.comment + "\n" : ""}${sourceComment}`.trim();
+  if (!String(target.comment || "").includes(sourceComment)) target.comment = `${target.comment ? target.comment + "\n" : ""}${sourceComment}`.trim();
   if (destinationPath.startsWith("productivity.")) target.status = perfStatus(target);
   return true;
 }
@@ -15175,13 +15175,13 @@ function reportEntityLabel(type) {
 }
 
 function reportSourceTitle(type, id) {
-  const item = state[type] · byId(type, id) : null;
+  const item = state[type] ? byId(type, id) : null;
   if (type === "performance" && item) return perfPeriodLabel(item);
-  return item · (item.title || item.name || item.type || item.id) : "Création libre";
+  return item ? (item.title || item.name || item.type || item.id) : "Création libre";
 }
 
 function sourceTypePeriod(source) {
-  return source?.year && source?.month · perfPeriodLabel(source) : "À compléter";
+  return source?.year && source?.month ? perfPeriodLabel(source) : "À compléter";
 }
 
 function reportDefaultTemplate(type, item = {}) {
@@ -15196,7 +15196,7 @@ function reportDefaultTemplate(type, item = {}) {
 function reportSourceOptions(type, selectedId = "") {
   if (type === "free") return `<option value="">Création libre</option>`;
   const items = state[type] || [];
-  return items.map(item => `<option value="${esc(item.id)}" ${selectedId === item.id · "selected" : ""}>${esc(type === "performance" · perfPeriodLabel(item) : (item.title || item.name || item.type || item.id))}</option>`).join("") || `<option value="">Aucune donnée disponible</option>`;
+  return items.map(item => `<option value="${esc(item.id)}" ${selectedId === item.id ? "selected" : ""}>${esc(type === "performance" ? perfPeriodLabel(item) : (item.title || item.name || item.type || item.id))}</option>`).join("") || `<option value="">Aucune donnée disponible</option>`;
 }
 
 function reportAddMany(target, items) {
@@ -15210,7 +15210,7 @@ function reportAddMany(target, items) {
 }
 
 function reportContextFromSource(sourceType, sourceId) {
-  const source = state[sourceType] · (byId(sourceType, sourceId) || {}) : {};
+  const source = state[sourceType] ? (byId(sourceType, sourceId) || {}) : {};
   const ctx = { sourceType, sourceId, source, meetingPreparation: null, managers: [], projects: [], folders: [], decisions: [], actions: [], documents: [], journal: [], agenda: [] };
   if (sourceType === "managers") {
     reportAddMany(ctx.managers, [source]);
@@ -15290,11 +15290,11 @@ function reportContextFromSource(sourceType, sourceId) {
 }
 
 function reportItems(items, fn) {
-  return items.length · items.map(fn).join("\n") : "À compléter";
+  return items.length ? items.map(fn).join("\n") : "À compléter";
 }
 
 function reportActions(actions) {
-  return reportItems(actions, a => `- ${a.title || "Action"} | Responsable : ${a.owner || "À compléter"} | Priorité : ${a.level || a.priorityLevel || "À compléter"} | Échéance : ${a.due || "À compléter"} | Statut : ${a.done · "Terminée" : "Ouverte"}`);
+  return reportItems(actions, a => `- ${a.title || "Action"} | Responsable : ${a.owner || "À compléter"} | Priorité : ${a.level || a.priorityLevel || "À compléter"} | Échéance : ${a.due || "À compléter"} | Statut : ${a.done ? "Terminée" : "Ouverte"}`);
 }
 
 function reportDecisions(decisions) {
@@ -15322,13 +15322,13 @@ function reportBuildSections(template, ctx) {
   const prep = ctx.meetingPreparation;
   if (ctx.sourceType === "agenda" && prep) {
     const topics = reportItems(prep.agendaTopics || [], (t, i) => `- ${i + 1}. ${t.title || "Sujet"} | ${t.type || "Information"} | ${t.duration || 0} min | ${t.status || "À traiter"} | ${t.prepNotes || ""}`);
-    const ideas = reportItems(prep.ideas || [], i => `- ${i.category || "Sujet"} : ${i.text || ""} | Statut : ${i.status || "À traiter"}${i.conclusion · " | Conclusion : " + i.conclusion : ""}`);
+    const ideas = reportItems(prep.ideas || [], i => `- ${i.category || "Sujet"} : ${i.text || ""} | Statut : ${i.status || "À traiter"}${i.conclusion ? " | Conclusion : " + i.conclusion : ""}`);
     const prepItems = reportItems(prep.prepItems || [], i => `- ${i.title || "Élément"} | ${i.status || "À faire"} | Responsable : ${i.owner || "À compléter"} | Échéance : ${i.due || "À compléter"}`);
     const arbitrations = reportItems(prep.arbitrations || [], a => `- ${a.subject || "Arbitrage"} | Statut : ${a.status || "À préparer"} | Recommandation : ${a.recommendation || "À compléter"}`);
     const runNotes = reportItems([...(prep.run?.notes || []), ...(prep.run?.decisions || []), ...(prep.run?.actions || []), ...(prep.run?.postponed || [])], n => `- ${n.type || "Note"} : ${n.text || ""}`);
     const performance = reportItems(state.performance.filter(p => (prep.linkedPerformance || []).includes(p.id)), p => `- ${perfPeriodLabel(p)} | ${buildPerformanceSynthesis(p).slice(0, 240)}`);
     return [
-      { title: "Informations", body: `Date : ${source.date || isoToday()}\nHoraires : ${source.startTime || source.time || "À compléter"}${source.endTime · " - " + source.endTime : ""}\nLieu : ${source.location || "À compléter"}\nType : ${source.type || prep.template || "Réunion"}\nOrganisateur : ${prep.organizer || identityName()}\nStatut préparation : ${prep.status || "À préparer"}\nParticipants :\n${participants}` },
+      { title: "Informations", body: `Date : ${source.date || isoToday()}\nHoraires : ${source.startTime || source.time || "À compléter"}${source.endTime ? " - " + source.endTime : ""}\nLieu : ${source.location || "À compléter"}\nType : ${source.type || prep.template || "Réunion"}\nOrganisateur : ${prep.organizer || identityName()}\nStatut préparation : ${prep.status || "À préparer"}\nParticipants :\n${participants}` },
       { title: "Objectif et attendus", body: `Objectif principal : ${prep.objectiveMain || "À compléter"}\nRésultats attendus : ${prep.expectedResults || "À compléter"}\nDécisions attendues : ${prep.expectedDecisions || "À compléter"}\nNiveau de préparation : ${prep.prepLevel || "à démarrer"}` },
       { title: "Ordre du jour", body: topics },
       { title: "Sujets collectés en amont", body: ideas },
@@ -15341,7 +15341,7 @@ function reportBuildSections(template, ctx) {
     ];
   }
   if (template === "CODIR") return [
-    { title: "Informations", body: `Date : ${source.date || isoToday()}\nHoraires : ${source.startTime || source.time || "À compléter"}${source.endTime · " - " + source.endTime : ""}\nLieu : ${source.location || "À compléter"}\nParticipants :\n${participants}\nAbsents ou excusés : À compléter` },
+    { title: "Informations", body: `Date : ${source.date || isoToday()}\nHoraires : ${source.startTime || source.time || "À compléter"}${source.endTime ? " - " + source.endTime : ""}\nLieu : ${source.location || "À compléter"}\nParticipants :\n${participants}\nAbsents ou excusés : À compléter` },
     { title: "Ordre du jour", body: `Sujets prévus : ${source.notes || source.summary || "À compléter"}\nDossiers abordés :\n${folders}\nProjets abordés :\n${projects}` },
     { title: "Synthèse", body: `Faits marquants : ${source.facts || source.summary || "À compléter"}\nActivité : À compléter\nPerformance : À compléter\nRH : À compléter\nSécurité : À compléter\nQualité : À compléter\nMaintenance : À compléter\nDialogue social : À compléter\nAutres sujets : À compléter` },
     { title: "Décisions", body: decisions }, { title: "Actions", body: actions }, { title: "Points de vigilance", body: "À compléter" }, { title: "Prochaine réunion", body: "Date : À compléter\nSujets à préparer : À compléter" }
@@ -15376,9 +15376,9 @@ function reportBuildSections(template, ctx) {
     { title: "Suites", body: `Points restant à traiter : À compléter\nDocuments liés :\n${documents}` }
   ];
   if (template === "Revue de performance") return [
-    { title: "Période et activité", body: `Période analysée : ${sourceTypePeriod(source)}\nActivité : ${source.activity · `Colis réalisés ${perfFmt(source.activity.actual)} / budget ${perfFmt(source.activity.budget)}` : (source.summary || source.description || source.context || "À compléter")}` },
-    { title: "Indicateurs disponibles", body: source.activity · `Performance / IPO : total ${perfFmt(source.ipo.total.actual)} / budget ${perfFmt(source.ipo.total.budget)}\nProductivité Préparation : ${perfFmt(source.productivity["Préparation"].actual)} / budget ${perfFmt(source.productivity["Préparation"].budget)}\nHeures directes : ${perfFmt(source.hours.direct.actual)}\nHeures indirectes : ${perfFmt(source.hours.indirect.actual)}\nAbsentéisme : ${perfFmt(source.absenteeism.total.actual)}\nQualité / Gains & Pertes : ${perfFmt(source.quality.indicators["Total Gains & Pertes"].actual)}\nHauteur palette : ${perfFmt(source.palletHeight.actual)}` : "Performance / IPO : À compléter\nProductivité : À compléter\nHeures directes : À compléter\nHeures indirectes : À compléter\nAbsentéisme : À compléter\nQualité : À compléter\nSécurité : À compléter" },
-    { title: "Analyse", body: source.activity · `Faits marquants : ${source.activity.highlights || source.quality.highlights || "À compléter"}\nCauses des écarts : ${source.activity.causes || source.ipo.rootCauses || source.quality.causes || "À compléter"}\nPoints positifs et vigilance :\n${source.synthesis || buildPerformanceSynthesis(source)}` : `Faits marquants : ${source.facts || source.objectives || "À compléter"}\nCauses des écarts : À compléter\nPoints positifs : À compléter\nPoints de vigilance : ${source.risks || source.watchPoints || "À compléter"}` },
+    { title: "Période et activité", body: `Période analysée : ${sourceTypePeriod(source)}\nActivité : ${source.activity ? `Colis réalisés ${perfFmt(source.activity.actual)} / budget ${perfFmt(source.activity.budget)}` : (source.summary || source.description || source.context || "À compléter")}` },
+    { title: "Indicateurs disponibles", body: source.activity ? `Performance / IPO : total ${perfFmt(source.ipo.total.actual)} / budget ${perfFmt(source.ipo.total.budget)}\nProductivité Préparation : ${perfFmt(source.productivity["Préparation"].actual)} / budget ${perfFmt(source.productivity["Préparation"].budget)}\nHeures directes : ${perfFmt(source.hours.direct.actual)}\nHeures indirectes : ${perfFmt(source.hours.indirect.actual)}\nAbsentéisme : ${perfFmt(source.absenteeism.total.actual)}\nQualité / Gains & Pertes : ${perfFmt(source.quality.indicators["Total Gains & Pertes"].actual)}\nHauteur palette : ${perfFmt(source.palletHeight.actual)}` : "Performance / IPO : À compléter\nProductivité : À compléter\nHeures directes : À compléter\nHeures indirectes : À compléter\nAbsentéisme : À compléter\nQualité : À compléter\nSécurité : À compléter" },
+    { title: "Analyse", body: source.activity ? `Faits marquants : ${source.activity.highlights || source.quality.highlights || "À compléter"}\nCauses des écarts : ${source.activity.causes || source.ipo.rootCauses || source.quality.causes || "À compléter"}\nPoints positifs et vigilance :\n${source.synthesis || buildPerformanceSynthesis(source)}` : `Faits marquants : ${source.facts || source.objectives || "À compléter"}\nCauses des écarts : À compléter\nPoints positifs : À compléter\nPoints de vigilance : ${source.risks || source.watchPoints || "À compléter"}` },
     { title: "Décisions et plan d'action", body: `Décisions :\n${decisions}\nPlan d'action :\n${actions}\nProjection : À compléter` }
   ];
   return [
@@ -15405,7 +15405,7 @@ function reportRefreshSections() {
 }
 
 function startReport(sourceType = "free", sourceId = "", template = "") {
-  const source = state[sourceType] · byId(sourceType, sourceId) : {};
+  const source = state[sourceType] ? byId(sourceType, sourceId) : {};
   reportWizard = { step: 1, sourceType, sourceId, template: template || reportDefaultTemplate(sourceType, source), title: "", status: "Brouillon", author: identityName(), sections: [] };
   reportRefreshSections();
   renderReportWizard();
@@ -15447,13 +15447,13 @@ function updateReportSource() {
 function renderReportWizard() {
   if (!reportWizard) return renderDocuments();
   document.getElementById("viewTitle").textContent = "Générer un compte rendu";
-  const steps = ["Type", "Source", "Liens", "Aperçu", "Validation"].map((label, i) => `<span class="${reportWizard.step === i + 1 · "active-step" : ""}">${i + 1}. ${label}</span>`).join("");
+  const steps = ["Type", "Source", "Liens", "Aperçu", "Validation"].map((label, i) => `<span class="${reportWizard.step === i + 1 ? "active-step" : ""}">${i + 1}. ${label}</span>`).join("");
   appHtml(`<div class="card hero report-hero"><button class="secondary" onclick="cancelReportWizard()">Retour Documents</button><h2>Générer un compte rendu</h2><p class="muted">Assistant structuré basé uniquement sur les données enregistrées dans ${esc(identity.appName)}.</p><div class="report-steps">${steps}</div></div>${reportWizardBody()}`);
 }
 
 function reportWizardBody() {
-  if (reportWizard.step === 1) return `<div class="card"><h2>Type de compte rendu</h2><select id="rwTemplate">${reportTemplates.map(t => `<option value="${esc(t)}" ${reportWizard.template === t · "selected" : ""}>${esc(t)}</option>`).join("")}</select><div class="row-actions"><button class="action" onclick="setReportStep(2)">Suivant</button><button class="secondary" onclick="cancelReportWizard()">Annuler</button></div></div>`;
-  if (reportWizard.step === 2) return `<div class="card"><h2>Source</h2><div class="form-grid"><select id="rwSourceType" onchange="updateReportSource()"><option value="journal" ${reportWizard.sourceType === "journal" · "selected" : ""}>Entrée Journal</option><option value="agenda" ${reportWizard.sourceType === "agenda" · "selected" : ""}>Rendez-vous</option><option value="folders" ${reportWizard.sourceType === "folders" · "selected" : ""}>Dossier</option><option value="projects" ${reportWizard.sourceType === "projects" · "selected" : ""}>Projet</option><option value="managers" ${reportWizard.sourceType === "managers" · "selected" : ""}>Manager</option><option value="performance" ${reportWizard.sourceType === "performance" · "selected" : ""}>Performance</option><option value="free" ${reportWizard.sourceType === "free" · "selected" : ""}>Création libre</option></select><select id="rwSourceId" onchange="updateReportSource()">${reportSourceOptions(reportWizard.sourceType, reportWizard.sourceId)}</select></div><div class="row-actions"><button class="secondary" onclick="setReportStep(1)">Retour</button><button class="action" onclick="setReportStep(3)">Suivant</button></div></div>`;
+  if (reportWizard.step === 1) return `<div class="card"><h2>Type de compte rendu</h2><select id="rwTemplate">${reportTemplates.map(t => `<option value="${esc(t)}" ${reportWizard.template === t ? "selected" : ""}>${esc(t)}</option>`).join("")}</select><div class="row-actions"><button class="action" onclick="setReportStep(2)">Suivant</button><button class="secondary" onclick="cancelReportWizard()">Annuler</button></div></div>`;
+  if (reportWizard.step === 2) return `<div class="card"><h2>Source</h2><div class="form-grid"><select id="rwSourceType" onchange="updateReportSource()"><option value="journal" ${reportWizard.sourceType === "journal" ? "selected" : ""}>Entrée Journal</option><option value="agenda" ${reportWizard.sourceType === "agenda" ? "selected" : ""}>Rendez-vous</option><option value="folders" ${reportWizard.sourceType === "folders" ? "selected" : ""}>Dossier</option><option value="projects" ${reportWizard.sourceType === "projects" ? "selected" : ""}>Projet</option><option value="managers" ${reportWizard.sourceType === "managers" ? "selected" : ""}>Manager</option><option value="performance" ${reportWizard.sourceType === "performance" ? "selected" : ""}>Performance</option><option value="free" ${reportWizard.sourceType === "free" ? "selected" : ""}>Création libre</option></select><select id="rwSourceId" onchange="updateReportSource()">${reportSourceOptions(reportWizard.sourceType, reportWizard.sourceId)}</select></div><div class="row-actions"><button class="secondary" onclick="setReportStep(1)">Retour</button><button class="action" onclick="setReportStep(3)">Suivant</button></div></div>`;
   if (reportWizard.step === 3) return reportLinksStep();
   if (reportWizard.step === 4) return reportPreviewStep();
   return reportValidationStep();
@@ -15471,7 +15471,7 @@ function reportPreviewText() {
 
 function reportPreviewStep() {
   const sections = reportWizard.sections.map((s, i) => `<div class="report-section" data-report-section="${esc(s.id)}"><div class="row"><input class="report-section-title" value="${esc(s.title)}"><div class="row-actions"><button class="secondary" onclick="moveReportSection(${i},-1)">?</button><button class="secondary" onclick="moveReportSection(${i},1)">?</button><button class="danger" onclick="deleteReportSection('${s.id}')">Supprimer</button></div></div><textarea class="report-section-body">${esc(s.body)}</textarea></div>`).join("");
-  return `<div class="card"><h2>Aperçu complet</h2><div class="form-grid"><input id="rwTitle" class="full" value="${esc(reportWizard.title)}"><input id="rwAuthor" value="${esc(reportWizard.author || identityName())}" placeholder="Auteur"><select id="rwStatus"><option ${reportWizard.status === "Brouillon" · "selected" : ""}>Brouillon</option><option ${reportWizard.status === "Validé" · "selected" : ""}>Validé</option></select></div>${sections}<div class="row-actions"><button class="secondary" onclick="addReportSection()">Ajouter une section</button><button class="secondary" onclick="copyReportText()">Copier le compte rendu</button><button class="secondary" onclick="printReportText()">Imprimer</button></div><div class="card report-transform"><h2>Transformer une ligne</h2><textarea id="rwLine" placeholder="Coller ou saisir une ligne du compte rendu"></textarea><div class="form-grid"><input id="rwLineOwner" placeholder="Responsable proposé"><input id="rwLineDue" type="date"><select id="rwLinePriority"><option value="green">Normal</option><option value="orange" selected>Important</option><option value="red">Critique</option></select></div><button class="secondary" onclick="createReportAction()">Créer une action ${esc(identity.appName)}</button><button class="secondary" onclick="createReportDecision()">Créer une décision ${esc(identity.appName)}</button></div><div class="row-actions"><button class="secondary" onclick="setReportStep(3)">Retour</button><button class="action" onclick="setReportStep(5)">Continuer</button></div></div>`;
+  return `<div class="card"><h2>Aperçu complet</h2><div class="form-grid"><input id="rwTitle" class="full" value="${esc(reportWizard.title)}"><input id="rwAuthor" value="${esc(reportWizard.author || identityName())}" placeholder="Auteur"><select id="rwStatus"><option ${reportWizard.status === "Brouillon" ? "selected" : ""}>Brouillon</option><option ${reportWizard.status === "Validé" ? "selected" : ""}>Validé</option></select></div>${sections}<div class="row-actions"><button class="secondary" onclick="addReportSection()">Ajouter une section</button><button class="secondary" onclick="copyReportText()">Copier le compte rendu</button><button class="secondary" onclick="printReportText()">Imprimer</button></div><div class="card report-transform"><h2>Transformer une ligne</h2><textarea id="rwLine" placeholder="Coller ou saisir une ligne du compte rendu"></textarea><div class="form-grid"><input id="rwLineOwner" placeholder="Responsable proposé"><input id="rwLineDue" type="date"><select id="rwLinePriority"><option value="green">Normal</option><option value="orange" selected>Important</option><option value="red">Critique</option></select></div><button class="secondary" onclick="createReportAction()">Créer une action ${esc(identity.appName)}</button><button class="secondary" onclick="createReportDecision()">Créer une décision ${esc(identity.appName)}</button></div><div class="row-actions"><button class="secondary" onclick="setReportStep(3)">Retour</button><button class="action" onclick="setReportStep(5)">Continuer</button></div></div>`;
 }
 
 function reportValidationStep() {
@@ -15505,7 +15505,7 @@ function reportLinkedIds(key) {
 function generatedReportPayload(status) {
   reportReadCurrent();
   const content = reportPreviewText();
-  return { id: newId("document"), title: reportWizard.title, type: "Compte rendu", category: reportWizard.template, date: isoToday(), owner: reportWizard.author || identityName(), author: reportWizard.author || identityName(), version: "V1", status, summary: reportWizard.sections[0]?.body?.slice(0, 220) || "", content, tags: [reportWizard.template, "Compte rendu", identity.appName], linkedManagers: reportLinkedIds("Managers"), linkedProjects: reportLinkedIds("Projects"), linkedFolders: reportLinkedIds("Folders"), linkedDecisions: reportLinkedIds("Decisions"), linkedActions: reportLinkedIds("Actions"), linkedJournal: reportLinkedIds("Journal"), linkedPerformance: reportWizard.sourceType === "performance" · [reportWizard.sourceId] : [], sourceType: reportWizard.sourceType, sourceId: reportWizard.sourceId, reportTemplate: reportWizard.template, updatedAt: isoToday() };
+  return { id: newId("document"), title: reportWizard.title, type: "Compte rendu", category: reportWizard.template, date: isoToday(), owner: reportWizard.author || identityName(), author: reportWizard.author || identityName(), version: "V1", status, summary: reportWizard.sections[0]?.body?.slice(0, 220) || "", content, tags: [reportWizard.template, "Compte rendu", identity.appName], linkedManagers: reportLinkedIds("Managers"), linkedProjects: reportLinkedIds("Projects"), linkedFolders: reportLinkedIds("Folders"), linkedDecisions: reportLinkedIds("Decisions"), linkedActions: reportLinkedIds("Actions"), linkedJournal: reportLinkedIds("Journal"), linkedPerformance: reportWizard.sourceType === "performance" ? [reportWizard.sourceId] : [], sourceType: reportWizard.sourceType, sourceId: reportWizard.sourceId, reportTemplate: reportWizard.template, updatedAt: isoToday() };
 }
 
 function saveGeneratedReport(status = "Brouillon") {
@@ -15779,15 +15779,15 @@ function normalizeManagerialTopicStatus(value = "Ouvert") {
   if (normalized.includes("cours")) return "En cours";
   if (normalized.includes("trait")) return "Traité";
   if (normalized.includes("ouver")) return "Ouvert";
-  return managerialTopicStatusOptions.includes(value) · value : "Ouvert";
+  return managerialTopicStatusOptions.includes(value) ? value : "Ouvert";
 }
 
 function managerialTopicCarryForwardLabel(value) {
-  return value · "À reprendre" : "";
+  return value ? "À reprendre" : "";
 }
 
 function normalizeManagerialTopic(value = {}, order = 0, previousTopicId = "") {
-  const source = value && typeof value === "object" · value : {};
+  const source = value && typeof value === "object" ? value : {};
   const linkedActionIds = normalizeLinkedIdArray(source.linkedActionIds || source.linkedActions || []);
   const linkedDecisionIds = normalizeLinkedIdArray(source.linkedDecisionIds || source.linkedDecisions || []);
   const linkedProjectIds = normalizeLinkedIdArray(source.linkedProjectIds || source.linkedProjects || []);
@@ -15811,7 +15811,7 @@ function normalizeManagerialTopic(value = {}, order = 0, previousTopicId = "") {
     linkedDecisionIds,
     linkedProjectIds,
     linkedFolderIds,
-    order: Number.isFinite(Number(source.order)) · Number(source.order) : order,
+    order: Number.isFinite(Number(source.order)) ? Number(source.order) : order,
     previousTopicId: String(source.previousTopicId || previousTopicId || ""),
     createdAt: String(source.createdAt || isoToday()),
     updatedAt: String(source.updatedAt || isoToday()),
@@ -15850,7 +15850,7 @@ function createLegacyManagerialTopicFromContent(content = {}, order = 0) {
 }
 
 function normalizeManagerialTopics(content = {}) {
-  const sourceTopics = Array.isArray(content.topics) · content.topics : [];
+  const sourceTopics = Array.isArray(content.topics) ? content.topics : [];
   const normalized = sourceTopics.map((topic, index) => normalizeManagerialTopic(topic, index, topic?.previousTopicId || ""));
   if (!normalized.length) {
     const hasLegacyTopic = String(content.objectContext?.subject || "").trim() || String(content.objectContext?.context || "").trim();
@@ -15861,7 +15861,7 @@ function normalizeManagerialTopics(content = {}) {
 
 function managerialTopicStatusBadge(topic) {
   const status = normalizeManagerialTopicStatus(topic.status);
-  const css = status === "Clos" · "green" : status === "À reprendre" · "orange" : status === "Traité" · "green" : status === "En cours" · "orange" : "red";
+  const css = status === "Clos" ? "green" : status === "À reprendre" ? "orange" : status === "Traité" ? "green" : status === "En cours" ? "orange" : "red";
   return `<span class="badge ${css}">${esc(status)}</span>`;
 }
 
@@ -15871,11 +15871,11 @@ function managerialTopicNatureBadge(topic) {
 
 function managerialTopicLinkedBadge(label, ids) {
   const count = normalizeLinkedIdArray(ids).length;
-  return count · `<span class="badge">${esc(label)} ${count}</span>` : "";
+  return count ? `<span class="badge">${esc(label)} ${count}</span>` : "";
 }
 
 function renderManagerialTopicCard(topic, index) {
-  const carryLabel = topic.carryForward · `<span class="badge orange">À reprendre</span>` : "";
+  const carryLabel = topic.carryForward ? `<span class="badge orange">À reprendre</span>` : "";
   const actionLinked = managerialTopicLinkedBadge("Actions", topic.linkedActionIds);
   const decisionLinked = managerialTopicLinkedBadge("Décisions", topic.linkedDecisionIds);
   const projectLinked = managerialTopicLinkedBadge("Projets", topic.linkedProjectIds);
@@ -15901,10 +15901,10 @@ function renderManagerialTopicCard(topic, index) {
       <div class="interview-topic-body">
         <div class="form-grid interview-topic-grid">
           <select data-field="category">
-            ${managerialTopicNatureOptions.map(label => `<option value="${esc(label)}" ${String(topic.category || "Autre") === label · "selected" : ""}>${esc(label)}</option>`).join("")}
+            ${managerialTopicNatureOptions.map(label => `<option value="${esc(label)}" ${String(topic.category || "Autre") === label ? "selected" : ""}>${esc(label)}</option>`).join("")}
           </select>
           <select data-field="status">
-            ${managerialTopicStatusOptions.map(label => `<option value="${esc(label)}" ${normalizeManagerialTopicStatus(topic.status) === label · "selected" : ""}>${esc(label)}</option>`).join("")}
+            ${managerialTopicStatusOptions.map(label => `<option value="${esc(label)}" ${normalizeManagerialTopicStatus(topic.status) === label ? "selected" : ""}>${esc(label)}</option>`).join("")}
           </select>
           <textarea class="full" data-field="object" placeholder="Objet">${esc(topic.object || "")}</textarea>
           <textarea class="full" data-field="context" placeholder="Contexte">${esc(topic.context || "")}</textarea>
@@ -15915,18 +15915,18 @@ function renderManagerialTopicCard(topic, index) {
           <textarea class="full" data-field="disagreements" placeholder="Points de désaccord ou éléments restant à clarifier">${esc(topic.disagreements || "")}</textarea>
           <textarea class="full" data-field="decision" placeholder="Décision prise">${esc(topic.decision || "")}</textarea>
           <textarea class="full" data-field="directorSupport" placeholder="Soutien attendu du Directeur">${esc(topic.directorSupport || "")}</textarea>
-          <label class="check-row interview-topic-carry"><input type="checkbox" data-field="carryForward" ${topic.carryForward · "checked" : ""}><span>À reprendre au prochain entretien</span></label>
+          <label class="check-row interview-topic-carry"><input type="checkbox" data-field="carryForward" ${topic.carryForward ? "checked" : ""}><span>À reprendre au prochain entretien</span></label>
           <input data-field="quickActionTitle" value="${esc(topic.quickActionTitle || topic.title || "")}" placeholder="Titre d'action rapide">
           <input data-field="quickActionOwner" value="${esc(topic.quickActionOwner || "")}" placeholder="Responsable action">
           <input data-field="quickActionDue" type="date" value="${esc(topic.quickActionDue || "")}" placeholder="Échéance action">
           <select data-field="quickActionPriority">
-            ${["Haute", "Moyenne", "Basse"].map(label => `<option value="${esc(label)}" ${String(topic.quickActionPriority || "Moyenne") === label · "selected" : ""}>${esc(label)}</option>`).join("")}
+            ${["Haute", "Moyenne", "Basse"].map(label => `<option value="${esc(label)}" ${String(topic.quickActionPriority || "Moyenne") === label ? "selected" : ""}>${esc(label)}</option>`).join("")}
           </select>
           <input data-field="quickDecisionTitle" class="full" value="${esc(topic.quickDecisionTitle || topic.title || "")}" placeholder="Titre de décision rapide">
           <input data-field="quickDecisionOwner" value="${esc(topic.quickDecisionOwner || "")}" placeholder="Responsable décision">
           <input data-field="quickDecisionDue" type="date" value="${esc(topic.quickDecisionDue || "")}" placeholder="Échéance décision">
           <select data-field="quickDecisionPriority">
-            ${["Haute", "Moyenne", "Basse"].map(label => `<option value="${esc(label)}" ${String(topic.quickDecisionPriority || "Moyenne") === label · "selected" : ""}>${esc(label)}</option>`).join("")}
+            ${["Haute", "Moyenne", "Basse"].map(label => `<option value="${esc(label)}" ${String(topic.quickDecisionPriority || "Moyenne") === label ? "selected" : ""}>${esc(label)}</option>`).join("")}
           </select>
           <input type="hidden" data-field="linkedActionIds" value="${esc(normalizeLinkedIdArray(topic.linkedActionIds).join(","))}">
           <input type="hidden" data-field="linkedDecisionIds" value="${esc(normalizeLinkedIdArray(topic.linkedDecisionIds).join(","))}">
@@ -15985,13 +15985,13 @@ function toggleManagerialTopicCard(button) {
   const card = getManagerialTopicCard(button);
   if (!card) return;
   card.classList.toggle("collapsed");
-  button.textContent = card.classList.contains("collapsed") · "Déplier" : "Replier";
+  button.textContent = card.classList.contains("collapsed") ? "Déplier" : "Replier";
 }
 
 function moveManagerialTopicCard(button, delta) {
   const card = getManagerialTopicCard(button);
   if (!card || !card.parentElement) return;
-  const target = delta < 0 · card.previousElementSibling : card.nextElementSibling;
+  const target = delta < 0 ? card.previousElementSibling : card.nextElementSibling;
   if (!target || !target.classList.contains("interview-topic-card")) return;
   if (delta < 0) {
     card.parentElement.insertBefore(card, target);
@@ -16157,7 +16157,7 @@ function createDecisionFromManagerialTopic(button) {
     date: due,
     status: "decided",
     importance: topicPriorityToActionLevel(priority),
-    context: doc?.title · `Issue de l'entretien ${doc.title}` : "Issue d'un entretien managérial",
+    context: doc?.title ? `Issue de l'entretien ${doc.title}` : "Issue d'un entretien managérial",
     problem: topic.object || topic.context || "",
     rationale: topic.sharedAnalysis || topic.managerExpression || "",
     alternatives: "",
@@ -16194,7 +16194,7 @@ function managerialTopicNextInterviewClone(topic) {
     id: newId("topic"),
     previousTopicId: topic.id,
     decision: "",
-    status: topic.carryForward · "À reprendre" : sourceStatus,
+    status: topic.carryForward ? "À reprendre" : sourceStatus,
     carryForward: Boolean(topic.carryForward || sourceStatus === "À reprendre"),
     linkedActionIds: normalizeLinkedIdArray(topic.linkedActionIds),
     linkedDecisionIds: normalizeLinkedIdArray(topic.linkedDecisionIds),
@@ -16224,14 +16224,14 @@ function normalizeDocumentStructuredContent(documentItem, interviewTemplate) {
       general: { ...(base.general || {}), ...(current.general || {}) },
       objectContext: { ...(base.objectContext || {}), ...(current.objectContext || {}) },
       review: { ...(base.review || {}), ...(current.review || {}) },
-      commitments: Array.isArray(current.commitments) · current.commitments : (base.commitments || []),
-      keyResults: Array.isArray(current.keyResults) · current.keyResults : (base.keyResults || []),
+      commitments: Array.isArray(current.commitments) ? current.commitments : (base.commitments || []),
+      keyResults: Array.isArray(current.keyResults) ? current.keyResults : (base.keyResults || []),
       sharedAnalysis: { ...(base.sharedAnalysis || {}), ...(current.sharedAnalysis || {}) },
       managerExpression: { ...(base.managerExpression || {}), ...(current.managerExpression || {}) },
       managerialAssessment: { ...(base.managerialAssessment || {}), ...(current.managerialAssessment || {}) },
       expectedSupport: { ...(base.expectedSupport || {}), ...(current.expectedSupport || {}) },
       conclusion: { ...(base.conclusion || {}), ...(current.conclusion || {}) },
-      actionPlan: Array.isArray(current.actionPlan) · current.actionPlan : (base.actionPlan || [])
+      actionPlan: Array.isArray(current.actionPlan) ? current.actionPlan : (base.actionPlan || [])
     };
     merged.topics = normalizeManagerialTopics(merged);
     return merged;
@@ -16250,9 +16250,9 @@ function normalizeDocumentStructuredContent(documentItem, interviewTemplate) {
     managerialAssessment: { ...(base.managerialAssessment || {}), ...(current.managerialAssessment || {}) },
     expectedSupport: { ...(base.expectedSupport || {}), ...(current.expectedSupport || {}) },
     free: { ...(base.free || {}), ...(current.free || {}) },
-    keyResults: Array.isArray(current.keyResults) · current.keyResults : (base.keyResults || []),
-    commitments: Array.isArray(current.commitments) · current.commitments : (base.commitments || []),
-    actionPlan: Array.isArray(current.actionPlan) · current.actionPlan : (base.actionPlan || [])
+    keyResults: Array.isArray(current.keyResults) ? current.keyResults : (base.keyResults || []),
+    commitments: Array.isArray(current.commitments) ? current.commitments : (base.commitments || []),
+    actionPlan: Array.isArray(current.actionPlan) ? current.actionPlan : (base.actionPlan || [])
   };
 }
 
@@ -16345,30 +16345,30 @@ function documentsFilterBar() {
     <div class="card documents-filter-bar">
       <div class="form-grid">
         <select onchange="setDocumentsFilter('type', this.value)">
-          <option value="all" ${documentsFilterState.type === "all" · "selected" : ""}>Type: tous</option>
-          <option value="biweekly_performance" ${documentsFilterState.type === "biweekly_performance" · "selected" : ""}>Entretien performance</option>
-          <option value="managerial_full" ${documentsFilterState.type === "managerial_full" · "selected" : ""}>Entretien managérial</option>
-          <option value="free_report" ${documentsFilterState.type === "free_report" · "selected" : ""}>Compte-rendu libre</option>
-          <option value="meeting_live" ${documentsFilterState.type === "meeting_live" · "selected" : ""}>Réunion en direct</option>
-          <option value="classic" ${documentsFilterState.type === "classic" · "selected" : ""}>Document classique</option>
+          <option value="all" ${documentsFilterState.type === "all" ? "selected" : ""}>Type: tous</option>
+          <option value="biweekly_performance" ${documentsFilterState.type === "biweekly_performance" ? "selected" : ""}>Entretien performance</option>
+          <option value="managerial_full" ${documentsFilterState.type === "managerial_full" ? "selected" : ""}>Entretien managérial</option>
+          <option value="free_report" ${documentsFilterState.type === "free_report" ? "selected" : ""}>Compte-rendu libre</option>
+          <option value="meeting_live" ${documentsFilterState.type === "meeting_live" ? "selected" : ""}>Réunion en direct</option>
+          <option value="classic" ${documentsFilterState.type === "classic" ? "selected" : ""}>Document classique</option>
         </select>
         <select onchange="setDocumentsFilter('managerId', this.value)">
-          <option value="all" ${documentsFilterState.managerId === "all" · "selected" : ""}>Manager: tous</option>
-          ${state.managers.map(manager => `<option value="${esc(manager.id)}" ${documentsFilterState.managerId === manager.id · "selected" : ""}>${esc(manager.name)}</option>`).join("")}
+          <option value="all" ${documentsFilterState.managerId === "all" ? "selected" : ""}>Manager: tous</option>
+          ${state.managers.map(manager => `<option value="${esc(manager.id)}" ${documentsFilterState.managerId === manager.id ? "selected" : ""}>${esc(manager.name)}</option>`).join("")}
         </select>
         <select onchange="setDocumentsFilter('status', this.value)">
-          <option value="all" ${documentsFilterState.status === "all" · "selected" : ""}>Statut: tous</option>
-          ${Object.entries(interviewStatusLabels).map(([key, label]) => `<option value="${esc(key)}" ${documentsFilterState.status === key · "selected" : ""}>${esc(label)}</option>`).join("")}
+          <option value="all" ${documentsFilterState.status === "all" ? "selected" : ""}>Statut: tous</option>
+          ${Object.entries(interviewStatusLabels).map(([key, label]) => `<option value="${esc(key)}" ${documentsFilterState.status === key ? "selected" : ""}>${esc(label)}</option>`).join("")}
         </select>
         <select onchange="setDocumentsFilter('confidentiality', this.value)">
-          <option value="all" ${documentsFilterState.confidentiality === "all" · "selected" : ""}>Confidentialité: toutes</option>
-          ${Object.entries(interviewConfidentialityLabels).map(([key, label]) => `<option value="${esc(key)}" ${documentsFilterState.confidentiality === key · "selected" : ""}>${esc(label)}</option>`).join("")}
+          <option value="all" ${documentsFilterState.confidentiality === "all" ? "selected" : ""}>Confidentialité: toutes</option>
+          ${Object.entries(interviewConfidentialityLabels).map(([key, label]) => `<option value="${esc(key)}" ${documentsFilterState.confidentiality === key ? "selected" : ""}>${esc(label)}</option>`).join("")}
         </select>
         <select onchange="setDocumentsFilter('period', this.value)">
-          <option value="all" ${documentsFilterState.period === "all" · "selected" : ""}>Période: toutes</option>
-          ${periods.map(period => `<option value="${esc(period)}" ${documentsFilterState.period === period · "selected" : ""}>${esc(period)}</option>`).join("")}
+          <option value="all" ${documentsFilterState.period === "all" ? "selected" : ""}>Période: toutes</option>
+          ${periods.map(period => `<option value="${esc(period)}" ${documentsFilterState.period === period ? "selected" : ""}>${esc(period)}</option>`).join("")}
         </select>
-        <label class="check-row"><input type="checkbox" ${documentsFilterState.nextUpcoming === "on" · "checked" : ""} onchange="setDocumentsFilter('nextUpcoming', this.checked · 'on' : 'off')"><span>Prochain entretien à venir</span></label>
+        <label class="check-row"><input type="checkbox" ${documentsFilterState.nextUpcoming === "on" ? "checked" : ""} onchange="setDocumentsFilter('nextUpcoming', this.checked ? 'on' : 'off')"><span>Prochain entretien à venir</span></label>
       </div>
       <div class="row-actions"><button class="secondary" onclick="resetDocumentsFilters()">Réinitialiser les filtres</button></div>
     </div>
@@ -16384,9 +16384,9 @@ function documentBadgesRow(doc) {
     <div class="documents-badges-row">
       ${interviewDocumentBadge(doc)}
       <span class="badge orange">${esc(statusLabel)}</span>
-      <span class="badge ${normalizeInterviewConfidentiality(doc.confidentiality || "normal") === "confidential" · "red" : normalizeInterviewConfidentiality(doc.confidentiality || "normal") === "restricted" · "orange" : "green"}">${esc(confidentialityLabel)}</span>
-      ${managerLabel · `<span class="badge">Manager: ${esc(managerLabel)}</span>` : ""}
-      ${nextDate · `<span class="badge">Prochain entretien: ${esc(nextDate)}</span>` : ""}
+      <span class="badge ${normalizeInterviewConfidentiality(doc.confidentiality || "normal") === "confidential" ? "red" : normalizeInterviewConfidentiality(doc.confidentiality || "normal") === "restricted" ? "orange" : "green"}">${esc(confidentialityLabel)}</span>
+      ${managerLabel ? `<span class="badge">Manager: ${esc(managerLabel)}</span>` : ""}
+      ${nextDate ? `<span class="badge">Prochain entretien: ${esc(nextDate)}</span>` : ""}
     </div>
   `;
 }
@@ -16423,11 +16423,11 @@ function documentCard(doc) {
       <h2>${esc(doc.title || "Document")}</h2>
       ${documentBadgesRow(doc)}
       <p>${esc(preview || "")}</p>
-      <span class="meta">MAJ ${esc(doc.updatedAt || "")}${doc.period · ` · Période ${esc(doc.period)}` : ""}</span>
+      <span class="meta">MAJ ${esc(doc.updatedAt || "")}${doc.period ? ` · Période ${esc(doc.period)}` : ""}</span>
       <div class="row-actions">
         <button class="secondary" onclick="editDocument('${esc(doc.id)}')">Modifier</button>
-        ${documentIsInterview(doc) · `<button class="secondary" onclick="duplicateInterviewDocumentForNext('${esc(doc.id)}')">Dupliquer pour le prochain entretien</button>` : ""}
-        ${documentIsInterview(doc) · `<button class="secondary" onclick="printInterviewDocument('${esc(doc.id)}','A4')">Imprimer A4</button><button class="secondary" onclick="printInterviewDocument('${esc(doc.id)}','A5')">Imprimer A5</button>` : `<button class="secondary" onclick="startReport('documents','${esc(doc.id)}')">Générer un compte rendu</button>`}
+        ${documentIsInterview(doc) ? `<button class="secondary" onclick="duplicateInterviewDocumentForNext('${esc(doc.id)}')">Dupliquer pour le prochain entretien</button>` : ""}
+        ${documentIsInterview(doc) ? `<button class="secondary" onclick="printInterviewDocument('${esc(doc.id)}','A4')">Imprimer A4</button><button class="secondary" onclick="printInterviewDocument('${esc(doc.id)}','A5')">Imprimer A5</button>` : `<button class="secondary" onclick="startReport('documents','${esc(doc.id)}')">Générer un compte rendu</button>`}
         <button class="danger" onclick="openDocumentDeleteModal('${esc(doc.id)}')">Supprimer</button>
       </div>
     </article>
@@ -16492,16 +16492,16 @@ function closeDocumentEditModal() {
 function documentDraftFromDialog() {
   if (documentEditDialog.mode === "edit") {
     const current = byId("documents", documentEditDialog.documentId);
-    return current · normalizeEntity("documents", current) : null;
+    return current ? normalizeEntity("documents", current) : null;
   }
   const template = documentEditDialog.templateKey || "free_report";
   const now = isoToday();
   const title = template === "biweekly_performance"
-    · `Point bimensuel - ${now}`
+    ? `Point bimensuel - ${now}`
     : template === "managerial_full"
-      · `Entretien managérial - ${now}`
+      ? `Entretien managérial - ${now}`
       : template === "meeting_live"
-        · `Réunion - ${now}`
+        ? `Réunion - ${now}`
         : `Compte-rendu libre - ${now}`;
   return normalizeEntity("documents", {
     id: newId("document"),
@@ -16719,13 +16719,13 @@ function collectDocumentFromModal() {
   }
 
   const linkedMeetingId = document.getElementById("idocMeeting")?.value || "";
-  const linkedMeetingIds = linkedMeetingId · [linkedMeetingId] : normalizeLinkedIdArray(base.linkedMeetingIds || []);
+  const linkedMeetingIds = linkedMeetingId ? [linkedMeetingId] : normalizeLinkedIdArray(base.linkedMeetingIds || []);
   const next = normalizeEntity("documents", {
     ...base,
     title,
     type: document.getElementById("idocType")?.value.trim() || "Compte rendu",
     category: document.getElementById("idocCategory")?.value.trim() || interviewTemplateLabel(interviewTemplate || "") || "Document",
-    documentType: interviewTemplate · "interview_report" : (document.getElementById("idocDocumentType")?.value.trim() || base.documentType || "document"),
+    documentType: interviewTemplate ? "interview_report" : (document.getElementById("idocDocumentType")?.value.trim() || base.documentType || "document"),
     interviewTemplate,
     date,
     startTime: document.getElementById("idocStartTime")?.value || "",
@@ -16742,7 +16742,7 @@ function collectDocumentFromModal() {
     linkedDecisions: normalizeLinkedIdArray(checkedValues("idocDecisions")),
     linkedMeetingIds,
     linkedPerformance: normalizeLinkedIdArray(base.linkedPerformance || []),
-    status: interviewTemplate · normalizeInterviewStatus(document.getElementById("idocStatus")?.value || base.status || "draft") : (document.getElementById("idocLegacyStatus")?.value.trim() || base.status || "Brouillon"),
+    status: interviewTemplate ? normalizeInterviewStatus(document.getElementById("idocStatus")?.value || base.status || "draft") : (document.getElementById("idocLegacyStatus")?.value.trim() || base.status || "Brouillon"),
     confidentiality: normalizeInterviewConfidentiality(document.getElementById("idocConfidentiality")?.value || base.confidentiality || "normal"),
     summary,
     tags: splitTags(document.getElementById("idocTags")?.value || ""),
@@ -16821,7 +16821,7 @@ function syncInterviewDocumentActions(nextDoc, previousDoc = null) {
         title: row.action,
         owner: row.owner || "",
         due: row.due || "",
-        level: row.priority === "Haute" · "red" : row.priority === "Basse" · "green" : "orange",
+        level: row.priority === "Haute" ? "red" : row.priority === "Basse" ? "green" : "orange",
         done: false,
         link: `Document: ${nextDoc.title}`,
         linkedFolders: normalizeLinkedIdArray(nextDoc.linkedFolders || []),
@@ -16850,7 +16850,7 @@ function saveDocumentFromModal(continueEditing = false) {
     return false;
   }
   const next = collected.value;
-  const previous = documentEditDialog.mode === "edit" · byId("documents", documentEditDialog.documentId) : null;
+  const previous = documentEditDialog.mode === "edit" ? byId("documents", documentEditDialog.documentId) : null;
   const actionErrors = syncInterviewDocumentActions(next, previous);
   if (documentEditDialog.mode === "edit") {
     const index = indexById("documents", next.id);
@@ -16860,7 +16860,7 @@ function saveDocumentFromModal(continueEditing = false) {
   }
   syncDocumentBacklinks(next, previous);
   persist("documents");
-  addActivity("📄 Document", next.title, documentEditDialog.mode === "edit" · "Modifié" : "Créé", next.id);
+  addActivity("📄 Document", next.title, documentEditDialog.mode === "edit" ? "Modifié" : "Créé", next.id);
 
   if (actionErrors.length) {
     documentEditDialog.error = actionErrors.join("\n");
@@ -17017,10 +17017,10 @@ function documentResultRowHtml(row = {}) {
       <input data-field="objective" value="${esc(row.objective || "")}" placeholder="Objectif">
       <input data-field="gap" value="${esc(row.gap || "")}" placeholder="Écart">
       <select data-field="trend">
-        <option value="hausse" ${row.trend === "hausse" · "selected" : ""}>hausse</option>
-        <option value="stable" ${row.trend === "stable" · "selected" : ""}>stable</option>
-        <option value="baisse" ${row.trend === "baisse" · "selected" : ""}>baisse</option>
-        <option value="non évaluée" ${!row.trend || row.trend === "non évaluée" · "selected" : ""}>non évaluée</option>
+        <option value="hausse" ${row.trend === "hausse" ? "selected" : ""}>hausse</option>
+        <option value="stable" ${row.trend === "stable" ? "selected" : ""}>stable</option>
+        <option value="baisse" ${row.trend === "baisse" ? "selected" : ""}>baisse</option>
+        <option value="non évaluée" ${!row.trend || row.trend === "non évaluée" ? "selected" : ""}>non évaluée</option>
       </select>
       <input data-field="comment" value="${esc(row.comment || "")}" placeholder="Commentaire">
       <button class="danger" type="button" onclick="removeDocumentRow(this)">Supprimer</button>
@@ -17039,12 +17039,12 @@ function documentActionPlanRowHtml(row = {}) {
       <input data-field="owner" value="${esc(row.owner || "")}" placeholder="Responsable">
       <input data-field="due" type="date" value="${esc(row.due || "")}" placeholder="Échéance">
       <select data-field="priority">
-        <option ${row.priority === "Haute" · "selected" : ""}>Haute</option>
-        <option ${!row.priority || row.priority === "Moyenne" · "selected" : ""}>Moyenne</option>
-        <option ${row.priority === "Basse" · "selected" : ""}>Basse</option>
+        <option ${row.priority === "Haute" ? "selected" : ""}>Haute</option>
+        <option ${!row.priority || row.priority === "Moyenne" ? "selected" : ""}>Moyenne</option>
+        <option ${row.priority === "Basse" ? "selected" : ""}>Basse</option>
       </select>
       <input data-field="successIndicator" value="${esc(row.successIndicator || "")}" placeholder="Indicateur de réussite">
-      <label class="check-row"><input data-field="createInDeos" type="checkbox" ${row.createInDeos · "checked" : ""}><span>Créer dans DEOS</span></label>
+      <label class="check-row"><input data-field="createInDeos" type="checkbox" ${row.createInDeos ? "checked" : ""}><span>Créer dans DEOS</span></label>
       <button class="danger" type="button" onclick="removeDocumentRow(this)">Supprimer</button>
     </div>
   `;
@@ -17061,11 +17061,11 @@ function documentCommitmentRowHtml(row = {}) {
       <input data-field="owner" value="${esc(row.owner || "")}" placeholder="Responsable">
       <input data-field="due" type="date" value="${esc(row.due || "")}" placeholder="Échéance">
       <select data-field="status">
-        <option ${!row.status || row.status === "À faire" · "selected" : ""}>À faire</option>
-        <option ${row.status === "En cours" · "selected" : ""}>En cours</option>
-        <option ${row.status === "Réalisé" · "selected" : ""}>Réalisé</option>
-        <option ${row.status === "Bloqué" · "selected" : ""}>Bloqué</option>
-        <option ${row.status === "Abandonné" · "selected" : ""}>Abandonné</option>
+        <option ${!row.status || row.status === "À faire" ? "selected" : ""}>À faire</option>
+        <option ${row.status === "En cours" ? "selected" : ""}>En cours</option>
+        <option ${row.status === "Réalisé" ? "selected" : ""}>Réalisé</option>
+        <option ${row.status === "Bloqué" ? "selected" : ""}>Bloqué</option>
+        <option ${row.status === "Abandonné" ? "selected" : ""}>Abandonné</option>
       </select>
       <input data-field="comment" value="${esc(row.comment || "")}" placeholder="Commentaire">
       <button class="danger" type="button" onclick="removeDocumentRow(this)">Supprimer</button>
@@ -17113,11 +17113,11 @@ function documentFormBody(doc) {
   const interviewTemplate = normalizeInterviewTemplate(doc.interviewTemplate || documentEditDialog.templateKey || "") || "";
   const content = normalizeDocumentStructuredContent(doc, interviewTemplate);
   const managerIds = getDocumentManagerIds(doc);
-  const previous = managerIds[0] · findPreviousInterviewForManager(managerIds[0], doc.id) : null;
-  const manualMeetingOptions = state.agenda.map(meeting => `<option value="${esc(meeting.id)}" ${ensureArray(doc.linkedMeetingIds).includes(meeting.id) · "selected" : ""}>DEOS · ${esc(meeting.date || "")} · ${esc(meeting.title || "Rendez-vous")}</option>`).join("");
+  const previous = managerIds[0] ? findPreviousInterviewForManager(managerIds[0], doc.id) : null;
+  const manualMeetingOptions = state.agenda.map(meeting => `<option value="${esc(meeting.id)}" ${ensureArray(doc.linkedMeetingIds).includes(meeting.id) ? "selected" : ""}>DEOS · ${esc(meeting.date || "")} · ${esc(meeting.title || "Rendez-vous")}</option>`).join("");
   const googleMeetingOptions = ensureArray(state.externalCalendarEvents).map(meeting => {
     const key = String(meeting._key || `google_${meeting.externalId || meeting.id || ""}`);
-    return `<option value="${esc(key)}" ${ensureArray(doc.linkedMeetingIds).includes(key) · "selected" : ""}>Google · ${esc(meeting.date || "")} · ${esc(meeting.title || "Rendez-vous")}</option>`;
+    return `<option value="${esc(key)}" ${ensureArray(doc.linkedMeetingIds).includes(key) ? "selected" : ""}>Google · ${esc(meeting.date || "")} · ${esc(meeting.title || "Rendez-vous")}</option>`;
   }).join("");
   const meetingOptions = `${manualMeetingOptions}${googleMeetingOptions}`;
   const hasInterviewTemplate = Boolean(interviewTemplate);
@@ -17128,7 +17128,7 @@ function documentFormBody(doc) {
     || normalizeLinkedIdArray(doc.linkedDecisions).length;
 
   const common = `
-    ${hasInterviewTemplate · `<div class="card"><h3>Compte-rendu d'entretien</h3><p><span class="badge">${esc(modelLabel)}</span></p></div>` : ""}
+    ${hasInterviewTemplate ? `<div class="card"><h3>Compte-rendu d'entretien</h3><p><span class="badge">${esc(modelLabel)}</span></p></div>` : ""}
     <div class="card">
       <div class="form-grid">
         <input id="idocTitle" class="full" value="${esc(doc.title || "")}" placeholder="Titre du compte-rendu *">
@@ -17136,20 +17136,20 @@ function documentFormBody(doc) {
         <div class="full"><label>Manager concerné</label>${checkboxList("idocManagers", state.managers, managerIds, manager => `${manager.name} · ${manager.role || ""}`)}</div>
         <div class="full"><label>Rendez-vous Agenda lié</label><select id="idocMeeting"><option value="">Rendez-vous Agenda lié</option>${meetingOptions}</select></div>
         <select id="idocConfidentiality">
-          ${Object.entries(interviewConfidentialityLabels).map(([key, label]) => `<option value="${esc(key)}" ${normalizeInterviewConfidentiality(doc.confidentiality || "normal") === key · "selected" : ""}>${esc(label)}</option>`).join("")}
+          ${Object.entries(interviewConfidentialityLabels).map(([key, label]) => `<option value="${esc(key)}" ${normalizeInterviewConfidentiality(doc.confidentiality || "normal") === key ? "selected" : ""}>${esc(label)}</option>`).join("")}
         </select>
         ${hasInterviewTemplate
-          · `<select id="idocStatus">${Object.entries(interviewStatusLabels).map(([key, label]) => `<option value="${esc(key)}" ${normalizeInterviewStatus(doc.status || "draft") === key · "selected" : ""}>${esc(label)}</option>`).join("")}</select>`
+          ? `<select id="idocStatus">${Object.entries(interviewStatusLabels).map(([key, label]) => `<option value="${esc(key)}" ${normalizeInterviewStatus(doc.status || "draft") === key ? "selected" : ""}>${esc(label)}</option>`).join("")}</select>`
           : `<input id="idocLegacyStatus" value="${esc(doc.status || "Brouillon")}" placeholder="Statut">`
         }
         <input id="idocSummary" class="full" value="${esc(doc.summary || "")}" placeholder="Objet / synthèse minimale *">
         ${hasInterviewTemplate
-          · `<input id="idocType" type="hidden" value="${esc(doc.type || "Compte rendu")}"><input id="idocCategory" type="hidden" value="${esc(interviewTemplateLabel(interviewTemplate) || "Compte-rendu d'entretien")}"><input id="idocDocumentType" type="hidden" value="${esc(doc.documentType || "interview_report")}"><input id="idocInterviewTemplate" type="hidden" value="${esc(interviewTemplate)}">`
-          : `<input id="idocType" value="${esc(doc.type || "Compte rendu")}" placeholder="Type"><input id="idocCategory" value="${esc(doc.category || interviewTemplateLabel(interviewTemplate) || "Document")}" placeholder="Catégorie"><input id="idocDocumentType" value="${esc(doc.documentType || "document")}" placeholder="Type de document"><select id="idocInterviewTemplate"><option value="">Sans modèle d'entretien</option>${interviewTemplateCatalog.map(item => `<option value="${esc(item.key)}" ${interviewTemplate === item.key · "selected" : ""}>${esc(item.title)}</option>`).join("")}</select>`
+          ? `<input id="idocType" type="hidden" value="${esc(doc.type || "Compte rendu")}"><input id="idocCategory" type="hidden" value="${esc(interviewTemplateLabel(interviewTemplate) || "Compte-rendu d'entretien")}"><input id="idocDocumentType" type="hidden" value="${esc(doc.documentType || "interview_report")}"><input id="idocInterviewTemplate" type="hidden" value="${esc(interviewTemplate)}">`
+          : `<input id="idocType" value="${esc(doc.type || "Compte rendu")}" placeholder="Type"><input id="idocCategory" value="${esc(doc.category || interviewTemplateLabel(interviewTemplate) || "Document")}" placeholder="Catégorie"><input id="idocDocumentType" value="${esc(doc.documentType || "document")}" placeholder="Type de document"><select id="idocInterviewTemplate"><option value="">Sans modèle d'entretien</option>${interviewTemplateCatalog.map(item => `<option value="${esc(item.key)}" ${interviewTemplate === item.key ? "selected" : ""}>${esc(item.title)}</option>`).join("")}</select>`
         }
       </div>
     </div>
-    <details class="card" ${hasExistingRelations · "open" : ""}>
+    <details class="card" ${hasExistingRelations ? "open" : ""}>
       <summary><strong>Informations complémentaires</strong></summary>
       <div class="form-grid" style="margin-top:10px">
         <input id="idocOwner" value="${esc(doc.owner || identityName())}" placeholder="Auteur / propriétaire">
@@ -17169,18 +17169,18 @@ function documentFormBody(doc) {
         <div><label>Décisions liées</label>${checkboxList("idocDecisions", state.decisions, normalizeLinkedIdArray(doc.linkedDecisions), decision => decision.title)}</div>
       </div>
     </details>
-    ${ensureArray(doc.linkedMeetingIds).length · `<div class="card"><h3>Rendez-vous lié</h3>${ensureArray(doc.linkedMeetingIds).map(id => {
+    ${ensureArray(doc.linkedMeetingIds).length ? `<div class="card"><h3>Rendez-vous lié</h3>${ensureArray(doc.linkedMeetingIds).map(id => {
       const manual = byId("agenda", id);
       const external = ensureArray(state.externalCalendarEvents).find(event => String(event._key || `google_${event.externalId || event.id || ""}`) === String(id));
       const meeting = manual || external;
       if (!meeting) return "";
-      const sourceLabel = manual · "DEOS" : "Google";
-      return `<div class="item row"><div><strong>${esc(meeting.title || "Rendez-vous")}</strong><span class="muted">${sourceLabel} · ${esc(meeting.date || "")}${meeting.startTime · ` · ${esc(meeting.startTime)}` : ""}</span></div><button class="secondary" type="button" onclick="openLinkedMeetingFromDocument('${esc(id)}')">Ouvrir</button></div>`;
+      const sourceLabel = manual ? "DEOS" : "Google";
+      return `<div class="item row"><div><strong>${esc(meeting.title || "Rendez-vous")}</strong><span class="muted">${sourceLabel} · ${esc(meeting.date || "")}${meeting.startTime ? ` · ${esc(meeting.startTime)}` : ""}</span></div><button class="secondary" type="button" onclick="openLinkedMeetingFromDocument('${esc(id)}')">Ouvrir</button></div>`;
     }).join("")}</div>` : ""}
   `;
 
   if (!interviewTemplate) {
-    return `${common}<textarea id="idocClassicContent" placeholder="Contenu">${esc(typeof doc.content === "string" · doc.content : JSON.stringify(doc.content || {}, null, 2))}</textarea>`;
+    return `${common}<textarea id="idocClassicContent" placeholder="Contenu">${esc(typeof doc.content === "string" ? doc.content : JSON.stringify(doc.content || {}, null, 2))}</textarea>`;
   }
 
   const resultsRows = ensureArray(content.keyResults).map(documentResultRowHtml).join("");
@@ -17212,7 +17212,7 @@ function documentFormBody(doc) {
     const commitmentRows = ensureArray(content.commitments).map(documentCommitmentRowHtml).join("");
     return `
       ${common}
-      <div class="card"><h3>Informations générales</h3><div class="form-grid"><select id="idocGeneralType"><option ${content.general?.interviewType === "Performance" · "selected" : ""}>Performance</option><option ${content.general?.interviewType === "Managérial" · "selected" : ""}>Managérial</option><option ${content.general?.interviewType === "Suivi d'objectifs" · "selected" : ""}>Suivi d'objectifs</option><option ${content.general?.interviewType === "Accompagnement" · "selected" : ""}>Accompagnement</option><option ${content.general?.interviewType === "Recadrage" · "selected" : ""}>Recadrage</option><option ${content.general?.interviewType === "Développement / carrière" · "selected" : ""}>Développement / carrière</option><option ${content.general?.interviewType === "Autre" · "selected" : ""}>Autre</option></select><input id="idocInfoPrevious" value="${esc(content.general?.previousInterview || "")}" placeholder="Entretien précédent"><input id="idocInfoPeriod" value="${esc(content.general?.examinedPeriod || "")}" placeholder="Période examinée"></div>${previous · `<p class="muted">Dernier entretien identifié: ${esc(previous.title)} (${esc(previous.date || "")})</p>` : `<p class="muted">Aucun entretien précédent identifié.</p>`}<label class="check-row"><input id="idocResumeCommitments" type="checkbox" ${previous · "" : "disabled"}><span>Reprendre les engagements du dernier entretien</span></label><button class="secondary" type="button" onclick="loadPreviousInterviewForManager()" ${previous · "" : "disabled"}>Charger maintenant</button></div>
+      <div class="card"><h3>Informations générales</h3><div class="form-grid"><select id="idocGeneralType"><option ${content.general?.interviewType === "Performance" ? "selected" : ""}>Performance</option><option ${content.general?.interviewType === "Managérial" ? "selected" : ""}>Managérial</option><option ${content.general?.interviewType === "Suivi d'objectifs" ? "selected" : ""}>Suivi d'objectifs</option><option ${content.general?.interviewType === "Accompagnement" ? "selected" : ""}>Accompagnement</option><option ${content.general?.interviewType === "Recadrage" ? "selected" : ""}>Recadrage</option><option ${content.general?.interviewType === "Développement / carrière" ? "selected" : ""}>Développement / carrière</option><option ${content.general?.interviewType === "Autre" ? "selected" : ""}>Autre</option></select><input id="idocInfoPrevious" value="${esc(content.general?.previousInterview || "")}" placeholder="Entretien précédent"><input id="idocInfoPeriod" value="${esc(content.general?.examinedPeriod || "")}" placeholder="Période examinée"></div>${previous ? `<p class="muted">Dernier entretien identifié: ${esc(previous.title)} (${esc(previous.date || "")})</p>` : `<p class="muted">Aucun entretien précédent identifié.</p>`}<label class="check-row"><input id="idocResumeCommitments" type="checkbox" ${previous ? "" : "disabled"}><span>Reprendre les engagements du dernier entretien</span></label><button class="secondary" type="button" onclick="loadPreviousInterviewForManager()" ${previous ? "" : "disabled"}>Charger maintenant</button></div>
       ${renderManagerialTopicsEditor(doc, content)}
       <div class="card"><h3>Objet et contexte</h3><div class="form-grid"><textarea id="idocCtxSubject" placeholder="Objet de l'entretien">${esc(content.objectContext?.subject || "")}</textarea><textarea id="idocCtxContext" placeholder="Contexte">${esc(content.objectContext?.context || "")}</textarea><textarea id="idocCtxExpected" placeholder="Résultat attendu de l'échange">${esc(content.objectContext?.expectedExchangeResult || "")}</textarea></div></div>
       <div class="card"><h3>Bilan depuis le dernier entretien</h3><div class="form-grid"><textarea id="idocReviewFacts" placeholder="Faits marquants">${esc(content.review?.keyFacts || "")}</textarea><textarea id="idocReviewSuccess" placeholder="Réussites">${esc(content.review?.successes || "")}</textarea><textarea id="idocReviewDifficulties" placeholder="Difficultés">${esc(content.review?.difficulties || "")}</textarea><textarea id="idocReviewChanges" placeholder="Changements intervenus">${esc(content.review?.changes || "")}</textarea></div></div>
@@ -17220,7 +17220,7 @@ function documentFormBody(doc) {
       <div class="card"><h3>Résultats et performance</h3><div class="doc-row doc-row-head"><span>Indicateur</span><span>Résultat</span><span>Objectif</span><span>Écart</span><span>Tendance</span><span>Commentaire</span><span></span></div><div id="idocResultsRows" class="doc-rows">${resultsRows}</div><button class="secondary" type="button" onclick="addInterviewResultRow()">Ajouter un indicateur</button></div>
       <div class="card"><h3>Analyse partagée</h3><div class="form-grid"><textarea id="idocAnalysisWorksWell" placeholder="Ce qui fonctionne bien">${esc(content.sharedAnalysis?.worksWell || "")}</textarea><textarea id="idocAnalysisVigilance" placeholder="Points de vigilance">${esc(content.sharedAnalysis?.vigilancePoints || "")}</textarea><textarea id="idocAnalysisOrg" placeholder="Causes liées à l'organisation">${esc(content.sharedAnalysis?.organizationCauses || "")}</textarea><textarea id="idocAnalysisResources" placeholder="Causes liées aux moyens">${esc(content.sharedAnalysis?.resourcesCauses || "")}</textarea><textarea id="idocAnalysisSkills" placeholder="Causes liées aux compétences">${esc(content.sharedAnalysis?.skillsCauses || "")}</textarea><textarea id="idocAnalysisSteering" placeholder="Causes liées au pilotage">${esc(content.sharedAnalysis?.steeringCauses || "")}</textarea><textarea id="idocAnalysisExternal" placeholder="Causes externes">${esc(content.sharedAnalysis?.externalCauses || "")}</textarea><textarea id="idocAnalysisChecks" placeholder="Causes restant à vérifier">${esc(content.sharedAnalysis?.pendingChecks || "")}</textarea></div></div>
       <div class="card"><h3>Expression du manager</h3><div class="form-grid"><textarea id="idocExprAnalysis" placeholder="Analyse de la situation">${esc(content.managerExpression?.analysis || "")}</textarea><textarea id="idocExprDifficulties" placeholder="Difficultés rencontrées">${esc(content.managerExpression?.difficulties || "")}</textarea><textarea id="idocExprNeeds" placeholder="Besoins exprimés">${esc(content.managerExpression?.needs || "")}</textarea><textarea id="idocExprSolutions" placeholder="Solutions proposées">${esc(content.managerExpression?.proposedSolutions || "")}</textarea><textarea id="idocExprCommitments" placeholder="Engagements proposés">${esc(content.managerExpression?.proposedCommitments || "")}</textarea></div></div>
-      <div class="card"><h3>Appréciation managériale</h3><div class="form-grid"><textarea id="idocAssessStrengths" placeholder="Points forts observés">${esc(content.managerialAssessment?.strengthsObserved || "")}</textarea><textarea id="idocAssessProgress" placeholder="Points de progrès">${esc(content.managerialAssessment?.progressPoints || "")}</textarea><select id="idocAssessAutonomy"><option value="">Niveau d'autonomie</option><option ${content.managerialAssessment?.autonomyLevel === "Fort accompagnement nécessaire" · "selected" : ""}>Fort accompagnement nécessaire</option><option ${content.managerialAssessment?.autonomyLevel === "Accompagnement régulier" · "selected" : ""}>Accompagnement régulier</option><option ${content.managerialAssessment?.autonomyLevel === "Autonome" · "selected" : ""}>Autonome</option><option ${content.managerialAssessment?.autonomyLevel === "Référent / capacité à accompagner les autres" · "selected" : ""}>Référent / capacité à accompagner les autres</option></select><select id="idocAssessGlobal"><option value="non évaluée" ${!content.managerialAssessment?.globalAssessment || content.managerialAssessment?.globalAssessment === "non évaluée" · "selected" : ""}>Non évaluée</option><option ${content.managerialAssessment?.globalAssessment === "Très satisfaisante" · "selected" : ""}>Très satisfaisante</option><option ${content.managerialAssessment?.globalAssessment === "Satisfaisante" · "selected" : ""}>Satisfaisante</option><option ${content.managerialAssessment?.globalAssessment === "À consolider" · "selected" : ""}>À consolider</option><option ${content.managerialAssessment?.globalAssessment === "Insuffisante" · "selected" : ""}>Insuffisante</option></select><textarea id="idocAssessComment" class="full" placeholder="Commentaire obligatoire si appréciation sélectionnée">${esc(content.managerialAssessment?.mandatoryComment || "")}</textarea></div></div>
+      <div class="card"><h3>Appréciation managériale</h3><div class="form-grid"><textarea id="idocAssessStrengths" placeholder="Points forts observés">${esc(content.managerialAssessment?.strengthsObserved || "")}</textarea><textarea id="idocAssessProgress" placeholder="Points de progrès">${esc(content.managerialAssessment?.progressPoints || "")}</textarea><select id="idocAssessAutonomy"><option value="">Niveau d'autonomie</option><option ${content.managerialAssessment?.autonomyLevel === "Fort accompagnement nécessaire" ? "selected" : ""}>Fort accompagnement nécessaire</option><option ${content.managerialAssessment?.autonomyLevel === "Accompagnement régulier" ? "selected" : ""}>Accompagnement régulier</option><option ${content.managerialAssessment?.autonomyLevel === "Autonome" ? "selected" : ""}>Autonome</option><option ${content.managerialAssessment?.autonomyLevel === "Référent / capacité à accompagner les autres" ? "selected" : ""}>Référent / capacité à accompagner les autres</option></select><select id="idocAssessGlobal"><option value="non évaluée" ${!content.managerialAssessment?.globalAssessment || content.managerialAssessment?.globalAssessment === "non évaluée" ? "selected" : ""}>Non évaluée</option><option ${content.managerialAssessment?.globalAssessment === "Très satisfaisante" ? "selected" : ""}>Très satisfaisante</option><option ${content.managerialAssessment?.globalAssessment === "Satisfaisante" ? "selected" : ""}>Satisfaisante</option><option ${content.managerialAssessment?.globalAssessment === "À consolider" ? "selected" : ""}>À consolider</option><option ${content.managerialAssessment?.globalAssessment === "Insuffisante" ? "selected" : ""}>Insuffisante</option></select><textarea id="idocAssessComment" class="full" placeholder="Commentaire obligatoire si appréciation sélectionnée">${esc(content.managerialAssessment?.mandatoryComment || "")}</textarea></div></div>
       <div class="card"><h3>Décisions et plan d'action</h3><div class="doc-row doc-row-head"><span>Action</span><span>Responsable</span><span>Échéance</span><span>Priorité</span><span>Indicateur de réussite</span><span>Créer dans DEOS</span><span></span></div><div id="idocActionPlanRows" class="doc-rows">${actionRows}</div><button class="secondary" type="button" onclick="addInterviewActionPlanRow()">Ajouter une action</button></div>
       <div class="card"><h3>Soutien attendu du Directeur</h3><div class="form-grid"><textarea id="idocSupportArbitration" placeholder="Arbitrage">${esc(content.expectedSupport?.arbitration || "")}</textarea><textarea id="idocSupportMeans" placeholder="Moyens">${esc(content.expectedSupport?.means || "")}</textarea><textarea id="idocSupportCoaching" placeholder="Accompagnement">${esc(content.expectedSupport?.coaching || "")}</textarea><textarea id="idocSupportTraining" placeholder="Formation">${esc(content.expectedSupport?.training || "")}</textarea><textarea id="idocSupportHr" placeholder="Intervention RH">${esc(content.expectedSupport?.hrIntervention || "")}</textarea><textarea id="idocSupportCoord" placeholder="Coordination interservices">${esc(content.expectedSupport?.crossTeamCoordination || "")}</textarea><textarea id="idocSupportDecision" placeholder="Décision à prendre">${esc(content.expectedSupport?.pendingDecision || "")}</textarea><textarea id="idocSupportOther" placeholder="Autre">${esc(content.expectedSupport?.other || "")}</textarea></div></div>
       <div class="card"><h3>Conclusion</h3><div class="form-grid"><textarea id="idocConclusionTakeaway" placeholder="À retenir">${esc(content.conclusion?.keyTakeaway || "")}</textarea><textarea id="idocConclusionPriority" placeholder="Priorité">${esc(content.conclusion?.priority || "")}</textarea><textarea id="idocConclusionExpected" placeholder="Résultat attendu">${esc(content.conclusion?.expectedResult || "")}</textarea><textarea id="idocConclusionPrep" placeholder="Éléments à préparer">${esc(content.conclusion?.preparationItems || "")}</textarea></div></div>
@@ -17259,11 +17259,11 @@ function renderDocumentEditModal() {
   if (!documentEditDialog.open) return "";
   const doc = documentDraftFromDialog();
   if (!doc) return "";
-  const errorHtml = documentEditDialog.error · `<p class="folder-delete-error">${esc(documentEditDialog.error)}</p>` : "";
+  const errorHtml = documentEditDialog.error ? `<p class="folder-delete-error">${esc(documentEditDialog.error)}</p>` : "";
   return `
     <div class="modal-backdrop document-edit-modal" onclick="closeDocumentEditModal()">
       <div class="modal-panel document-edit-panel" onclick="event.stopPropagation()">
-        <div class="modal-head"><h2>${documentEditDialog.mode === "edit" · "Modifier le document" : "Créer un compte-rendu"}</h2><button class="icon-close" type="button" onclick="closeDocumentEditModal()" aria-label="Fermer">×</button></div>
+        <div class="modal-head"><h2>${documentEditDialog.mode === "edit" ? "Modifier le document" : "Créer un compte-rendu"}</h2><button class="icon-close" type="button" onclick="closeDocumentEditModal()" aria-label="Fermer">×</button></div>
         ${errorHtml}
         <div class="document-edit-shell">${documentFormBody(doc)}</div>
         <div class="modal-actions">
@@ -17339,17 +17339,17 @@ function printInterviewDocument(id, format = "A4") {
   const resultRows = ensureArray(content.keyResults).map(row => `<tr><td>${esc(row.indicator || "")}</td><td>${esc(row.result || "")}</td><td>${esc(row.objective || "")}</td><td>${esc(row.gap || "")}</td><td>${esc(row.trend || "")}</td><td>${esc(row.comment || "")}</td></tr>`).join("") || `<tr><td colspan="6">Aucun indicateur</td></tr>`;
   const topicRows = normalizeManagerialTopics(content).map(topic => {
     const linkedActionLabels = normalizeLinkedIdArray(topic.linkedActionIds || []).map(actionId => byId("actions", actionId)?.title || actionId).filter(Boolean);
-    return `<tr><td>${esc(topic.title || "")}</td><td>${esc(topic.category || "")}</td><td>${esc(topic.object || "")}</td><td>${esc(topic.context || "")}</td><td>${esc(topic.facts || "")}</td><td>${esc(topic.managerExpression || "")}</td><td>${esc(topic.sharedAnalysis || "")}</td><td>${esc(topic.agreements || "")}</td><td>${esc(topic.disagreements || "")}</td><td>${esc(topic.decision || "")}</td><td>${esc(topic.directorSupport || "")}</td><td>${esc(topic.status || "")}</td><td>${esc(linkedActionLabels.join(", ") || "")}</td><td>${topic.carryForward · "Oui" : "Non"}</td></tr>`;
+    return `<tr><td>${esc(topic.title || "")}</td><td>${esc(topic.category || "")}</td><td>${esc(topic.object || "")}</td><td>${esc(topic.context || "")}</td><td>${esc(topic.facts || "")}</td><td>${esc(topic.managerExpression || "")}</td><td>${esc(topic.sharedAnalysis || "")}</td><td>${esc(topic.agreements || "")}</td><td>${esc(topic.disagreements || "")}</td><td>${esc(topic.decision || "")}</td><td>${esc(topic.directorSupport || "")}</td><td>${esc(topic.status || "")}</td><td>${esc(linkedActionLabels.join(", ") || "")}</td><td>${topic.carryForward ? "Oui" : "Non"}</td></tr>`;
   }).join("") || `<tr><td colspan="14">Aucun sujet</td></tr>`;
   const a4Sections = `
-    <section><h3>Informations</h3><p><strong>Date:</strong> ${esc(doc.date || "")}${doc.startTime · ` · ${esc(doc.startTime)}` : ""}${doc.endTime · ` - ${esc(doc.endTime)}` : ""}</p><p><strong>Manager:</strong> ${esc(managerLabel)}</p><p><strong>Période:</strong> ${esc(doc.period || "")}</p><p><strong>Participants:</strong> ${esc(doc.participants || "")}</p><p><strong>Confidentialité:</strong> ${esc(confLabel)}</p></section>
+    <section><h3>Informations</h3><p><strong>Date:</strong> ${esc(doc.date || "")}${doc.startTime ? ` · ${esc(doc.startTime)}` : ""}${doc.endTime ? ` - ${esc(doc.endTime)}` : ""}</p><p><strong>Manager:</strong> ${esc(managerLabel)}</p><p><strong>Période:</strong> ${esc(doc.period || "")}</p><p><strong>Participants:</strong> ${esc(doc.participants || "")}</p><p><strong>Confidentialité:</strong> ${esc(confLabel)}</p></section>
     <section><h3>Synthèse</h3><p>${esc(doc.summary || documentSummaryPreview(doc) || "")}</p></section>
-    ${doc.interviewTemplate === "managerial_full" · `<section><h3>Sujets abordés</h3><table><thead><tr><th>Titre</th><th>Nature</th><th>Objet</th><th>Contexte</th><th>Faits</th><th>Expression du manager</th><th>Analyse partagée</th><th>Accord</th><th>Désaccord</th><th>Décision</th><th>Soutien Directeur</th><th>Statut</th><th>Actions liées</th><th>À reprendre</th></tr></thead><tbody>${topicRows}</tbody></table></section>` : ""}
+    ${doc.interviewTemplate === "managerial_full" ? `<section><h3>Sujets abordés</h3><table><thead><tr><th>Titre</th><th>Nature</th><th>Objet</th><th>Contexte</th><th>Faits</th><th>Expression du manager</th><th>Analyse partagée</th><th>Accord</th><th>Désaccord</th><th>Décision</th><th>Soutien Directeur</th><th>Statut</th><th>Actions liées</th><th>À reprendre</th></tr></thead><tbody>${topicRows}</tbody></table></section>` : ""}
     <section><h3>Résultats clés</h3><table><thead><tr><th>Indicateur</th><th>Résultat</th><th>Objectif</th><th>Écart</th><th>Tendance</th><th>Commentaire</th></tr></thead><tbody>${resultRows}</tbody></table></section>
     <section><h3>Plan d'action</h3><table><thead><tr><th>Action</th><th>Responsable</th><th>Échéance</th><th>Priorité</th><th>Indicateur de réussite</th></tr></thead><tbody>${actionRows}</tbody></table></section>
   `;
   const a5Blocks = `
-    ${doc.interviewTemplate === "managerial_full" · `<section><h3>Sujets</h3><p>${esc(normalizeManagerialTopics(content).slice(0, 5).map(topic => `${topic.title || "Sujet"} · ${topic.decision || topic.status || ""}`).join(" · ") || "À compléter")}</p></section>` : ""}
+    ${doc.interviewTemplate === "managerial_full" ? `<section><h3>Sujets</h3><p>${esc(normalizeManagerialTopics(content).slice(0, 5).map(topic => `${topic.title || "Sujet"} · ${topic.decision || topic.status || ""}`).join(" · ") || "À compléter")}</p></section>` : ""}
     <section><h3>Résultats clés</h3><p>${esc((ensureArray(content.keyResults).slice(0, 4).map(row => `${row.indicator || "Indicateur"}: ${row.result || ""}`).join(" · ")) || "À compléter")}</p></section>
     <section><h3>Réussite</h3><p>${esc(content.synthesis?.mainSuccess || content.review?.successes || "À compléter")}</p></section>
     <section><h3>Difficulté</h3><p>${esc(content.synthesis?.mainDifficulty || content.review?.difficulties || "À compléter")}</p></section>
@@ -17377,7 +17377,7 @@ function printInterviewDocument(id, format = "A4") {
       </head>
       <body>
         <div class="head"><h1>${esc(doc.title || "Compte-rendu")}</h1><div class="meta">Date ${esc(doc.date || "")} · Manager ${esc(managerLabel)} · Statut ${esc(statusLabel)} · Confidentialité ${esc(confLabel)}</div></div>
-        ${format === "A5" · `<div class="a5">${a5Blocks}</div>` : a4Sections}
+        ${format === "A5" ? `<div class="a5">${a5Blocks}</div>` : a4Sections}
         <script>window.print()</script>
       </body>
     </html>
@@ -17443,7 +17443,7 @@ function linkFilteredItems() {
 }
 
 function linkStatusBadge(status) {
-  const cls = status === "actif" · "green" : status === "archivé" · "red" : "orange";
+  const cls = status === "actif" ? "green" : status === "archivé" ? "red" : "orange";
   return `<span class="badge ${cls}">${esc(status || "actif")}</span>`;
 }
 
@@ -17451,7 +17451,7 @@ function linkSyncStatusForItem(link) {
   const meta = getLinkSyncMeta(link.id);
   if (!linksSyncIsEnabled()) return DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY;
   if (meta.syncStatus) return meta.syncStatus;
-  return navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY;
+  return navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY;
 }
 
 function linkSyncBadge(link) {
@@ -17476,14 +17476,14 @@ function linkSyncGlobalSummary() {
 function linkForm(link = {}) {
   const isEdit = Boolean(link.id);
   const icon = link.icon || suggestLinkIcon(`${link.name || ""} ${link.url || ""} ${link.category || ""}`);
-  return `<div class="card link-form"><h2>${isEdit · "Modifier le lien" : "Nouveau lien"}</h2><div class="form-grid"><input id="lnName" value="${esc(link.name || "")}" placeholder="Nom du lien" oninput="suggestLinkIconField()"><input id="lnUrl" value="${esc(link.url || "")}" placeholder="URL, ex. intranet.carrefour.fr" oninput="suggestLinkIconField()"><input id="lnCategory" list="linkCategoryOptions" value="${esc(link.category || "Autre")}" placeholder="Catégorie"><datalist id="linkCategoryOptions">${linkCategoryOptions().map(c => `<option value="${esc(c)}"></option>`).join("")}</datalist><select id="lnStatus">${linkStatuses.map(s => `<option value="${esc(s)}" ${link.status === s || (!link.status && s === "actif") · "selected" : ""}>${esc(s)}</option>`).join("")}</select><input id="lnIcon" value="${esc(icon)}" placeholder="Icône ou emoji" aria-label="Icône ou emoji"><label class="check-row link-fav-row"><input id="lnFavorite" type="checkbox" ${link.favorite · "checked" : ""}> <span>Favori</span></label><textarea id="lnDescription" class="full" placeholder="Description courte">${esc(link.description || "")}</textarea></div><p class="muted">Les URL sans protocole sont enregistrées en https://. Les protocoles dangereux sont refusés.</p><div class="row-actions"><button class="action" onclick="${isEdit · `saveLink('${link.id}')` : "addLink()"}">Enregistrer</button><button class="secondary" onclick="cancelLinkEdit()">Annuler</button></div></div>`;
+  return `<div class="card link-form"><h2>${isEdit ? "Modifier le lien" : "Nouveau lien"}</h2><div class="form-grid"><input id="lnName" value="${esc(link.name || "")}" placeholder="Nom du lien" oninput="suggestLinkIconField()"><input id="lnUrl" value="${esc(link.url || "")}" placeholder="URL, ex. intranet.carrefour.fr" oninput="suggestLinkIconField()"><input id="lnCategory" list="linkCategoryOptions" value="${esc(link.category || "Autre")}" placeholder="Catégorie"><datalist id="linkCategoryOptions">${linkCategoryOptions().map(c => `<option value="${esc(c)}"></option>`).join("")}</datalist><select id="lnStatus">${linkStatuses.map(s => `<option value="${esc(s)}" ${link.status === s || (!link.status && s === "actif") ? "selected" : ""}>${esc(s)}</option>`).join("")}</select><input id="lnIcon" value="${esc(icon)}" placeholder="Icône ou emoji" aria-label="Icône ou emoji"><label class="check-row link-fav-row"><input id="lnFavorite" type="checkbox" ${link.favorite ? "checked" : ""}> <span>Favori</span></label><textarea id="lnDescription" class="full" placeholder="Description courte">${esc(link.description || "")}</textarea></div><p class="muted">Les URL sans protocole sont enregistrées en https://. Les protocoles dangereux sont refusés.</p><div class="row-actions"><button class="action" onclick="${isEdit ? `saveLink('${link.id}')` : "addLink()"}">Enregistrer</button><button class="secondary" onclick="cancelLinkEdit()">Annuler</button></div></div>`;
 }
 
 function linkCard(link) {
   const url = linkUrl(link.url);
   const domain = linkDomain(link.url);
   const disabled = !url;
-  return `<div class="card link-card link-tile ${link.status === "archivé" · "link-archived" : ""}"><button class="link-tile-main" onclick="${disabled · "" : `openExternalLink('${esc(link.id)}')`}" aria-label="Ouvrir ${esc(link.name || "lien")}"><span class="link-icon" aria-hidden="true">${esc(link.icon || suggestLinkIcon(`${link.name} ${link.url}`))}</span><span class="link-tile-text"><strong>${esc(link.name || "Lien")}</strong><small>${esc(link.category || "Autre")}${domain · " · " + esc(domain) : ""}</small></span></button><p>${esc(link.description || "Ressource professionnelle")}</p><div class="link-tile-footer"><div>${linkStatusBadge(link.status)}${linkSyncBadge(link)}${link.favorite · `<span class="badge orange">★ Favori</span>` : ""}</div><button class="icon-button ${link.favorite · "is-favorite" : ""}" onclick="toggleLinkFavorite('${esc(link.id)}')" title="${link.favorite · "Retirer des favoris" : "Ajouter aux favoris"}" aria-label="${link.favorite · "Retirer des favoris" : "Ajouter aux favoris"}">${link.favorite · "★" : "☆"}</button></div><div class="link-actions"><a class="action link-action" href="${esc(url || "#")}" target="_blank" rel="noopener noreferrer" aria-disabled="${disabled}">Ouvrir</a><button class="secondary" onclick="editLink('${esc(link.id)}')">Modifier</button><button class="secondary" onclick="archiveLink('${esc(link.id)}')">${link.status === "archivé" · "Réactiver" : "Archiver"}</button><button class="secondary" onclick="moveLink('${esc(link.id)}',-1)">Monter</button><button class="secondary" onclick="moveLink('${esc(link.id)}',1)">Descendre</button><button class="danger" onclick="deleteLink('${esc(link.id)}')">Supprimer</button></div></div>`;
+  return `<div class="card link-card link-tile ${link.status === "archivé" ? "link-archived" : ""}"><button class="link-tile-main" onclick="${disabled ? "" : `openExternalLink('${esc(link.id)}')`}" aria-label="Ouvrir ${esc(link.name || "lien")}"><span class="link-icon" aria-hidden="true">${esc(link.icon || suggestLinkIcon(`${link.name} ${link.url}`))}</span><span class="link-tile-text"><strong>${esc(link.name || "Lien")}</strong><small>${esc(link.category || "Autre")}${domain ? " · " + esc(domain) : ""}</small></span></button><p>${esc(link.description || "Ressource professionnelle")}</p><div class="link-tile-footer"><div>${linkStatusBadge(link.status)}${linkSyncBadge(link)}${link.favorite ? `<span class="badge orange">★ Favori</span>` : ""}</div><button class="icon-button ${link.favorite ? "is-favorite" : ""}" onclick="toggleLinkFavorite('${esc(link.id)}')" title="${link.favorite ? "Retirer des favoris" : "Ajouter aux favoris"}" aria-label="${link.favorite ? "Retirer des favoris" : "Ajouter aux favoris"}">${link.favorite ? "★" : "☆"}</button></div><div class="link-actions"><a class="action link-action" href="${esc(url || "#")}" target="_blank" rel="noopener noreferrer" aria-disabled="${disabled}">Ouvrir</a><button class="secondary" onclick="editLink('${esc(link.id)}')">Modifier</button><button class="secondary" onclick="archiveLink('${esc(link.id)}')">${link.status === "archivé" ? "Réactiver" : "Archiver"}</button><button class="secondary" onclick="moveLink('${esc(link.id)}',-1)">Monter</button><button class="secondary" onclick="moveLink('${esc(link.id)}',1)">Descendre</button><button class="danger" onclick="deleteLink('${esc(link.id)}')">Supprimer</button></div></div>`;
 }
 
 function renderLinks() {
@@ -17494,7 +17494,7 @@ function renderLinks() {
   const categories = ["all", ...linkCategoryOptions()];
   const activeCategories = categories.filter(c => c === "all" || state.links.some(l => l.category === c));
   const grouped = activeCategories.filter(c => c !== "all").map(c => ({ category: c, count: state.links.filter(l => l.category === c).length }));
-  appHtml(`<div class="card hero links-hero"><div class="row"><div><h2>🔗 Liens utiles</h2><p class="muted">Lanceur visuel des ressources professionnelles du quotidien.</p><p class="muted">${esc(linkSyncGlobalSummary())}</p></div><button class="action" onclick="newLink()">+ Nouveau lien</button></div></div>${linkEditId !== "" · linkForm(linkEditId · byId("links", linkEditId) : {}) : ""}<div class="links-layout"><aside class="card link-categories"><button class="secondary ${linkCategoryFilter === "all" && !linkFavoriteFilter · "active-filter" : ""}" onclick="setLinkCategoryFilter('all')">Tous les liens</button><button class="secondary ${linkFavoriteFilter · "active-filter" : ""}" onclick="toggleLinkFavoriteFilter()">⭐ Favoris</button>${grouped.map(g => `<button class="secondary ${linkCategoryFilter === g.category · "active-filter" : ""}" onclick="setLinkCategoryFilter('${esc(g.category)}')"><span>${linkCategoryIcon(g.category)}</span>${esc(g.category)} <small>${g.count}</small></button>`).join("")}</aside><section><div class="card link-toolbar"><input value="${esc(linkSearch)}" placeholder="Rechercher un lien, une catégorie ou un domaine" oninput="setLinkSearch(this.value)"><select onchange="setLinkCategoryFilter(this.value)">${categories.map(c => `<option value="${esc(c)}" ${linkCategoryFilter === c · "selected" : ""}>${c === "all" · "Toutes catégories" : esc(c)}</option>`).join("")}</select><button class="secondary ${linkFavoriteFilter · "active-filter" : ""}" onclick="toggleLinkFavoriteFilter()">Favoris</button></div><div class="card links-favorites"><div class="row"><h2>Favoris</h2><span class="muted">${favorites.length} lien(s)</span></div><div class="links-grid links-grid-compact">${favorites.map(linkCard).join("") || `<div class="empty">Aucun favori — ajoutez-en avec l'étoile sur une tuile.</div>`}</div></div><div class="card links-results-head"><div><h2>Catalogue</h2><p class="muted">${items.length} ressource(s) affichée(s)</p><p class="muted">Le catalogue contient toutes les ressources, y compris les favoris.</p></div></div><div id="linkResults" class="links-grid">${items.map(linkCard).join("") || `<div class="card empty">Aucun lien ne correspond aux filtres.<br><button class="secondary" onclick="newLink()">+ Ajouter mon premier lien</button></div>`}</div></section></div>`);
+  appHtml(`<div class="card hero links-hero"><div class="row"><div><h2>🔗 Liens utiles</h2><p class="muted">Lanceur visuel des ressources professionnelles du quotidien.</p><p class="muted">${esc(linkSyncGlobalSummary())}</p></div><button class="action" onclick="newLink()">+ Nouveau lien</button></div></div>${linkEditId !== "" ? linkForm(linkEditId ? byId("links", linkEditId) : {}) : ""}<div class="links-layout"><aside class="card link-categories"><button class="secondary ${linkCategoryFilter === "all" && !linkFavoriteFilter ? "active-filter" : ""}" onclick="setLinkCategoryFilter('all')">Tous les liens</button><button class="secondary ${linkFavoriteFilter ? "active-filter" : ""}" onclick="toggleLinkFavoriteFilter()">⭐ Favoris</button>${grouped.map(g => `<button class="secondary ${linkCategoryFilter === g.category ? "active-filter" : ""}" onclick="setLinkCategoryFilter('${esc(g.category)}')"><span>${linkCategoryIcon(g.category)}</span>${esc(g.category)} <small>${g.count}</small></button>`).join("")}</aside><section><div class="card link-toolbar"><input value="${esc(linkSearch)}" placeholder="Rechercher un lien, une catégorie ou un domaine" oninput="setLinkSearch(this.value)"><select onchange="setLinkCategoryFilter(this.value)">${categories.map(c => `<option value="${esc(c)}" ${linkCategoryFilter === c ? "selected" : ""}>${c === "all" ? "Toutes catégories" : esc(c)}</option>`).join("")}</select><button class="secondary ${linkFavoriteFilter ? "active-filter" : ""}" onclick="toggleLinkFavoriteFilter()">Favoris</button></div><div class="card links-favorites"><div class="row"><h2>Favoris</h2><span class="muted">${favorites.length} lien(s)</span></div><div class="links-grid links-grid-compact">${favorites.map(linkCard).join("") || `<div class="empty">Aucun favori — ajoutez-en avec l'étoile sur une tuile.</div>`}</div></div><div class="card links-results-head"><div><h2>Catalogue</h2><p class="muted">${items.length} ressource(s) affichée(s)</p><p class="muted">Le catalogue contient toutes les ressources, y compris les favoris.</p></div></div><div id="linkResults" class="links-grid">${items.map(linkCard).join("") || `<div class="card empty">Aucun lien ne correspond aux filtres.<br><button class="secondary" onclick="newLink()">+ Ajouter mon premier lien</button></div>`}</div></section></div>`);
 }
 
 function newLink() {
@@ -17527,7 +17527,7 @@ function readLinkForm(existing = {}) {
 
 function runLinkSyncSafely(task, context = "link") {
   try {
-    return typeof task === "function" · task() : null;
+    return typeof task === "function" ? task() : null;
   } catch (error) {
     // V5.30Q — une panne Cloud ne doit jamais bloquer l'enregistrement local.
     console.warn(`[DEOS][Liens] Synchronisation différée (${context})`, error);
@@ -17577,7 +17577,7 @@ function deleteLink(id) {
 function archiveLink(id) {
   const link = byId("links", id);
   if (!link) return;
-  link.status = link.status === "archivé" · "actif" : "archivé";
+  link.status = link.status === "archivé" ? "actif" : "archivé";
   link.updatedAt = isoToday();
   persist("links");
   runLinkSyncSafely(() => linksHybridRepository.queueUpsert(link, "archive"), "archive");
@@ -17592,7 +17592,7 @@ function toggleLinkFavorite(id) {
   link.updatedAt = isoToday();
   persist("links");
   runLinkSyncSafely(() => linksHybridRepository.queueUpsert(link, "favorite"), "favorite");
-  addActivity("⭐ Favori", link.name, link.favorite · "Ajouté aux favoris" : "Retiré des favoris", id);
+  addActivity("⭐ Favori", link.name, link.favorite ? "Ajouté aux favoris" : "Retiré des favoris", id);
   renderLinks();
 }
 
@@ -17646,7 +17646,7 @@ function openLink(id) {
   linkCategoryFilter = "all";
   linkFavoriteFilter = false;
   const link = byId("links", id);
-  linkSearch = link · link.name : "";
+  linkSearch = link ? link.name : "";
   renderLinks();
 }
 
@@ -17688,7 +17688,7 @@ function ensureSettings(raw = {}) {
 }
 
 function getCalendarConnectionSettings() {
-  return (state.settings && state.settings.calendarConnection) · state.settings.calendarConnection : getDefaultCalendarConnectionSettings();
+  return (state.settings && state.settings.calendarConnection) ? state.settings.calendarConnection : getDefaultCalendarConnectionSettings();
 }
 
 function persistSettings() {
@@ -17812,12 +17812,12 @@ function setLinksSyncSettings(patch = {}) {
 }
 
 function normalizeLinksSyncMetaEntry(value = {}) {
-  const source = value && typeof value === "object" && !Array.isArray(value) · value : {};
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return {
     clientId: String(source.clientId || "").trim(),
     remoteId: String(source.remoteId || "").trim(),
-    remoteVersion: Number.isInteger(Number(source.remoteVersion)) · Number(source.remoteVersion) : 0,
-    localRevision: Number.isInteger(Number(source.localRevision)) · Number(source.localRevision) : 0,
+    remoteVersion: Number.isInteger(Number(source.remoteVersion)) ? Number(source.remoteVersion) : 0,
+    localRevision: Number.isInteger(Number(source.localRevision)) ? Number(source.localRevision) : 0,
     lastSyncedAt: String(source.lastSyncedAt || "").trim(),
     syncStatus: String(source.syncStatus || DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY).trim() || DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY,
     remoteUpdatedAt: String(source.remoteUpdatedAt || "").trim(),
@@ -17826,17 +17826,17 @@ function normalizeLinksSyncMetaEntry(value = {}) {
     lastLocalUpdatedAt: String(source.lastLocalUpdatedAt || "").trim(),
     deletedLocallyAt: String(source.deletedLocallyAt || "").trim(),
     deletedRemotelyAt: String(source.deletedRemotelyAt || "").trim(),
-    conflictRemote: source.conflictRemote && typeof source.conflictRemote === "object" · source.conflictRemote : null,
+    conflictRemote: source.conflictRemote && typeof source.conflictRemote === "object" ? source.conflictRemote : null,
     conflictFields: ensureArray(source.conflictFields).map(String)
   };
 }
 
 function normalizeLinksSyncMetaMap(value = {}) {
-  const source = value && typeof value === "object" && !Array.isArray(value) · value : {};
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return Object.fromEntries(Object.entries(source)
     .map(([key, entry]) => {
       const normalized = normalizeLinksSyncMetaEntry({ ...(entry || {}), clientId: entry?.clientId || key });
-      return normalized.clientId · [normalized.clientId, normalized] : null;
+      return normalized.clientId ? [normalized.clientId, normalized] : null;
     })
     .filter(Boolean));
 }
@@ -17844,19 +17844,19 @@ function normalizeLinksSyncMetaMap(value = {}) {
 function normalizeLinksSyncQueue(value = []) {
   return ensureArray(value)
     .map(item => ({
-      operation: item?.operation === "delete" · "delete" : "upsert",
+      operation: item?.operation === "delete" ? "delete" : "upsert",
       clientId: String(item?.clientId || "").trim(),
       queuedAt: String(item?.queuedAt || new Date().toISOString()).trim(),
-      expectedVersion: Number.isInteger(Number(item?.expectedVersion)) · Number(item.expectedVersion) : 0,
-      payload: item?.payload && typeof item.payload === "object" && !Array.isArray(item.payload) · JSON.parse(JSON.stringify(item.payload)) : null,
-      attempts: Number.isInteger(Number(item?.attempts)) · Number(item.attempts) : 0,
+      expectedVersion: Number.isInteger(Number(item?.expectedVersion)) ? Number(item.expectedVersion) : 0,
+      payload: item?.payload && typeof item.payload === "object" && !Array.isArray(item.payload) ? JSON.parse(JSON.stringify(item.payload)) : null,
+      attempts: Number.isInteger(Number(item?.attempts)) ? Number(item.attempts) : 0,
       lastError: String(item?.lastError || "").trim()
     }))
     .filter(item => item.clientId);
 }
 
 function detectLinksSyncDeviceLabel() {
-  const ua = typeof navigator !== "undefined" · String(navigator.userAgent || "") : "";
+  const ua = typeof navigator !== "undefined" ? String(navigator.userAgent || "") : "";
   if (/ipad/i.test(ua)) return "iPad";
   if (/iphone/i.test(ua)) return "iPhone";
   if (/android/i.test(ua)) return "Android";
@@ -17923,7 +17923,7 @@ function linksSyncCanInspectRemote() {
 }
 
 function cloneLinkBusinessData(link = {}) {
-  const source = link && typeof link === "object" && !Array.isArray(link) · link : {};
+  const source = link && typeof link === "object" && !Array.isArray(link) ? link : {};
   const forbidden = new Set([
     "id",
     "clientId",
@@ -18001,13 +18001,13 @@ function persistLinksSyncQueue() {
 }
 
 function refreshLinksSyncRuntimeState(patch = {}) {
-  const queue = normalizeLinksSyncQueue(patch.queue === undefined · deosLinksSyncRuntime.queue : patch.queue);
-  const metaByClientId = normalizeLinksSyncMetaMap(patch.metaByClientId === undefined · deosLinksSyncRuntime.metaByClientId : patch.metaByClientId);
+  const queue = normalizeLinksSyncQueue(patch.queue === undefined ? deosLinksSyncRuntime.queue : patch.queue);
+  const metaByClientId = normalizeLinksSyncMetaMap(patch.metaByClientId === undefined ? deosLinksSyncRuntime.metaByClientId : patch.metaByClientId);
   const localCount = ensureArray(state.links).length;
   const pendingCount = queue.length;
   const conflictCount = Object.values(metaByClientId).filter(meta => meta.syncStatus === DEOS_LINKS_SYNC_STATUS.CONFLICT).length;
   const syncedCount = ensureArray(state.links).filter(link => getLinkSyncMeta(link.id).syncStatus === DEOS_LINKS_SYNC_STATUS.SYNCED).length;
-  let nextState = linksSyncIsEnabled() · DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY;
+  let nextState = linksSyncIsEnabled() ? DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY;
   if (patch.state) nextState = patch.state;
   else if (conflictCount > 0) nextState = DEOS_LINKS_SYNC_STATUS.CONFLICT;
   else if (patch.syncing || deosLinksSyncRuntime.syncing) nextState = DEOS_LINKS_SYNC_STATUS.SYNCING;
@@ -18033,13 +18033,13 @@ function refreshLinksSyncRuntimeState(patch = {}) {
 function bindLinksHybridNetworkListeners() {
   if (deosLinksSyncRuntime.autoResumeBound || typeof window === "undefined") return;
   window.addEventListener("online", () => {
-    refreshLinksSyncRuntimeState({ lastError: "", state: linksSyncIsEnabled() · DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY });
+    refreshLinksSyncRuntimeState({ lastError: "", state: linksSyncIsEnabled() ? DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY });
     if (linksSyncIsEnabled()) syncLinksHybridNow({ silent: true, source: "online" });
   });
   window.addEventListener("offline", () => {
-    refreshLinksSyncRuntimeState({ state: linksSyncIsEnabled() · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY });
+    refreshLinksSyncRuntimeState({ state: linksSyncIsEnabled() ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY });
     if (currentView === "settings" || currentView === "links") {
-      currentView === "settings" · renderSettings() : renderLinks();
+      currentView === "settings" ? renderSettings() : renderLinks();
     }
   });
   deosLinksSyncRuntime.autoResumeBound = true;
@@ -18055,7 +18055,7 @@ function initializeLinksHybridSync(options = {}) {
   bindLinksHybridNetworkListeners();
   refreshLinksSyncRuntimeState({
     lastError: "",
-    state: settings.enabled · (navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY) : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY
+    state: settings.enabled ? (navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY) : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY
   });
   if (settings.enabled && !options.skipAutoSync && linksSyncCanUseRemote()) {
     syncLinksHybridNow({ silent: true, source: "init" });
@@ -18114,7 +18114,7 @@ function buildLinksRemotePreview(localLinks, remoteRows) {
 }
 
 function buildLinksConflictEntry(clientId, localLink, remoteRow) {
-  const remoteLink = remoteRow && remoteRow.link · remoteRow.link : normalizeEntity("links", { id: clientId });
+  const remoteLink = remoteRow && remoteRow.link ? remoteRow.link : normalizeEntity("links", { id: clientId });
   const localData = cloneLinkBusinessData(localLink);
   const remoteData = cloneLinkBusinessData(remoteLink);
   const fields = [...new Set([...Object.keys(localData), ...Object.keys(remoteData)])].filter(key => JSON.stringify(localData[key] ?? null) !== JSON.stringify(remoteData[key] ?? null));
@@ -18134,7 +18134,7 @@ function buildLinksConflictEntry(clientId, localLink, remoteRow) {
 
 async function analyzeLinksHybridState() {
   const remoteRows = linksSyncCanInspectRemote()
-    · await withLinksRemoteTimeout(deosRemoteAdapter.listLinks(), "Lecture des Liens distants")
+    ? await withLinksRemoteTimeout(deosRemoteAdapter.listLinks(), "Lecture des Liens distants")
     : [];
   const analysis = buildLinksRemotePreview(state.links, remoteRows);
   refreshLinksSyncRuntimeState({
@@ -18162,7 +18162,7 @@ async function maybePromptRemoteLinksRecovery(options = {}) {
         initializeLinksHybridSync({ skipAutoSync: true });
         await syncLinksHybridNow({ silent: true, source: "remote_recovery" });
         const refreshed = await analyzeLinksHybridState();
-        setRemoteLastOperation(`${analysis.remoteOnly.length} Lien${analysis.remoteOnly.length > 1 · "s" : ""} récupéré${analysis.remoteOnly.length > 1 · "s" : ""} depuis Supabase.`);
+        setRemoteLastOperation(`${analysis.remoteOnly.length} Lien${analysis.remoteOnly.length > 1 ? "s" : ""} récupéré${analysis.remoteOnly.length > 1 ? "s" : ""} depuis Supabase.`);
         if (!options.silent) {
           if (currentView === "settings") renderSettings("Liens distants récupérés sur cet appareil.");
           else if (currentView === "links") renderLinks();
@@ -18182,7 +18182,7 @@ async function maybePromptRemoteLinksRecovery(options = {}) {
       selectedClientIds: [],
       error: "",
       analysis,
-      message: `${analysis.remoteOnly.length} Lien synchronisé${analysis.remoteOnly.length > 1 · "s sont" : " est"} disponible${analysis.remoteOnly.length > 1 · "s" : ""} dans votre espace DEOS.`
+      message: `${analysis.remoteOnly.length} Lien synchronisé${analysis.remoteOnly.length > 1 ? "s sont" : " est"} disponible${analysis.remoteOnly.length > 1 ? "s" : ""} dans votre espace DEOS.`
     };
     if (!options.silent) {
       if (currentView === "settings") renderSettings();
@@ -18194,7 +18194,7 @@ async function maybePromptRemoteLinksRecovery(options = {}) {
 
 async function activateLinksHybridSync() {
   setLinksSyncSettings({ enabled: true, activatedAt: new Date().toISOString(), lastMode: "activated" });
-  refreshLinksSyncRuntimeState({ enabled: true, state: navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY, lastError: "" });
+  refreshLinksSyncRuntimeState({ enabled: true, state: navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY, lastError: "" });
   return deosLinksSyncRuntime;
 }
 
@@ -18238,7 +18238,7 @@ function scheduleLinksHybridUpsert(link, operation = "upsert") {
     localRevision: getLinkSyncMeta(link.id).localRevision + 1,
     lastLocalUpdatedAt: String(link.updatedAt || isoToday()).trim(),
     lastLocalFingerprint: linkFingerprint(link),
-    syncStatus: linksSyncIsEnabled() · (navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY) : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY,
+    syncStatus: linksSyncIsEnabled() ? (navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY) : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY,
     lastSyncError: "",
     deletedLocallyAt: ""
   });
@@ -18256,7 +18256,7 @@ function scheduleLinksHybridUpsert(link, operation = "upsert") {
   if (linksSyncCanUseRemote()) {
     syncLinksHybridNow({ silent: true, source: operation });
   } else {
-    refreshLinksSyncRuntimeState({ state: navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY });
+    refreshLinksSyncRuntimeState({ state: navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY });
   }
   return meta;
 }
@@ -18278,9 +18278,9 @@ function scheduleLinksHybridDelete(clientId, snapshot = null) {
   }
   setLinkSyncMeta(key, {
     deletedLocallyAt: new Date().toISOString(),
-    syncStatus: navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY,
+    syncStatus: navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY,
     lastSyncError: "",
-    lastLocalFingerprint: snapshot · linkFingerprint({ id: key, ...snapshot }) : meta.lastLocalFingerprint
+    lastLocalFingerprint: snapshot ? linkFingerprint({ id: key, ...snapshot }) : meta.lastLocalFingerprint
   });
   deosLinksSyncRuntime.queue = mergeLinksQueueEntry({
     operation: "delete",
@@ -18295,7 +18295,7 @@ function scheduleLinksHybridDelete(clientId, snapshot = null) {
   if (linksSyncCanUseRemote()) {
     syncLinksHybridNow({ silent: true, source: "delete" });
   } else {
-    refreshLinksSyncRuntimeState({ state: navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY });
+    refreshLinksSyncRuntimeState({ state: navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY });
   }
   return getLinkSyncMeta(key);
 }
@@ -18395,11 +18395,11 @@ async function syncLinksHybridNow(options = {}) {
   }
   if (!linksSyncCanUseRemote()) {
     refreshLinksSyncRuntimeState({
-      state: navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR,
-      lastError: navigator.onLine === false · "Le navigateur est hors ligne." : "Connexion distante Liens indisponible."
+      state: navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR,
+      lastError: navigator.onLine === false ? "Le navigateur est hors ligne." : "Connexion distante Liens indisponible."
     });
     if (!options.silent && (currentView === "settings" || currentView === "links")) {
-      currentView === "settings" · renderSettings(deosLinksSyncRuntime.lastError) : renderLinks();
+      currentView === "settings" ? renderSettings(deosLinksSyncRuntime.lastError) : renderLinks();
     }
     return deosLinksSyncRuntime;
   }
@@ -18519,7 +18519,7 @@ async function syncLinksHybridNow(options = {}) {
         remoteVersion: Number(row.version || 0),
         remoteUpdatedAt: String(row.updatedAt || "").trim(),
         lastSyncedAt: new Date().toISOString(),
-        syncStatus: getLinkSyncMeta(row.clientId).syncStatus === DEOS_LINKS_SYNC_STATUS.CONFLICT · DEOS_LINKS_SYNC_STATUS.CONFLICT : DEOS_LINKS_SYNC_STATUS.SYNCED,
+        syncStatus: getLinkSyncMeta(row.clientId).syncStatus === DEOS_LINKS_SYNC_STATUS.CONFLICT ? DEOS_LINKS_SYNC_STATUS.CONFLICT : DEOS_LINKS_SYNC_STATUS.SYNCED,
         lastLocalFingerprint: linkFingerprint(byId("links", row.clientId) || row.link),
         lastLocalUpdatedAt: String((byId("links", row.clientId) || row.link).updatedAt || row.updatedAt || "").trim()
       });
@@ -18531,7 +18531,7 @@ async function syncLinksHybridNow(options = {}) {
     const analysis = buildLinksRemotePreview(state.links, remoteRows);
     refreshLinksSyncRuntimeState({
       syncing: false,
-      state: remaining.length · DEOS_LINKS_SYNC_STATUS.SYNC_READY : (analysis.conflicts.length · DEOS_LINKS_SYNC_STATUS.CONFLICT : DEOS_LINKS_SYNC_STATUS.SYNCED),
+      state: remaining.length ? DEOS_LINKS_SYNC_STATUS.SYNC_READY : (analysis.conflicts.length ? DEOS_LINKS_SYNC_STATUS.CONFLICT : DEOS_LINKS_SYNC_STATUS.SYNCED),
       remoteCount: analysis.remoteCount,
       lastAnalysis: analysis,
       lastAnalysisAt: analysis.generatedAt,
@@ -18543,12 +18543,12 @@ async function syncLinksHybridNow(options = {}) {
     persistLinksSyncQueue();
     refreshLinksSyncRuntimeState({
       syncing: false,
-      state: navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR,
+      state: navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR,
       lastError: error.message || "Synchronisation Liens impossible."
     });
   }
   if (!options.silent && (currentView === "settings" || currentView === "links")) {
-    currentView === "settings" · renderSettings(deosLinksSyncRuntime.lastError || "Synchronisation Liens actualisée.") : renderLinks();
+    currentView === "settings" ? renderSettings(deosLinksSyncRuntime.lastError || "Synchronisation Liens actualisée.") : renderLinks();
   }
   return deosLinksSyncRuntime;
 }
@@ -18617,34 +18617,34 @@ function actionsSyncCanInspectRemote() { return linksSyncCanInspectRemote() && d
 function actionsSyncCanUseRemote() { return actionsSyncIsEnabled() && actionsSyncCanInspectRemote(); }
 
 function normalizeActionsSyncMetaEntry(value = {}) {
-  const source = value && typeof value === "object" && !Array.isArray(value) · value : {};
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return {
     clientId: String(source.clientId || "").trim(),
     remoteId: String(source.remoteId || "").trim(),
-    remoteVersion: Number.isInteger(Number(source.remoteVersion)) · Number(source.remoteVersion) : 0,
+    remoteVersion: Number.isInteger(Number(source.remoteVersion)) ? Number(source.remoteVersion) : 0,
     lastSyncedAt: String(source.lastSyncedAt || "").trim(),
     syncStatus: String(source.syncStatus || DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY).trim(),
     remoteUpdatedAt: String(source.remoteUpdatedAt || "").trim(),
     lastLocalFingerprint: String(source.lastLocalFingerprint || "").trim(),
     lastSyncError: String(source.lastSyncError || "").trim(),
-    conflictRemote: source.conflictRemote && typeof source.conflictRemote === "object" · source.conflictRemote : null,
+    conflictRemote: source.conflictRemote && typeof source.conflictRemote === "object" ? source.conflictRemote : null,
     conflictFields: ensureArray(source.conflictFields).map(String)
   };
 }
 function normalizeActionsSyncMetaMap(value = {}) {
-  const source = value && typeof value === "object" && !Array.isArray(value) · value : {};
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return Object.fromEntries(Object.entries(source).map(([key, entry]) => {
     const normalized = normalizeActionsSyncMetaEntry({ ...(entry || {}), clientId: entry?.clientId || key });
-    return normalized.clientId · [normalized.clientId, normalized] : null;
+    return normalized.clientId ? [normalized.clientId, normalized] : null;
   }).filter(Boolean));
 }
 function normalizeActionsSyncQueue(value = []) {
   return ensureArray(value).map(item => ({
-    operation: item?.operation === "delete" · "delete" : "upsert",
+    operation: item?.operation === "delete" ? "delete" : "upsert",
     clientId: String(item?.clientId || "").trim(),
     queuedAt: String(item?.queuedAt || "").trim(),
-    expectedVersion: Number.isInteger(Number(item?.expectedVersion)) · Number(item.expectedVersion) : 0,
-    attempts: Number.isInteger(Number(item?.attempts)) · Number(item.attempts) : 0,
+    expectedVersion: Number.isInteger(Number(item?.expectedVersion)) ? Number(item.expectedVersion) : 0,
+    attempts: Number.isInteger(Number(item?.attempts)) ? Number(item.attempts) : 0,
     lastError: String(item?.lastError || "").trim()
   })).filter(item => item.clientId);
 }
@@ -18662,7 +18662,7 @@ function setActionSyncMeta(clientId, patch = {}) {
   return next;
 }
 function cloneActionBusinessData(action = {}) {
-  const source = action && typeof action === "object" && !Array.isArray(action) · action : {};
+  const source = action && typeof action === "object" && !Array.isArray(action) ? action : {};
   const forbidden = new Set(["id", "clientId", "remoteId", "remoteVersion", "lastSyncedAt", "syncStatus", "remoteUpdatedAt", "lastSyncError"]);
   const output = {};
   for (const [key, value] of Object.entries(source)) {
@@ -18687,11 +18687,11 @@ function actionConflictFields(localAction = {}, remoteAction = {}) {
   return [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(k => JSON.stringify(a[k] ?? null) !== JSON.stringify(b[k] ?? null));
 }
 function refreshActionsSyncRuntimeState(patch = {}) {
-  const metaByClientId = normalizeActionsSyncMetaMap(patch.metaByClientId === undefined · deosActionsSyncRuntime.metaByClientId : patch.metaByClientId);
+  const metaByClientId = normalizeActionsSyncMetaMap(patch.metaByClientId === undefined ? deosActionsSyncRuntime.metaByClientId : patch.metaByClientId);
   const localCount = ensureArray(state.actions).length;
   const conflictCount = Object.values(metaByClientId).filter(meta => meta.syncStatus === DEOS_LINKS_SYNC_STATUS.CONFLICT).length;
   const syncedCount = ensureArray(state.actions).filter(action => getActionSyncMeta(action.id).syncStatus === DEOS_LINKS_SYNC_STATUS.SYNCED).length;
-  let nextState = actionsSyncIsEnabled() · DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY;
+  let nextState = actionsSyncIsEnabled() ? DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY;
   if (patch.state) nextState = patch.state;
   else if (conflictCount) nextState = DEOS_LINKS_SYNC_STATUS.CONFLICT;
   else if (patch.syncing || deosActionsSyncRuntime.syncing) nextState = DEOS_LINKS_SYNC_STATUS.SYNCING;
@@ -18718,7 +18718,7 @@ function initializeActionsHybridSync(options = {}) {
     metaByClientId: actionsSyncMetaRepository.load({}),
     queue: actionsSyncQueueRepository.load([])
   });
-  refreshActionsSyncRuntimeState({ state: settings.enabled · DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY });
+  refreshActionsSyncRuntimeState({ state: settings.enabled ? DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY });
   // V5.22B — pendant le pilote Actions, aucune synchronisation automatique au démarrage.
   // Cela évite qu’un rechargement ou une restauration de session amplifie un état incohérent.
   return deosActionsSyncRuntime;
@@ -18776,7 +18776,7 @@ function setActionsSyncUiBusy(busy) {
   if (!card) return;
   card.querySelectorAll("button").forEach(button => {
     if (busy) {
-      if (!button.dataset.deosActionsWasDisabled) button.dataset.deosActionsWasDisabled = button.disabled · "1" : "0";
+      if (!button.dataset.deosActionsWasDisabled) button.dataset.deosActionsWasDisabled = button.disabled ? "1" : "0";
       button.disabled = true;
       button.setAttribute("aria-busy", "true");
     } else {
@@ -18815,14 +18815,14 @@ async function runActionsUiExclusive(kind, task) {
 }
 
 async function analyzeActionsHybridState() {
-  const remoteRows = actionsSyncCanInspectRemote() · await withActionsRemoteTimeout(deosRemoteAdapter.listActions(), "Lecture des Actions distantes") : [];
+  const remoteRows = actionsSyncCanInspectRemote() ? await withActionsRemoteTimeout(deosRemoteAdapter.listActions(), "Lecture des Actions distantes") : [];
   const analysis = buildActionsRemotePreview(state.actions, remoteRows);
   refreshActionsSyncRuntimeState({ remoteCount: analysis.remoteCount, lastValidRemoteCount: analysis.remoteCount, lastAnalysisAt: analysis.generatedAt, lastAnalysis: analysis, lastError: "" });
   return analysis;
 }
 async function activateActionsHybridSync() {
   setActionsSyncSettings({ enabled: true, activatedAt: new Date().toISOString(), lastMode: "activated" });
-  refreshActionsSyncRuntimeState({ state: navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY, lastError: "" });
+  refreshActionsSyncRuntimeState({ state: navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY, lastError: "" });
   return deosActionsSyncRuntime;
 }
 function deactivateActionsHybridSync() {
@@ -18834,7 +18834,7 @@ async function syncActionsHybridNow(options = {}) {
   if (deosActionsSyncRuntime.syncing) return deosActionsSyncRuntime;
   if (!actionsSyncIsEnabled()) { refreshActionsSyncRuntimeState({ state: DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY, lastError: "" }); return deosActionsSyncRuntime; }
   if (!actionsSyncCanUseRemote()) {
-    refreshActionsSyncRuntimeState({ state: navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR, lastError: navigator.onLine === false · "Le navigateur est hors ligne." : "Connexion distante Actions indisponible." });
+    refreshActionsSyncRuntimeState({ state: navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR, lastError: navigator.onLine === false ? "Le navigateur est hors ligne." : "Connexion distante Actions indisponible." });
     return deosActionsSyncRuntime;
   }
   refreshActionsSyncRuntimeState({ syncing: true, state: DEOS_LINKS_SYNC_STATUS.SYNCING, lastError: "" });
@@ -18912,9 +18912,9 @@ async function syncActionsHybridNow(options = {}) {
     }
     if (localChanged) persist("actions");
     const analysis = buildActionsRemotePreview(state.actions, await withActionsRemoteTimeout(deosRemoteAdapter.listActions(), "Analyse finale des Actions"));
-    refreshActionsSyncRuntimeState({ syncing: false, remoteCount: analysis.remoteCount, lastValidRemoteCount: analysis.remoteCount, lastAnalysis: analysis, lastAnalysisAt: analysis.generatedAt, lastSyncAt: new Date().toLocaleString("fr-FR"), lastError: "", state: analysis.conflicts.length · DEOS_LINKS_SYNC_STATUS.CONFLICT : DEOS_LINKS_SYNC_STATUS.SYNCED });
+    refreshActionsSyncRuntimeState({ syncing: false, remoteCount: analysis.remoteCount, lastValidRemoteCount: analysis.remoteCount, lastAnalysis: analysis, lastAnalysisAt: analysis.generatedAt, lastSyncAt: new Date().toLocaleString("fr-FR"), lastError: "", state: analysis.conflicts.length ? DEOS_LINKS_SYNC_STATUS.CONFLICT : DEOS_LINKS_SYNC_STATUS.SYNCED });
   } catch (error) {
-    refreshActionsSyncRuntimeState({ syncing: false, remoteCount: Number(deosActionsSyncRuntime.lastValidRemoteCount || deosActionsSyncRuntime.remoteCount || 0), state: navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR, lastError: error?.message || "Synchronisation Actions impossible." });
+    refreshActionsSyncRuntimeState({ syncing: false, remoteCount: Number(deosActionsSyncRuntime.lastValidRemoteCount || deosActionsSyncRuntime.remoteCount || 0), state: navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR, lastError: error?.message || "Synchronisation Actions impossible." });
     console.error("[DEOS V5.22D ACTIONS SYNC]", error);
   }
   if (!options.silent && currentView === "settings") renderSettings(deosActionsSyncRuntime.lastError || "Synchronisation Actions actualisée.");
@@ -18990,7 +18990,7 @@ async function repairExactActionDuplicatesFromSettings() {
     }
     if (localChanged) persist("actions");
     const finalAnalysis = await analyzeActionsHybridState();
-    refreshActionsSyncRuntimeState({ syncing: false, remoteCount: finalAnalysis.remoteCount, lastValidRemoteCount: finalAnalysis.remoteCount, lastAnalysis: finalAnalysis, lastAnalysisAt: finalAnalysis.generatedAt, lastSyncAt: new Date().toLocaleString("fr-FR"), lastError: "", state: finalAnalysis.duplicateCandidates.length · DEOS_LINKS_SYNC_STATUS.ERROR : DEOS_LINKS_SYNC_STATUS.SYNC_READY });
+    refreshActionsSyncRuntimeState({ syncing: false, remoteCount: finalAnalysis.remoteCount, lastValidRemoteCount: finalAnalysis.remoteCount, lastAnalysis: finalAnalysis, lastAnalysisAt: finalAnalysis.generatedAt, lastSyncAt: new Date().toLocaleString("fr-FR"), lastError: "", state: finalAnalysis.duplicateCandidates.length ? DEOS_LINKS_SYNC_STATUS.ERROR : DEOS_LINKS_SYNC_STATUS.SYNC_READY });
     renderSettings(`Réparation terminée : ${repairedRemote} doublon(s) distant(s) supprimé(s) logiquement, ${repairedLocal} doublon(s) local(aux) retiré(s).`);
   } catch (error) {
     refreshActionsSyncRuntimeState({ syncing: false, state: DEOS_LINKS_SYNC_STATUS.ERROR, lastError: error?.message || "Réparation des doublons Actions impossible." });
@@ -19004,7 +19004,7 @@ function renderActionsHybridSettingsCardHtml() {
   const remoteReady = actionsSyncCanInspectRemote();
   const analysis = deosActionsSyncRuntime.lastAnalysis;
   const warning = "Managers, Documents, Agenda, Google Calendar, Performance, Dossiers, Projets, Décisions et Journal restent strictement locaux. Les Liens conservent leur pilote séparé.";
-  return `<div id="actionsHybridSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation pilote — Actions</h2><p class="muted">Pilote V5.22D séparé des Liens, avec verrou Safari/iPad, garde anti-doublon et diagnostic d’analyse renforcé. Aucune autre donnée métier n'est envoyée.</p></div><span class="remote-mode-badge ${actionsSyncStatusClass()}">${esc(actionsSyncStatusLabel())}</span></div><div class="settings-warning-box"><strong>Protection des données</strong><p>${esc(warning)}</p></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État pilote</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>État</strong><span>${esc(actionsSyncStatusLabel())}</span></div><div class="settings-calendar-summary-item"><strong>Actions locales</strong><span>${esc(String(state.actions.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Actions distantes</strong><span>${esc(String(deosActionsSyncRuntime.remoteCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>En attente</strong><span>${esc(String(deosActionsSyncRuntime.pendingCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchronisation</strong><span>${esc(deosActionsSyncRuntime.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière erreur</strong><span>${esc(deosActionsSyncRuntime.lastError || "Aucune")}</span></div><div class="settings-calendar-summary-item"><strong>Appareil courant</strong><span>${esc(deosActionsSyncRuntime.currentDevice || "Navigateur courant")}</span></div></div>${analysis · `<p class="muted">Dernière analyse: ${esc(analysis.generatedAt || "")}</p>` : `<p class="muted">Aucune analyse de migration exécutée.</p>`}</section><section class="settings-card-block"><h3>Actions</h3><p class="muted">Désactivé par défaut. L'analyse et la prévisualisation sont en lecture seule.</p><div class="row-actions"><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Analyse…','Analyse Actions terminée',analyzeActionsHybridFromSettings)">Analyser les Actions</button><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Prévisualisation…','Prévisualisation Actions terminée',previewActionsMigrationFromSettings)" ${remoteReady · "" : "disabled"}>Prévisualiser la migration</button>${actionsSyncIsEnabled() · `<button class="danger" type="button" onclick="deactivateActionsHybridFromSettings()">Désactiver la synchronisation</button>` : `<button class="action" type="button" onclick="runDeosButtonTask(this,'Activation…','Synchronisation Actions activée',activateActionsHybridFromSettings)">Activer la synchronisation</button>`}<button class="secondary" type="button" onclick="runDeosButtonTask(this,'Synchronisation…','Synchronisation Actions terminée',syncActionsHybridFromSettings)" ${actionsSyncIsEnabled() · "" : "disabled"}>Synchroniser maintenant</button><button class="secondary" type="button" onclick="showActionsConflictsFromSettings()" ${deosActionsSyncRuntime.conflictCount · "" : "disabled"}>Voir les conflits</button><button class="secondary" type="button" onclick="previewExactActionDuplicatesFromSettings()" ${remoteReady · "" : "disabled"}>Voir les doublons exacts</button><button class="danger" type="button" onclick="runDeosButtonTask(this,'Réparation…','Réparation des doublons Actions terminée',repairExactActionDuplicatesFromSettings)" ${actionsSyncIsEnabled() && remoteReady · "" : "disabled"}>Réparer les doublons exacts</button></div>${!remoteReady · `<div class="empty">Authentifiez-vous sur le workspace actif pour comparer les Actions locales et distantes.</div>` : ""}</section></div></div>`;
+  return `<div id="actionsHybridSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation pilote — Actions</h2><p class="muted">Pilote V5.22D séparé des Liens, avec verrou Safari/iPad, garde anti-doublon et diagnostic d’analyse renforcé. Aucune autre donnée métier n'est envoyée.</p></div><span class="remote-mode-badge ${actionsSyncStatusClass()}">${esc(actionsSyncStatusLabel())}</span></div><div class="settings-warning-box"><strong>Protection des données</strong><p>${esc(warning)}</p></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État pilote</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>État</strong><span>${esc(actionsSyncStatusLabel())}</span></div><div class="settings-calendar-summary-item"><strong>Actions locales</strong><span>${esc(String(state.actions.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Actions distantes</strong><span>${esc(String(deosActionsSyncRuntime.remoteCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>En attente</strong><span>${esc(String(deosActionsSyncRuntime.pendingCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchronisation</strong><span>${esc(deosActionsSyncRuntime.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière erreur</strong><span>${esc(deosActionsSyncRuntime.lastError || "Aucune")}</span></div><div class="settings-calendar-summary-item"><strong>Appareil courant</strong><span>${esc(deosActionsSyncRuntime.currentDevice || "Navigateur courant")}</span></div></div>${analysis ? `<p class="muted">Dernière analyse: ${esc(analysis.generatedAt || "")}</p>` : `<p class="muted">Aucune analyse de migration exécutée.</p>`}</section><section class="settings-card-block"><h3>Actions</h3><p class="muted">Désactivé par défaut. L'analyse et la prévisualisation sont en lecture seule.</p><div class="row-actions"><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Analyse…','Analyse Actions terminée',analyzeActionsHybridFromSettings)">Analyser les Actions</button><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Prévisualisation…','Prévisualisation Actions terminée',previewActionsMigrationFromSettings)" ${remoteReady ? "" : "disabled"}>Prévisualiser la migration</button>${actionsSyncIsEnabled() ? `<button class="danger" type="button" onclick="deactivateActionsHybridFromSettings()">Désactiver la synchronisation</button>` : `<button class="action" type="button" onclick="runDeosButtonTask(this,'Activation…','Synchronisation Actions activée',activateActionsHybridFromSettings)">Activer la synchronisation</button>`}<button class="secondary" type="button" onclick="runDeosButtonTask(this,'Synchronisation…','Synchronisation Actions terminée',syncActionsHybridFromSettings)" ${actionsSyncIsEnabled() ? "" : "disabled"}>Synchroniser maintenant</button><button class="secondary" type="button" onclick="showActionsConflictsFromSettings()" ${deosActionsSyncRuntime.conflictCount ? "" : "disabled"}>Voir les conflits</button><button class="secondary" type="button" onclick="previewExactActionDuplicatesFromSettings()" ${remoteReady ? "" : "disabled"}>Voir les doublons exacts</button><button class="danger" type="button" onclick="runDeosButtonTask(this,'Réparation…','Réparation des doublons Actions terminée',repairExactActionDuplicatesFromSettings)" ${actionsSyncIsEnabled() && remoteReady ? "" : "disabled"}>Réparer les doublons exacts</button></div>${!remoteReady ? `<div class="empty">Authentifiez-vous sur le workspace actif pour comparer les Actions locales et distantes.</div>` : ""}</section></div></div>`;
 }
 async function analyzeActionsHybridFromSettings() {
   return runActionsUiExclusive("analyze", async () => {
@@ -19111,35 +19111,35 @@ function projectsSyncCanInspectRemote() { return linksSyncCanInspectRemote() && 
 function projectsSyncCanUseRemote() { return projectsSyncIsEnabled() && projectsSyncCanInspectRemote(); }
 
 function normalizeProjectsSyncMetaEntry(value = {}) {
-  const source = value && typeof value === "object" && !Array.isArray(value) · value : {};
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return {
     clientId: String(source.clientId || "").trim(),
     remoteId: String(source.remoteId || "").trim(),
-    remoteVersion: Number.isInteger(Number(source.remoteVersion)) · Number(source.remoteVersion) : 0,
+    remoteVersion: Number.isInteger(Number(source.remoteVersion)) ? Number(source.remoteVersion) : 0,
     lastSyncedAt: String(source.lastSyncedAt || "").trim(),
     syncStatus: String(source.syncStatus || DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY).trim(),
     remoteUpdatedAt: String(source.remoteUpdatedAt || "").trim(),
     lastLocalFingerprint: String(source.lastLocalFingerprint || "").trim(),
     lastSyncError: String(source.lastSyncError || "").trim(),
-    conflictRemote: source.conflictRemote && typeof source.conflictRemote === "object" · source.conflictRemote : null,
+    conflictRemote: source.conflictRemote && typeof source.conflictRemote === "object" ? source.conflictRemote : null,
     conflictFields: ensureArray(source.conflictFields).map(String),
     deletePending: Boolean(source.deletePending)
   };
 }
 function normalizeProjectsSyncMetaMap(value = {}) {
-  const source = value && typeof value === "object" && !Array.isArray(value) · value : {};
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return Object.fromEntries(Object.entries(source).map(([key, entry]) => {
     const normalized = normalizeProjectsSyncMetaEntry({ ...(entry || {}), clientId: entry?.clientId || key });
-    return normalized.clientId · [normalized.clientId, normalized] : null;
+    return normalized.clientId ? [normalized.clientId, normalized] : null;
   }).filter(Boolean));
 }
 function normalizeProjectsSyncQueue(value = []) {
   return ensureArray(value).map(item => ({
-    operation: item?.operation === "delete" · "delete" : "upsert",
+    operation: item?.operation === "delete" ? "delete" : "upsert",
     clientId: String(item?.clientId || "").trim(),
     queuedAt: String(item?.queuedAt || "").trim(),
-    expectedVersion: Number.isInteger(Number(item?.expectedVersion)) · Number(item.expectedVersion) : 0,
-    attempts: Number.isInteger(Number(item?.attempts)) · Number(item.attempts) : 0,
+    expectedVersion: Number.isInteger(Number(item?.expectedVersion)) ? Number(item.expectedVersion) : 0,
+    attempts: Number.isInteger(Number(item?.attempts)) ? Number(item.attempts) : 0,
     lastError: String(item?.lastError || "").trim()
   })).filter(item => item.clientId);
 }
@@ -19171,7 +19171,7 @@ const DEOS_PROJECT_TECHNICAL_FIELDS = new Set([
 function canonicalProjectScalar(value) {
   if (value === null || value === undefined) return "";
   if (typeof value === "string") return value.trim();
-  if (typeof value === "number") return Number.isFinite(value) · value : 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   if (typeof value === "boolean") return value;
   return value;
 }
@@ -19197,7 +19197,7 @@ function canonicalProjectStructuredValue(value) {
 }
 
 function canonicalProjectBusinessData(project = {}) {
-  const source = project && typeof project === "object" && !Array.isArray(project) · project : {};
+  const source = project && typeof project === "object" && !Array.isArray(project) ? project : {};
   // normalizeEntity injecte les valeurs métier par défaut de DEOS : un champ absent
   // et sa valeur vide par défaut deviennent ainsi identiques avant comparaison.
   const normalizedProject = normalizeEntity("projects", { ...source });
@@ -19206,9 +19206,9 @@ function canonicalProjectBusinessData(project = {}) {
     if (DEOS_PROJECT_TECHNICAL_FIELDS.has(key) || key.startsWith("__") || key.startsWith("_sync")) continue;
     if (DEOS_PROJECT_RELATION_FIELDS.has(key)) {
       const ids = key === "linkedManagers" || key === "linkedManagerIds"
-        · normalizeLinkedManagerIds(ensureArray(rawValue))
+        ? normalizeLinkedManagerIds(ensureArray(rawValue))
         : normalizeLinkedIdArray(ensureArray(rawValue));
-      output[key === "linkedManagerIds" · "linkedManagers" : key] = [...new Set(ids.map(String).filter(Boolean))].sort();
+      output[key === "linkedManagerIds" ? "linkedManagers" : key] = [...new Set(ids.map(String).filter(Boolean))].sort();
       continue;
     }
     if (key === "progress") {
@@ -19289,11 +19289,11 @@ function getProjectsSyncShadowMap() {
 function resolveProjectNonDestructive(localProject = {}, remoteProject = {}, baseProject = null) {
   const localNormalized = normalizeEntity("projects", { ...(localProject || {}) });
   const remoteNormalized = normalizeEntity("projects", { ...(remoteProject || {}) });
-  const baseNormalized = baseProject · normalizeEntity("projects", { ...(baseProject || {}) }) : null;
+  const baseNormalized = baseProject ? normalizeEntity("projects", { ...(baseProject || {}) }) : null;
   const localCanonical = canonicalProjectBusinessData(localNormalized);
   const remoteCanonical = canonicalProjectBusinessData(remoteNormalized);
-  const baseCanonical = baseNormalized · canonicalProjectBusinessData(baseNormalized) : null;
-  const keys = [...new Set([...Object.keys(localCanonical), ...Object.keys(remoteCanonical), ...(baseCanonical · Object.keys(baseCanonical) : [])])];
+  const baseCanonical = baseNormalized ? canonicalProjectBusinessData(baseNormalized) : null;
+  const keys = [...new Set([...Object.keys(localCanonical), ...Object.keys(remoteCanonical), ...(baseCanonical ? Object.keys(baseCanonical) : [])])];
   const merged = { ...localNormalized };
   const conflictFields = [];
   const fromRemoteFields = [];
@@ -19302,13 +19302,13 @@ function resolveProjectNonDestructive(localProject = {}, remoteProject = {}, bas
   for (const key of keys) {
     const l = localCanonical[key];
     const r = remoteCanonical[key];
-    const b = baseCanonical · baseCanonical[key] : undefined;
+    const b = baseCanonical ? baseCanonical[key] : undefined;
     if (projectCanonicalValuesEqual(l, r)) continue;
 
     const lEmpty = projectCanonicalValueIsEmpty(l);
     const rEmpty = projectCanonicalValueIsEmpty(r);
-    const lEqualsBase = baseCanonical · projectCanonicalValuesEqual(l, b) : false;
-    const rEqualsBase = baseCanonical · projectCanonicalValuesEqual(r, b) : false;
+    const lEqualsBase = baseCanonical ? projectCanonicalValuesEqual(l, b) : false;
+    const rEqualsBase = baseCanonical ? projectCanonicalValuesEqual(r, b) : false;
 
     // Une valeur locale vide ou manifestement appauvrie ne doit jamais effacer une valeur distante riche.
     if ((lEmpty || projectValueLooksDegraded(l, r)) && !rEmpty) {
@@ -19355,11 +19355,11 @@ function projectConflictFields(localProject = {}, remoteProject = {}, baseProjec
   return resolveProjectNonDestructive(localProject, remoteProject, baseProject).conflictFields;
 }
 function refreshProjectsSyncRuntimeState(patch = {}) {
-  const metaByClientId = normalizeProjectsSyncMetaMap(patch.metaByClientId === undefined · deosProjectsSyncRuntime.metaByClientId : patch.metaByClientId);
+  const metaByClientId = normalizeProjectsSyncMetaMap(patch.metaByClientId === undefined ? deosProjectsSyncRuntime.metaByClientId : patch.metaByClientId);
   const localCount = ensureArray(state.projects).length;
   const conflictCount = Object.values(metaByClientId).filter(meta => meta.syncStatus === DEOS_LINKS_SYNC_STATUS.CONFLICT).length;
   const syncedCount = ensureArray(state.projects).filter(project => getProjectSyncMeta(project.id).syncStatus === DEOS_LINKS_SYNC_STATUS.SYNCED).length;
-  let nextState = projectsSyncIsEnabled() · DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY;
+  let nextState = projectsSyncIsEnabled() ? DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY;
   if (patch.state) nextState = patch.state;
   else if (conflictCount) nextState = DEOS_LINKS_SYNC_STATUS.CONFLICT;
   else if (patch.syncing || deosProjectsSyncRuntime.syncing) nextState = DEOS_LINKS_SYNC_STATUS.SYNCING;
@@ -19386,7 +19386,7 @@ function initializeProjectsHybridSync(options = {}) {
     metaByClientId: projectsSyncMetaRepository.load({}),
     queue: projectsSyncQueueRepository.load([])
   });
-  refreshProjectsSyncRuntimeState({ state: settings.enabled · DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY });
+  refreshProjectsSyncRuntimeState({ state: settings.enabled ? DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY });
   if (settings.enabled) restoreProjectsFromSyncShadowIfNeeded();
   // V5.23D — pendant le pilote Projets, aucune synchronisation automatique au démarrage.
   // Cela évite qu’un rechargement ou une restauration de session amplifie un état incohérent.
@@ -19447,7 +19447,7 @@ function setProjectsSyncUiBusy(busy) {
   if (!card) return;
   card.querySelectorAll("button").forEach(button => {
     if (busy) {
-      if (!button.dataset.deosProjectsWasDisabled) button.dataset.deosProjectsWasDisabled = button.disabled · "1" : "0";
+      if (!button.dataset.deosProjectsWasDisabled) button.dataset.deosProjectsWasDisabled = button.disabled ? "1" : "0";
       button.disabled = true;
       button.setAttribute("aria-busy", "true");
     } else {
@@ -19486,14 +19486,14 @@ async function runProjectsUiExclusive(kind, task) {
 }
 
 async function analyzeProjectsHybridState() {
-  const remoteRows = projectsSyncCanInspectRemote() · await withProjectsRemoteTimeout(deosRemoteAdapter.listProjects(), "Lecture des Projets distants") : [];
+  const remoteRows = projectsSyncCanInspectRemote() ? await withProjectsRemoteTimeout(deosRemoteAdapter.listProjects(), "Lecture des Projets distants") : [];
   const analysis = buildProjectsRemotePreview(state.projects, remoteRows);
   refreshProjectsSyncRuntimeState({ remoteCount: analysis.remoteCount, lastValidRemoteCount: analysis.remoteCount, lastAnalysisAt: analysis.generatedAt, lastAnalysis: analysis, lastError: "" });
   return analysis;
 }
 async function activateProjectsHybridSync() {
   setProjectsSyncSettings({ enabled: true, activatedAt: new Date().toISOString(), lastMode: "activated" });
-  refreshProjectsSyncRuntimeState({ state: navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY, lastError: "" });
+  refreshProjectsSyncRuntimeState({ state: navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY, lastError: "" });
   return deosProjectsSyncRuntime;
 }
 function deactivateProjectsHybridSync() {
@@ -19505,7 +19505,7 @@ async function syncProjectsHybridNow(options = {}) {
   if (deosProjectsSyncRuntime.syncing) return deosProjectsSyncRuntime;
   if (!projectsSyncIsEnabled()) { refreshProjectsSyncRuntimeState({ state: DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY, lastError: "" }); return deosProjectsSyncRuntime; }
   if (!projectsSyncCanUseRemote()) {
-    refreshProjectsSyncRuntimeState({ state: navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR, lastError: navigator.onLine === false · "Le navigateur est hors ligne." : "Connexion distante Projets indisponible." });
+    refreshProjectsSyncRuntimeState({ state: navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR, lastError: navigator.onLine === false ? "Le navigateur est hors ligne." : "Connexion distante Projets indisponible." });
     return deosProjectsSyncRuntime;
   }
   refreshProjectsSyncRuntimeState({ syncing: true, state: DEOS_LINKS_SYNC_STATUS.SYNCING, lastError: "" });
@@ -19625,9 +19625,9 @@ async function syncProjectsHybridNow(options = {}) {
       throw new Error(`PERSISTENCE_MANAGERS_INCOMPLETE — ${state.projects.length} Projet(s) en mémoire mais ${persistedProjects.length} relu(s) dans le stockage local.`);
     }
     const analysis = buildProjectsRemotePreview(state.projects, await withProjectsRemoteTimeout(deosRemoteAdapter.listProjects(), "Analyse finale des Projets"));
-    refreshProjectsSyncRuntimeState({ syncing: false, remoteCount: analysis.remoteCount, lastValidRemoteCount: analysis.remoteCount, lastAnalysis: analysis, lastAnalysisAt: analysis.generatedAt, lastSyncAt: new Date().toLocaleString("fr-FR"), lastError: "", state: analysis.conflicts.length · DEOS_LINKS_SYNC_STATUS.CONFLICT : DEOS_LINKS_SYNC_STATUS.SYNCED });
+    refreshProjectsSyncRuntimeState({ syncing: false, remoteCount: analysis.remoteCount, lastValidRemoteCount: analysis.remoteCount, lastAnalysis: analysis, lastAnalysisAt: analysis.generatedAt, lastSyncAt: new Date().toLocaleString("fr-FR"), lastError: "", state: analysis.conflicts.length ? DEOS_LINKS_SYNC_STATUS.CONFLICT : DEOS_LINKS_SYNC_STATUS.SYNCED });
   } catch (error) {
-    refreshProjectsSyncRuntimeState({ syncing: false, remoteCount: Number(deosProjectsSyncRuntime.lastValidRemoteCount || deosProjectsSyncRuntime.remoteCount || 0), state: navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR, lastError: error?.message || "Synchronisation Projets impossible." });
+    refreshProjectsSyncRuntimeState({ syncing: false, remoteCount: Number(deosProjectsSyncRuntime.lastValidRemoteCount || deosProjectsSyncRuntime.remoteCount || 0), state: navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR, lastError: error?.message || "Synchronisation Projets impossible." });
     console.error("[DEOS V5.23B PROJECTS SYNC]", error);
   }
   if (!options.silent && currentView === "settings") renderSettings(deosProjectsSyncRuntime.lastError || "Synchronisation Projets actualisée.");
@@ -19703,7 +19703,7 @@ async function repairExactProjectDuplicatesFromSettings() {
     }
     if (localChanged) persist("projects");
     const finalAnalysis = await analyzeProjectsHybridState();
-    refreshProjectsSyncRuntimeState({ syncing: false, remoteCount: finalAnalysis.remoteCount, lastValidRemoteCount: finalAnalysis.remoteCount, lastAnalysis: finalAnalysis, lastAnalysisAt: finalAnalysis.generatedAt, lastSyncAt: new Date().toLocaleString("fr-FR"), lastError: "", state: finalAnalysis.duplicateCandidates.length · DEOS_LINKS_SYNC_STATUS.ERROR : DEOS_LINKS_SYNC_STATUS.SYNC_READY });
+    refreshProjectsSyncRuntimeState({ syncing: false, remoteCount: finalAnalysis.remoteCount, lastValidRemoteCount: finalAnalysis.remoteCount, lastAnalysis: finalAnalysis, lastAnalysisAt: finalAnalysis.generatedAt, lastSyncAt: new Date().toLocaleString("fr-FR"), lastError: "", state: finalAnalysis.duplicateCandidates.length ? DEOS_LINKS_SYNC_STATUS.ERROR : DEOS_LINKS_SYNC_STATUS.SYNC_READY });
     renderSettings(`Réparation terminée : ${repairedRemote} doublon(s) distant(s) supprimé(s) logiquement, ${repairedLocal} doublon(s) local(aux) retiré(s).`);
   } catch (error) {
     refreshProjectsSyncRuntimeState({ syncing: false, state: DEOS_LINKS_SYNC_STATUS.ERROR, lastError: error?.message || "Réparation des doublons Projets impossible." });
@@ -19715,7 +19715,7 @@ function renderProjectsHybridSettingsCardHtml() {
   const remoteReady = projectsSyncCanInspectRemote();
   const analysis = deosProjectsSyncRuntime.lastAnalysis;
   const warning = "Managers, Documents, Agenda, Google Calendar, Performance, Dossiers, Projets, Décisions et Journal restent strictement locaux. Les Liens conservent leur pilote séparé.";
-  return `<div id="projectsHybridSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation pilote — Projets</h2><p class="muted">Pilote V5.24B séparé des Liens et des Actions, avec lecture distante Projets via RPC dédiée, verrou Safari/iPad, garde anti-doublon et retour visuel immédiat des opérations. Aucune autre donnée métier n'est envoyée.</p></div><span class="remote-mode-badge ${projectsSyncStatusClass()}">${esc(projectsSyncStatusLabel())}</span></div><div class="settings-warning-box"><strong>Protection des données</strong><p>${esc(warning)}</p></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État pilote</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>État</strong><span>${esc(projectsSyncStatusLabel())}</span></div><div class="settings-calendar-summary-item"><strong>Projets locaux</strong><span>${esc(String(state.projects.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Projets distants</strong><span>${esc(String(deosProjectsSyncRuntime.remoteCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>En attente</strong><span>${esc(String(deosProjectsSyncRuntime.pendingCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchronisation</strong><span>${esc(deosProjectsSyncRuntime.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière erreur</strong><span>${esc(deosProjectsSyncRuntime.lastError || "Aucune")}</span></div><div class="settings-calendar-summary-item"><strong>Appareil courant</strong><span>${esc(deosProjectsSyncRuntime.currentDevice || "Navigateur courant")}</span></div></div>${analysis · `<p class="muted">Dernière analyse: ${esc(analysis.generatedAt || "")}</p>` : `<p class="muted">Aucune analyse de migration exécutée.</p>`}</section><section class="settings-card-block"><h3>Projets</h3><p class="muted">Désactivé par défaut. L'analyse et la prévisualisation sont en lecture seule.</p><div class="row-actions"><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Analyse…','Analyse Projets terminée',analyzeProjectsHybridFromSettings)">Analyser les Projets</button><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Prévisualisation…','Prévisualisation Projets terminée',previewProjectsMigrationFromSettings)" ${remoteReady · "" : "disabled"}>Prévisualiser la migration</button>${projectsSyncIsEnabled() · `<button class="danger" type="button" onclick="deactivateProjectsHybridFromSettings()">Désactiver la synchronisation</button>` : `<button class="action" type="button" onclick="runDeosButtonTask(this,'Activation…','Synchronisation Projets activée',activateProjectsHybridFromSettings)">Activer la synchronisation</button>`}<button class="secondary" type="button" onclick="runDeosButtonTask(this,'Synchronisation…','Synchronisation Projets terminée',syncProjectsHybridFromSettings)" ${projectsSyncIsEnabled() · "" : "disabled"}>Synchroniser maintenant</button><button class="secondary" type="button" onclick="showProjectsConflictsFromSettings()" ${deosProjectsSyncRuntime.conflictCount · "" : "disabled"}>Voir les conflits</button><button class="secondary" type="button" onclick="previewExactProjectDuplicatesFromSettings()" ${remoteReady · "" : "disabled"}>Voir les doublons exacts</button><button class="danger" type="button" onclick="runDeosButtonTask(this,'Réparation…','Réparation des doublons Projets terminée',repairExactProjectDuplicatesFromSettings)" ${projectsSyncIsEnabled() && analysis?.duplicateCandidates?.length · "" : "disabled"}>Réparer les doublons exacts</button></div>${!remoteReady · `<div class="empty">Authentifiez-vous sur le workspace actif pour comparer les Projets locaux et distants.</div>` : ""}</section></div></div>`;
+  return `<div id="projectsHybridSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation pilote — Projets</h2><p class="muted">Pilote V5.24B séparé des Liens et des Actions, avec lecture distante Projets via RPC dédiée, verrou Safari/iPad, garde anti-doublon et retour visuel immédiat des opérations. Aucune autre donnée métier n'est envoyée.</p></div><span class="remote-mode-badge ${projectsSyncStatusClass()}">${esc(projectsSyncStatusLabel())}</span></div><div class="settings-warning-box"><strong>Protection des données</strong><p>${esc(warning)}</p></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État pilote</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>État</strong><span>${esc(projectsSyncStatusLabel())}</span></div><div class="settings-calendar-summary-item"><strong>Projets locaux</strong><span>${esc(String(state.projects.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Projets distants</strong><span>${esc(String(deosProjectsSyncRuntime.remoteCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>En attente</strong><span>${esc(String(deosProjectsSyncRuntime.pendingCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchronisation</strong><span>${esc(deosProjectsSyncRuntime.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière erreur</strong><span>${esc(deosProjectsSyncRuntime.lastError || "Aucune")}</span></div><div class="settings-calendar-summary-item"><strong>Appareil courant</strong><span>${esc(deosProjectsSyncRuntime.currentDevice || "Navigateur courant")}</span></div></div>${analysis ? `<p class="muted">Dernière analyse: ${esc(analysis.generatedAt || "")}</p>` : `<p class="muted">Aucune analyse de migration exécutée.</p>`}</section><section class="settings-card-block"><h3>Projets</h3><p class="muted">Désactivé par défaut. L'analyse et la prévisualisation sont en lecture seule.</p><div class="row-actions"><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Analyse…','Analyse Projets terminée',analyzeProjectsHybridFromSettings)">Analyser les Projets</button><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Prévisualisation…','Prévisualisation Projets terminée',previewProjectsMigrationFromSettings)" ${remoteReady ? "" : "disabled"}>Prévisualiser la migration</button>${projectsSyncIsEnabled() ? `<button class="danger" type="button" onclick="deactivateProjectsHybridFromSettings()">Désactiver la synchronisation</button>` : `<button class="action" type="button" onclick="runDeosButtonTask(this,'Activation…','Synchronisation Projets activée',activateProjectsHybridFromSettings)">Activer la synchronisation</button>`}<button class="secondary" type="button" onclick="runDeosButtonTask(this,'Synchronisation…','Synchronisation Projets terminée',syncProjectsHybridFromSettings)" ${projectsSyncIsEnabled() ? "" : "disabled"}>Synchroniser maintenant</button><button class="secondary" type="button" onclick="showProjectsConflictsFromSettings()" ${deosProjectsSyncRuntime.conflictCount ? "" : "disabled"}>Voir les conflits</button><button class="secondary" type="button" onclick="previewExactProjectDuplicatesFromSettings()" ${remoteReady ? "" : "disabled"}>Voir les doublons exacts</button><button class="danger" type="button" onclick="runDeosButtonTask(this,'Réparation…','Réparation des doublons Projets terminée',repairExactProjectDuplicatesFromSettings)" ${projectsSyncIsEnabled() && analysis?.duplicateCandidates?.length ? "" : "disabled"}>Réparer les doublons exacts</button></div>${!remoteReady ? `<div class="empty">Authentifiez-vous sur le workspace actif pour comparer les Projets locaux et distants.</div>` : ""}</section></div></div>`;
 }
 async function analyzeProjectsHybridFromSettings() {
   return runProjectsUiExclusive("analyze", async () => {
@@ -19770,7 +19770,7 @@ function buildProjectConflictDiagnostic(meta = {}) {
     const remoteValue = remoteCanonical[field];
     return `${field}\n  LOCAL   : ${projectConflictDiagnosticValue(localValue)}\n  DISTANT : ${projectConflictDiagnosticValue(remoteValue)}`;
   });
-  return `${title} [${clientId}]\n${rows.length · rows.join("\n") : "Aucune différence métier après canonicalisation."}`;
+  return `${title} [${clientId}]\n${rows.length ? rows.join("\n") : "Aucune différence métier après canonicalisation."}`;
 }
 function showProjectsConflictsFromSettings() {
   const conflicts = Object.values(deosProjectsSyncRuntime.metaByClientId || {}).filter(meta => meta.syncStatus === DEOS_LINKS_SYNC_STATUS.CONFLICT);
@@ -19844,35 +19844,35 @@ function foldersSyncCanInspectRemote() { return linksSyncCanInspectRemote() && d
 function foldersSyncCanUseRemote() { return foldersSyncIsEnabled() && foldersSyncCanInspectRemote(); }
 
 function normalizeFoldersSyncMetaEntry(value = {}) {
-  const source = value && typeof value === "object" && !Array.isArray(value) · value : {};
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return {
     clientId: String(source.clientId || "").trim(),
     remoteId: String(source.remoteId || "").trim(),
-    remoteVersion: Number.isInteger(Number(source.remoteVersion)) · Number(source.remoteVersion) : 0,
+    remoteVersion: Number.isInteger(Number(source.remoteVersion)) ? Number(source.remoteVersion) : 0,
     lastSyncedAt: String(source.lastSyncedAt || "").trim(),
     syncStatus: String(source.syncStatus || DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY).trim(),
     remoteUpdatedAt: String(source.remoteUpdatedAt || "").trim(),
     lastLocalFingerprint: String(source.lastLocalFingerprint || "").trim(),
     lastSyncError: String(source.lastSyncError || "").trim(),
-    conflictRemote: source.conflictRemote && typeof source.conflictRemote === "object" · source.conflictRemote : null,
+    conflictRemote: source.conflictRemote && typeof source.conflictRemote === "object" ? source.conflictRemote : null,
     conflictFields: ensureArray(source.conflictFields).map(String),
     deletePending: Boolean(source.deletePending)
   };
 }
 function normalizeFoldersSyncMetaMap(value = {}) {
-  const source = value && typeof value === "object" && !Array.isArray(value) · value : {};
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return Object.fromEntries(Object.entries(source).map(([key, entry]) => {
     const normalized = normalizeFoldersSyncMetaEntry({ ...(entry || {}), clientId: entry?.clientId || key });
-    return normalized.clientId · [normalized.clientId, normalized] : null;
+    return normalized.clientId ? [normalized.clientId, normalized] : null;
   }).filter(Boolean));
 }
 function normalizeFoldersSyncQueue(value = []) {
   return ensureArray(value).map(item => ({
-    operation: item?.operation === "delete" · "delete" : "upsert",
+    operation: item?.operation === "delete" ? "delete" : "upsert",
     clientId: String(item?.clientId || "").trim(),
     queuedAt: String(item?.queuedAt || "").trim(),
-    expectedVersion: Number.isInteger(Number(item?.expectedVersion)) · Number(item.expectedVersion) : 0,
-    attempts: Number.isInteger(Number(item?.attempts)) · Number(item.attempts) : 0,
+    expectedVersion: Number.isInteger(Number(item?.expectedVersion)) ? Number(item.expectedVersion) : 0,
+    attempts: Number.isInteger(Number(item?.attempts)) ? Number(item.attempts) : 0,
     lastError: String(item?.lastError || "").trim()
   })).filter(item => item.clientId);
 }
@@ -19904,7 +19904,7 @@ const DEOS_FOLDER_TECHNICAL_FIELDS = new Set([
 function canonicalFolderScalar(value) {
   if (value === null || value === undefined) return "";
   if (typeof value === "string") return value.trim();
-  if (typeof value === "number") return Number.isFinite(value) · value : 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   if (typeof value === "boolean") return value;
   return value;
 }
@@ -19930,7 +19930,7 @@ function canonicalFolderStructuredValue(value) {
 }
 
 function canonicalFolderBusinessData(folder = {}) {
-  const source = folder && typeof folder === "object" && !Array.isArray(folder) · folder : {};
+  const source = folder && typeof folder === "object" && !Array.isArray(folder) ? folder : {};
   // normalizeEntity injecte les valeurs métier par défaut de DEOS : un champ absent
   // et sa valeur vide par défaut deviennent ainsi identiques avant comparaison.
   const normalizedFolder = normalizeEntity("folders", { ...source });
@@ -19939,9 +19939,9 @@ function canonicalFolderBusinessData(folder = {}) {
     if (DEOS_FOLDER_TECHNICAL_FIELDS.has(key) || key.startsWith("__") || key.startsWith("_sync")) continue;
     if (DEOS_FOLDER_RELATION_FIELDS.has(key)) {
       const ids = key === "linkedManagers" || key === "linkedManagerIds"
-        · normalizeLinkedManagerIds(ensureArray(rawValue))
+        ? normalizeLinkedManagerIds(ensureArray(rawValue))
         : normalizeLinkedIdArray(ensureArray(rawValue));
-      output[key === "linkedManagerIds" · "linkedManagers" : key] = [...new Set(ids.map(String).filter(Boolean))].sort();
+      output[key === "linkedManagerIds" ? "linkedManagers" : key] = [...new Set(ids.map(String).filter(Boolean))].sort();
       continue;
     }
     if (key === "progress") {
@@ -20022,11 +20022,11 @@ function getFoldersSyncShadowMap() {
 function resolveFolderNonDestructive(localFolder = {}, remoteFolder = {}, baseFolder = null) {
   const localNormalized = normalizeEntity("folders", { ...(localFolder || {}) });
   const remoteNormalized = normalizeEntity("folders", { ...(remoteFolder || {}) });
-  const baseNormalized = baseFolder · normalizeEntity("folders", { ...(baseFolder || {}) }) : null;
+  const baseNormalized = baseFolder ? normalizeEntity("folders", { ...(baseFolder || {}) }) : null;
   const localCanonical = canonicalFolderBusinessData(localNormalized);
   const remoteCanonical = canonicalFolderBusinessData(remoteNormalized);
-  const baseCanonical = baseNormalized · canonicalFolderBusinessData(baseNormalized) : null;
-  const keys = [...new Set([...Object.keys(localCanonical), ...Object.keys(remoteCanonical), ...(baseCanonical · Object.keys(baseCanonical) : [])])];
+  const baseCanonical = baseNormalized ? canonicalFolderBusinessData(baseNormalized) : null;
+  const keys = [...new Set([...Object.keys(localCanonical), ...Object.keys(remoteCanonical), ...(baseCanonical ? Object.keys(baseCanonical) : [])])];
   const merged = { ...localNormalized };
   const conflictFields = [];
   const fromRemoteFields = [];
@@ -20035,13 +20035,13 @@ function resolveFolderNonDestructive(localFolder = {}, remoteFolder = {}, baseFo
   for (const key of keys) {
     const l = localCanonical[key];
     const r = remoteCanonical[key];
-    const b = baseCanonical · baseCanonical[key] : undefined;
+    const b = baseCanonical ? baseCanonical[key] : undefined;
     if (folderCanonicalValuesEqual(l, r)) continue;
 
     const lEmpty = folderCanonicalValueIsEmpty(l);
     const rEmpty = folderCanonicalValueIsEmpty(r);
-    const lEqualsBase = baseCanonical · folderCanonicalValuesEqual(l, b) : false;
-    const rEqualsBase = baseCanonical · folderCanonicalValuesEqual(r, b) : false;
+    const lEqualsBase = baseCanonical ? folderCanonicalValuesEqual(l, b) : false;
+    const rEqualsBase = baseCanonical ? folderCanonicalValuesEqual(r, b) : false;
 
     // Une valeur locale vide ou manifestement appauvrie ne doit jamais effacer une valeur distante riche.
     if ((lEmpty || folderValueLooksDegraded(l, r)) && !rEmpty) {
@@ -20088,11 +20088,11 @@ function folderConflictFields(localFolder = {}, remoteFolder = {}, baseFolder = 
   return resolveFolderNonDestructive(localFolder, remoteFolder, baseFolder).conflictFields;
 }
 function refreshFoldersSyncRuntimeState(patch = {}) {
-  const metaByClientId = normalizeFoldersSyncMetaMap(patch.metaByClientId === undefined · deosFoldersSyncRuntime.metaByClientId : patch.metaByClientId);
+  const metaByClientId = normalizeFoldersSyncMetaMap(patch.metaByClientId === undefined ? deosFoldersSyncRuntime.metaByClientId : patch.metaByClientId);
   const localCount = ensureArray(state.folders).length;
   const conflictCount = Object.values(metaByClientId).filter(meta => meta.syncStatus === DEOS_LINKS_SYNC_STATUS.CONFLICT).length;
   const syncedCount = ensureArray(state.folders).filter(folder => getFolderSyncMeta(folder.id).syncStatus === DEOS_LINKS_SYNC_STATUS.SYNCED).length;
-  let nextState = foldersSyncIsEnabled() · DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY;
+  let nextState = foldersSyncIsEnabled() ? DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY;
   if (patch.state) nextState = patch.state;
   else if (conflictCount) nextState = DEOS_LINKS_SYNC_STATUS.CONFLICT;
   else if (patch.syncing || deosFoldersSyncRuntime.syncing) nextState = DEOS_LINKS_SYNC_STATUS.SYNCING;
@@ -20119,7 +20119,7 @@ function initializeFoldersHybridSync(options = {}) {
     metaByClientId: foldersSyncMetaRepository.load({}),
     queue: foldersSyncQueueRepository.load([])
   });
-  refreshFoldersSyncRuntimeState({ state: settings.enabled · DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY });
+  refreshFoldersSyncRuntimeState({ state: settings.enabled ? DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY });
   if (settings.enabled) restoreFoldersFromSyncShadowIfNeeded();
   // V5.24B — pendant le pilote Dossiers, aucune synchronisation automatique au démarrage.
   // Cela évite qu’un rechargement ou une restauration de session amplifie un état incohérent.
@@ -20168,7 +20168,7 @@ function buildFoldersRemotePreview(localFolders, remoteRows) {
   // Si Safari/iPad renvoie malgré tout une longueur `both` incohérente, on l'expose en diagnostic console.
   const matchedCount = Math.max(0, locals.length - localOnly.length);
   const analysisConsistencyWarning = matchedCount !== both.length
-    · `Compteur détaillé incohérent : both.length=${both.length}, compteur fonctionnel=${matchedCount}.`
+    ? `Compteur détaillé incohérent : both.length=${both.length}, compteur fonctionnel=${matchedCount}.`
     : "";
   if (analysisConsistencyWarning) {
     console.warn("[DEOS V5.24D FOLDERS ANALYSIS]", analysisConsistencyWarning, {
@@ -20195,7 +20195,7 @@ function setFoldersSyncUiBusy(busy) {
   if (!card) return;
   card.querySelectorAll("button").forEach(button => {
     if (busy) {
-      if (!button.dataset.deosFoldersWasDisabled) button.dataset.deosFoldersWasDisabled = button.disabled · "1" : "0";
+      if (!button.dataset.deosFoldersWasDisabled) button.dataset.deosFoldersWasDisabled = button.disabled ? "1" : "0";
       button.disabled = true;
       button.setAttribute("aria-busy", "true");
     } else {
@@ -20234,14 +20234,14 @@ async function runFoldersUiExclusive(kind, task) {
 }
 
 async function analyzeFoldersHybridState() {
-  const remoteRows = foldersSyncCanInspectRemote() · await withFoldersRemoteTimeout(deosRemoteAdapter.listFolders(), "Lecture des Dossiers distants") : [];
+  const remoteRows = foldersSyncCanInspectRemote() ? await withFoldersRemoteTimeout(deosRemoteAdapter.listFolders(), "Lecture des Dossiers distants") : [];
   const analysis = buildFoldersRemotePreview(state.folders, remoteRows);
   refreshFoldersSyncRuntimeState({ remoteCount: analysis.remoteCount, lastValidRemoteCount: analysis.remoteCount, lastAnalysisAt: analysis.generatedAt, lastAnalysis: analysis, lastError: "" });
   return analysis;
 }
 async function activateFoldersHybridSync() {
   setFoldersSyncSettings({ enabled: true, activatedAt: new Date().toISOString(), lastMode: "activated" });
-  refreshFoldersSyncRuntimeState({ state: navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY, lastError: "" });
+  refreshFoldersSyncRuntimeState({ state: navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY, lastError: "" });
   return deosFoldersSyncRuntime;
 }
 function deactivateFoldersHybridSync() {
@@ -20253,7 +20253,7 @@ async function syncFoldersHybridNow(options = {}) {
   if (deosFoldersSyncRuntime.syncing) return deosFoldersSyncRuntime;
   if (!foldersSyncIsEnabled()) { refreshFoldersSyncRuntimeState({ state: DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY, lastError: "" }); return deosFoldersSyncRuntime; }
   if (!foldersSyncCanUseRemote()) {
-    refreshFoldersSyncRuntimeState({ state: navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR, lastError: navigator.onLine === false · "Le navigateur est hors ligne." : "Connexion distante Dossiers indisponible." });
+    refreshFoldersSyncRuntimeState({ state: navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR, lastError: navigator.onLine === false ? "Le navigateur est hors ligne." : "Connexion distante Dossiers indisponible." });
     return deosFoldersSyncRuntime;
   }
   refreshFoldersSyncRuntimeState({ syncing: true, state: DEOS_LINKS_SYNC_STATUS.SYNCING, lastError: "" });
@@ -20373,9 +20373,9 @@ async function syncFoldersHybridNow(options = {}) {
       throw new Error(`PERSISTENCE_MANAGERS_INCOMPLETE — ${state.folders.length} Dossier(s) en mémoire mais ${persistedFolders.length} relu(s) dans le stockage local.`);
     }
     const analysis = buildFoldersRemotePreview(state.folders, await withFoldersRemoteTimeout(deosRemoteAdapter.listFolders(), "Analyse finale des Dossiers"));
-    refreshFoldersSyncRuntimeState({ syncing: false, remoteCount: analysis.remoteCount, lastValidRemoteCount: analysis.remoteCount, lastAnalysis: analysis, lastAnalysisAt: analysis.generatedAt, lastSyncAt: new Date().toLocaleString("fr-FR"), lastError: "", state: analysis.conflicts.length · DEOS_LINKS_SYNC_STATUS.CONFLICT : DEOS_LINKS_SYNC_STATUS.SYNCED });
+    refreshFoldersSyncRuntimeState({ syncing: false, remoteCount: analysis.remoteCount, lastValidRemoteCount: analysis.remoteCount, lastAnalysis: analysis, lastAnalysisAt: analysis.generatedAt, lastSyncAt: new Date().toLocaleString("fr-FR"), lastError: "", state: analysis.conflicts.length ? DEOS_LINKS_SYNC_STATUS.CONFLICT : DEOS_LINKS_SYNC_STATUS.SYNCED });
   } catch (error) {
-    refreshFoldersSyncRuntimeState({ syncing: false, remoteCount: Number(deosFoldersSyncRuntime.lastValidRemoteCount || deosFoldersSyncRuntime.remoteCount || 0), state: navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR, lastError: error?.message || "Synchronisation Dossiers impossible." });
+    refreshFoldersSyncRuntimeState({ syncing: false, remoteCount: Number(deosFoldersSyncRuntime.lastValidRemoteCount || deosFoldersSyncRuntime.remoteCount || 0), state: navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR, lastError: error?.message || "Synchronisation Dossiers impossible." });
     console.error("[DEOS V5.24B PROJECTS SYNC]", error);
   }
   if (!options.silent && currentView === "settings") renderSettings(deosFoldersSyncRuntime.lastError || "Synchronisation Dossiers actualisée.");
@@ -20451,7 +20451,7 @@ async function repairExactFolderDuplicatesFromSettings() {
     }
     if (localChanged) persist("folders");
     const finalAnalysis = await analyzeFoldersHybridState();
-    refreshFoldersSyncRuntimeState({ syncing: false, remoteCount: finalAnalysis.remoteCount, lastValidRemoteCount: finalAnalysis.remoteCount, lastAnalysis: finalAnalysis, lastAnalysisAt: finalAnalysis.generatedAt, lastSyncAt: new Date().toLocaleString("fr-FR"), lastError: "", state: finalAnalysis.duplicateCandidates.length · DEOS_LINKS_SYNC_STATUS.ERROR : DEOS_LINKS_SYNC_STATUS.SYNC_READY });
+    refreshFoldersSyncRuntimeState({ syncing: false, remoteCount: finalAnalysis.remoteCount, lastValidRemoteCount: finalAnalysis.remoteCount, lastAnalysis: finalAnalysis, lastAnalysisAt: finalAnalysis.generatedAt, lastSyncAt: new Date().toLocaleString("fr-FR"), lastError: "", state: finalAnalysis.duplicateCandidates.length ? DEOS_LINKS_SYNC_STATUS.ERROR : DEOS_LINKS_SYNC_STATUS.SYNC_READY });
     renderSettings(`Réparation terminée : ${repairedRemote} doublon(s) distant(s) supprimé(s) logiquement, ${repairedLocal} doublon(s) local(aux) retiré(s).`);
   } catch (error) {
     refreshFoldersSyncRuntimeState({ syncing: false, state: DEOS_LINKS_SYNC_STATUS.ERROR, lastError: error?.message || "Réparation des doublons Dossiers impossible." });
@@ -20481,13 +20481,13 @@ function renderFoldersHybridSettingsCardHtml() {
   const remoteReady = foldersSyncCanInspectRemote();
   const analysis = deosFoldersSyncRuntime.lastAnalysis;
   const warning = "Managers, Documents, Agenda, Google Calendar, Performance, Projets, Dossiers, Décisions et Journal restent strictement locaux. Les Liens conservent leur pilote séparé.";
-  return `<div id="foldersHybridSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation pilote — Dossiers</h2><p class="muted">Pilote V5.24D séparé des Liens et des Actions, avec lecture distante Dossiers via RPC dédiée, verrou Safari/iPad, garde anti-doublon et retour visuel immédiat des opérations. Aucune autre donnée métier n'est envoyée.</p></div><span class="remote-mode-badge ${foldersSyncStatusClass()}">${esc(foldersSyncStatusLabel())}</span></div><div class="settings-warning-box"><strong>Protection des données</strong><p>${esc(warning)}</p></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État pilote</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>État</strong><span>${esc(foldersSyncStatusLabel())}</span></div><div class="settings-calendar-summary-item"><strong>Dossiers locaux</strong><span>${esc(String(state.folders.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Dossiers distants</strong><span>${esc(String(deosFoldersSyncRuntime.remoteCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>En attente</strong><span>${esc(String(deosFoldersSyncRuntime.pendingCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchronisation</strong><span>${esc(deosFoldersSyncRuntime.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière erreur</strong><span>${esc(deosFoldersSyncRuntime.lastError || "Aucune")}</span></div><div class="settings-calendar-summary-item"><strong>Appareil courant</strong><span>${esc(deosFoldersSyncRuntime.currentDevice || "Navigateur courant")}</span></div></div>${analysis · `<p class="muted">Dernière analyse: ${esc(analysis.generatedAt || "")}</p>` : `<p class="muted">Aucune analyse de migration exécutée.</p>`}</section><section class="settings-card-block"><h3>Dossiers</h3><p class="muted">Désactivé par défaut. L'analyse et la prévisualisation sont en lecture seule.</p><div class="row-actions"><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Analyse…','Analyse Dossiers terminée',analyzeFoldersHybridFromSettings)">Analyser les Dossiers</button><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Prévisualisation…','Prévisualisation Dossiers terminée',previewFoldersMigrationFromSettings)" ${remoteReady · "" : "disabled"}>Prévisualiser la migration</button>${foldersSyncIsEnabled() · `<button class="danger" type="button" onclick="deactivateFoldersHybridFromSettings()">Désactiver la synchronisation</button>` : `<button class="action" type="button" onclick="runDeosButtonTask(this,'Activation…','Synchronisation Dossiers activée',activateFoldersHybridFromSettings)">Activer la synchronisation</button>`}<button class="secondary" type="button" onclick="runDeosButtonTask(this,'Synchronisation…','Synchronisation Dossiers terminée',syncFoldersHybridFromSettings)" ${foldersSyncIsEnabled() · "" : "disabled"}>Synchroniser maintenant</button><button class="secondary" type="button" onclick="showFoldersConflictsFromSettings()" ${deosFoldersSyncRuntime.conflictCount · "" : "disabled"}>Voir les conflits</button><button class="secondary" type="button" onclick="previewExactFolderDuplicatesFromSettings()" ${remoteReady · "" : "disabled"}>Voir les doublons exacts</button><button class="danger" type="button" onclick="runDeosButtonTask(this,'Réparation…','Réparation des doublons Dossiers terminée',repairExactFolderDuplicatesFromSettings)" ${foldersSyncIsEnabled() && analysis?.duplicateCandidates?.length · "" : "disabled"}>Réparer les doublons exacts</button></div>${!remoteReady · `<div class="empty">Authentifiez-vous sur le workspace actif pour comparer les Dossiers locaux et distants.</div>` : ""}</section></div></div>`;
+  return `<div id="foldersHybridSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation pilote — Dossiers</h2><p class="muted">Pilote V5.24D séparé des Liens et des Actions, avec lecture distante Dossiers via RPC dédiée, verrou Safari/iPad, garde anti-doublon et retour visuel immédiat des opérations. Aucune autre donnée métier n'est envoyée.</p></div><span class="remote-mode-badge ${foldersSyncStatusClass()}">${esc(foldersSyncStatusLabel())}</span></div><div class="settings-warning-box"><strong>Protection des données</strong><p>${esc(warning)}</p></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État pilote</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>État</strong><span>${esc(foldersSyncStatusLabel())}</span></div><div class="settings-calendar-summary-item"><strong>Dossiers locaux</strong><span>${esc(String(state.folders.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Dossiers distants</strong><span>${esc(String(deosFoldersSyncRuntime.remoteCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>En attente</strong><span>${esc(String(deosFoldersSyncRuntime.pendingCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchronisation</strong><span>${esc(deosFoldersSyncRuntime.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière erreur</strong><span>${esc(deosFoldersSyncRuntime.lastError || "Aucune")}</span></div><div class="settings-calendar-summary-item"><strong>Appareil courant</strong><span>${esc(deosFoldersSyncRuntime.currentDevice || "Navigateur courant")}</span></div></div>${analysis ? `<p class="muted">Dernière analyse: ${esc(analysis.generatedAt || "")}</p>` : `<p class="muted">Aucune analyse de migration exécutée.</p>`}</section><section class="settings-card-block"><h3>Dossiers</h3><p class="muted">Désactivé par défaut. L'analyse et la prévisualisation sont en lecture seule.</p><div class="row-actions"><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Analyse…','Analyse Dossiers terminée',analyzeFoldersHybridFromSettings)">Analyser les Dossiers</button><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Prévisualisation…','Prévisualisation Dossiers terminée',previewFoldersMigrationFromSettings)" ${remoteReady ? "" : "disabled"}>Prévisualiser la migration</button>${foldersSyncIsEnabled() ? `<button class="danger" type="button" onclick="deactivateFoldersHybridFromSettings()">Désactiver la synchronisation</button>` : `<button class="action" type="button" onclick="runDeosButtonTask(this,'Activation…','Synchronisation Dossiers activée',activateFoldersHybridFromSettings)">Activer la synchronisation</button>`}<button class="secondary" type="button" onclick="runDeosButtonTask(this,'Synchronisation…','Synchronisation Dossiers terminée',syncFoldersHybridFromSettings)" ${foldersSyncIsEnabled() ? "" : "disabled"}>Synchroniser maintenant</button><button class="secondary" type="button" onclick="showFoldersConflictsFromSettings()" ${deosFoldersSyncRuntime.conflictCount ? "" : "disabled"}>Voir les conflits</button><button class="secondary" type="button" onclick="previewExactFolderDuplicatesFromSettings()" ${remoteReady ? "" : "disabled"}>Voir les doublons exacts</button><button class="danger" type="button" onclick="runDeosButtonTask(this,'Réparation…','Réparation des doublons Dossiers terminée',repairExactFolderDuplicatesFromSettings)" ${foldersSyncIsEnabled() && analysis?.duplicateCandidates?.length ? "" : "disabled"}>Réparer les doublons exacts</button></div>${!remoteReady ? `<div class="empty">Authentifiez-vous sur le workspace actif pour comparer les Dossiers locaux et distants.</div>` : ""}</section></div></div>`;
 }
 async function analyzeFoldersHybridFromSettings() {
   return runFoldersUiExclusive("analyze", async () => {
   try {
     const a = await analyzeFoldersHybridState();
-    const message = `Analyse Dossiers terminée\n\nDossiers locaux : ${a.localCount}\nDossiers distants : ${a.remoteCount}\nUniquement locaux : ${a.localOnly.length}\nUniquement distants : ${a.remoteOnly.length}\nPrésentes des deux côtés : ${foldersAnalysisMatchedCount(a)}\n${a.analysisConsistencyWarning · `Diagnostic technique : ${a.analysisConsistencyWarning}\n` : ""}Conflits potentiels : ${a.conflicts.length}\nDoublons exacts : ${a.duplicateCandidates.length}\nFusions non destructives proposées : ${a.mergeCandidates?.length || 0}\nRapprochements par nom unique : ${a.identityMatches?.length || 0}`;
+    const message = `Analyse Dossiers terminée\n\nDossiers locaux : ${a.localCount}\nDossiers distants : ${a.remoteCount}\nUniquement locaux : ${a.localOnly.length}\nUniquement distants : ${a.remoteOnly.length}\nPrésentes des deux côtés : ${foldersAnalysisMatchedCount(a)}\n${a.analysisConsistencyWarning ? `Diagnostic technique : ${a.analysisConsistencyWarning}\n` : ""}Conflits potentiels : ${a.conflicts.length}\nDoublons exacts : ${a.duplicateCandidates.length}\nFusions non destructives proposées : ${a.mergeCandidates?.length || 0}\nRapprochements par nom unique : ${a.identityMatches?.length || 0}`;
     // V5.22C : retour visible avant tout rerender, afin qu'un éventuel problème d'affichage ne masque jamais le résultat de lecture distante.
     alert(message);
     renderSettings(`Analyse Dossiers prête: ${a.localCount} locale(s), ${a.remoteCount} distante(s).`);
@@ -20507,7 +20507,7 @@ async function previewFoldersMigrationFromSettings() {
   return runFoldersUiExclusive("preview", async () => {
   try {
     const a = await foldersHybridRepository.analyze();
-    alert(`Prévisualisation de migration Dossiers\n\nDossiers locaux : ${a.localCount}\nDossiers distants : ${a.remoteCount}\nUniquement locaux : ${a.localOnly.length}\nUniquement distants : ${a.remoteOnly.length}\nPrésentes des deux côtés : ${foldersAnalysisMatchedCount(a)}\n${a.analysisConsistencyWarning · `Diagnostic technique : ${a.analysisConsistencyWarning}\n` : ""}Conflits potentiels : ${a.conflicts.length}\nDoublons potentiels : ${a.duplicateCandidates.length}\nFusions non destructives proposées : ${a.mergeCandidates?.length || 0}\nRapprochements par nom unique : ${a.identityMatches?.length || 0}\n\nAucune écriture n'a été effectuée.`);
+    alert(`Prévisualisation de migration Dossiers\n\nDossiers locaux : ${a.localCount}\nDossiers distants : ${a.remoteCount}\nUniquement locaux : ${a.localOnly.length}\nUniquement distants : ${a.remoteOnly.length}\nPrésentes des deux côtés : ${foldersAnalysisMatchedCount(a)}\n${a.analysisConsistencyWarning ? `Diagnostic technique : ${a.analysisConsistencyWarning}\n` : ""}Conflits potentiels : ${a.conflicts.length}\nDoublons potentiels : ${a.duplicateCandidates.length}\nFusions non destructives proposées : ${a.mergeCandidates?.length || 0}\nRapprochements par nom unique : ${a.identityMatches?.length || 0}\n\nAucune écriture n'a été effectuée.`);
   } catch (error) {
     const message = error?.message || "Prévisualisation Dossiers impossible.";
     alert(`Erreur prévisualisation Dossiers\n\n${message}`);
@@ -20540,7 +20540,7 @@ function buildFolderConflictDiagnostic(meta = {}) {
     const remoteValue = remoteCanonical[field];
     return `${field}\n  LOCAL   : ${folderConflictDiagnosticValue(localValue)}\n  DISTANT : ${folderConflictDiagnosticValue(remoteValue)}`;
   });
-  return `${title} [${clientId}]\n${rows.length · rows.join("\n") : "Aucune différence métier après canonicalisation."}`;
+  return `${title} [${clientId}]\n${rows.length ? rows.join("\n") : "Aucune différence métier après canonicalisation."}`;
 }
 function showFoldersConflictsFromSettings() {
   const conflicts = Object.values(deosFoldersSyncRuntime.metaByClientId || {}).filter(meta => meta.syncStatus === DEOS_LINKS_SYNC_STATUS.CONFLICT);
@@ -20614,35 +20614,35 @@ function managersSyncCanInspectRemote() { return linksSyncCanInspectRemote() && 
 function managersSyncCanUseRemote() { return managersSyncIsEnabled() && managersSyncCanInspectRemote(); }
 
 function normalizeManagersSyncMetaEntry(value = {}) {
-  const source = value && typeof value === "object" && !Array.isArray(value) · value : {};
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return {
     clientId: String(source.clientId || "").trim(),
     remoteId: String(source.remoteId || "").trim(),
-    remoteVersion: Number.isInteger(Number(source.remoteVersion)) · Number(source.remoteVersion) : 0,
+    remoteVersion: Number.isInteger(Number(source.remoteVersion)) ? Number(source.remoteVersion) : 0,
     lastSyncedAt: String(source.lastSyncedAt || "").trim(),
     syncStatus: String(source.syncStatus || DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY).trim(),
     remoteUpdatedAt: String(source.remoteUpdatedAt || "").trim(),
     lastLocalFingerprint: String(source.lastLocalFingerprint || "").trim(),
     lastSyncError: String(source.lastSyncError || "").trim(),
-    conflictRemote: source.conflictRemote && typeof source.conflictRemote === "object" · source.conflictRemote : null,
+    conflictRemote: source.conflictRemote && typeof source.conflictRemote === "object" ? source.conflictRemote : null,
     conflictFields: ensureArray(source.conflictFields).map(String),
     deletePending: Boolean(source.deletePending)
   };
 }
 function normalizeManagersSyncMetaMap(value = {}) {
-  const source = value && typeof value === "object" && !Array.isArray(value) · value : {};
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return Object.fromEntries(Object.entries(source).map(([key, entry]) => {
     const normalized = normalizeManagersSyncMetaEntry({ ...(entry || {}), clientId: entry?.clientId || key });
-    return normalized.clientId · [normalized.clientId, normalized] : null;
+    return normalized.clientId ? [normalized.clientId, normalized] : null;
   }).filter(Boolean));
 }
 function normalizeManagersSyncQueue(value = []) {
   return ensureArray(value).map(item => ({
-    operation: item?.operation === "delete" · "delete" : "upsert",
+    operation: item?.operation === "delete" ? "delete" : "upsert",
     clientId: String(item?.clientId || "").trim(),
     queuedAt: String(item?.queuedAt || "").trim(),
-    expectedVersion: Number.isInteger(Number(item?.expectedVersion)) · Number(item.expectedVersion) : 0,
-    attempts: Number.isInteger(Number(item?.attempts)) · Number(item.attempts) : 0,
+    expectedVersion: Number.isInteger(Number(item?.expectedVersion)) ? Number(item.expectedVersion) : 0,
+    attempts: Number.isInteger(Number(item?.attempts)) ? Number(item.attempts) : 0,
     lastError: String(item?.lastError || "").trim()
   })).filter(item => item.clientId);
 }
@@ -20673,7 +20673,7 @@ const DEOS_MANAGER_TECHNICAL_FIELDS = new Set([
 function canonicalManagerScalar(value) {
   if (value === null || value === undefined) return "";
   if (typeof value === "string") return value.trim();
-  if (typeof value === "number") return Number.isFinite(value) · value : 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   if (typeof value === "boolean") return value;
   return value;
 }
@@ -20699,7 +20699,7 @@ function canonicalManagerStructuredValue(value) {
 }
 
 function canonicalManagerBusinessData(manager = {}) {
-  const source = manager && typeof manager === "object" && !Array.isArray(manager) · manager : {};
+  const source = manager && typeof manager === "object" && !Array.isArray(manager) ? manager : {};
   // normalizeEntity injecte les valeurs métier par défaut de DEOS : un champ absent
   // et sa valeur vide par défaut deviennent ainsi identiques avant comparaison.
   const normalizedManager = normalizeEntity("managers", { ...source });
@@ -20763,9 +20763,9 @@ const DEOS_MANAGER_REFERENCE_KEYS = new Set([
 
 function remapManagerReferenceValue(value, oldId, newId) {
   if (Array.isArray(value)) {
-    return [...new Set(value.map(item => sameId(item, oldId) · newId : item).map(String).filter(Boolean))];
+    return [...new Set(value.map(item => sameId(item, oldId) ? newId : item).map(String).filter(Boolean))];
   }
-  return sameId(value, oldId) · newId : value;
+  return sameId(value, oldId) ? newId : value;
 }
 
 function remapManagerReferencesDeep(value, oldId, newId) {
@@ -20878,7 +20878,7 @@ function mergeManagerManagementRequests(localRows = [], remoteRows = []) {
     if (!previous) { result.set(id, { ...row }); return; }
     const prevStamp = Date.parse(previous.updatedAt || previous.createdAt || previous.date || "") || 0;
     const nextStamp = Date.parse(row.updatedAt || row.createdAt || row.date || "") || 0;
-    result.set(id, nextStamp >= prevStamp · { ...previous, ...row } : { ...row, ...previous });
+    result.set(id, nextStamp >= prevStamp ? { ...previous, ...row } : { ...row, ...previous });
   };
   ensureArray(remoteRows).forEach(put);
   ensureArray(localRows).forEach(put);
@@ -20897,8 +20897,8 @@ function mergeManagerPilotNotes(localRows = [], remoteRows = []) {
     if (!previous) { result.set(id, row); return; }
     const prevStamp = Date.parse(previous.updatedAt || previous.createdAt || previous.date || "") || 0;
     const nextStamp = Date.parse(row.updatedAt || row.createdAt || row.date || "") || 0;
-    const newest = nextStamp >= prevStamp · row : previous;
-    const older = nextStamp >= prevStamp · previous : row;
+    const newest = nextStamp >= prevStamp ? row : previous;
+    const older = nextStamp >= prevStamp ? previous : row;
     const followMap = new Map();
     [...ensureArray(older.followUps), ...ensureArray(newest.followUps)].forEach(f => {
       const fid = String(f.id || "").trim() || `legacy:${String(f.text || "")}`;
@@ -20915,11 +20915,11 @@ function mergeManagerPilotNotes(localRows = [], remoteRows = []) {
 function resolveManagerNonDestructive(localManager = {}, remoteManager = {}, baseManager = null) {
   const localNormalized = normalizeEntity("managers", { ...(localManager || {}) });
   const remoteNormalized = normalizeEntity("managers", { ...(remoteManager || {}) });
-  const baseNormalized = baseManager · normalizeEntity("managers", { ...(baseManager || {}) }) : null;
+  const baseNormalized = baseManager ? normalizeEntity("managers", { ...(baseManager || {}) }) : null;
   const localCanonical = canonicalManagerBusinessData(localNormalized);
   const remoteCanonical = canonicalManagerBusinessData(remoteNormalized);
-  const baseCanonical = baseNormalized · canonicalManagerBusinessData(baseNormalized) : null;
-  const keys = [...new Set([...Object.keys(localCanonical), ...Object.keys(remoteCanonical), ...(baseCanonical · Object.keys(baseCanonical) : [])])];
+  const baseCanonical = baseNormalized ? canonicalManagerBusinessData(baseNormalized) : null;
+  const keys = [...new Set([...Object.keys(localCanonical), ...Object.keys(remoteCanonical), ...(baseCanonical ? Object.keys(baseCanonical) : [])])];
   const merged = { ...localNormalized };
   const conflictFields = [];
   const fromRemoteFields = [];
@@ -20928,7 +20928,7 @@ function resolveManagerNonDestructive(localManager = {}, remoteManager = {}, bas
   for (const key of keys) {
     const l = localCanonical[key];
     const r = remoteCanonical[key];
-    const b = baseCanonical · baseCanonical[key] : undefined;
+    const b = baseCanonical ? baseCanonical[key] : undefined;
     if (managerCanonicalValuesEqual(l, r)) continue;
 
     if (key === "managementRequests") {
@@ -20948,8 +20948,8 @@ function resolveManagerNonDestructive(localManager = {}, remoteManager = {}, bas
 
     const lEmpty = managerCanonicalValueIsEmpty(l);
     const rEmpty = managerCanonicalValueIsEmpty(r);
-    const lEqualsBase = baseCanonical · managerCanonicalValuesEqual(l, b) : false;
-    const rEqualsBase = baseCanonical · managerCanonicalValuesEqual(r, b) : false;
+    const lEqualsBase = baseCanonical ? managerCanonicalValuesEqual(l, b) : false;
+    const rEqualsBase = baseCanonical ? managerCanonicalValuesEqual(r, b) : false;
 
     // Une valeur locale vide ou manifestement appauvrie ne doit jamais effacer une valeur distante riche.
     if ((lEmpty || managerValueLooksDegraded(l, r)) && !rEmpty) {
@@ -21009,7 +21009,7 @@ function getManagerConflictChoiceEntry(localManager = {}, remoteManager = {}, lo
   const entry = all[key];
   if (!entry) return { key, valid: false, entry: null };
   const valid = entry.localFingerprint === managerFingerprint(localManager) && entry.remoteFingerprint === managerFingerprint(remoteManager);
-  return { key, valid, entry: valid · entry : null };
+  return { key, valid, entry: valid ? entry : null };
 }
 function saveManagerConflictFieldChoice(conflict, field, side) {
   if (!conflict || !field || !["local", "remote", "merge"].includes(side)) return false;
@@ -21026,7 +21026,7 @@ function saveManagerConflictFieldChoice(conflict, field, side) {
     remoteClientId: String(conflict.remoteClientId || key),
     localFingerprint,
     remoteFingerprint,
-    choices: { ...(samePair · previous.choices : {}), [field]: side },
+    choices: { ...(samePair ? previous.choices : {}), [field]: side },
     updatedAt: new Date().toISOString()
   };
   managersConflictChoicesRepository.save(all);
@@ -21124,11 +21124,11 @@ function resolveManagerWithApprovedChoices(localManager = {}, remoteManager = {}
   };
 }
 function refreshManagersSyncRuntimeState(patch = {}) {
-  const metaByClientId = normalizeManagersSyncMetaMap(patch.metaByClientId === undefined · deosManagersSyncRuntime.metaByClientId : patch.metaByClientId);
+  const metaByClientId = normalizeManagersSyncMetaMap(patch.metaByClientId === undefined ? deosManagersSyncRuntime.metaByClientId : patch.metaByClientId);
   const localCount = ensureArray(state.managers).length;
   const conflictCount = Object.values(metaByClientId).filter(meta => meta.syncStatus === DEOS_LINKS_SYNC_STATUS.CONFLICT).length;
   const syncedCount = ensureArray(state.managers).filter(manager => getManagerSyncMeta(manager.id).syncStatus === DEOS_LINKS_SYNC_STATUS.SYNCED).length;
-  let nextState = managersSyncIsEnabled() · DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY;
+  let nextState = managersSyncIsEnabled() ? DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY;
   if (patch.state) nextState = patch.state;
   else if (conflictCount) nextState = DEOS_LINKS_SYNC_STATUS.CONFLICT;
   else if (patch.syncing || deosManagersSyncRuntime.syncing) nextState = DEOS_LINKS_SYNC_STATUS.SYNCING;
@@ -21155,7 +21155,7 @@ function initializeManagersHybridSync(options = {}) {
     metaByClientId: managersSyncMetaRepository.load({}),
     queue: managersSyncQueueRepository.load([])
   });
-  refreshManagersSyncRuntimeState({ state: settings.enabled · DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY });
+  refreshManagersSyncRuntimeState({ state: settings.enabled ? DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY });
   if (settings.enabled) restoreManagersFromSyncShadowIfNeeded();
   // V5.25B — pendant le pilote Managers, aucune synchronisation automatique au démarrage.
   // Cela évite qu’un rechargement ou une restauration de session amplifie un état incohérent.
@@ -21180,8 +21180,8 @@ function buildManagersRemotePreview(localManagers, remoteRows) {
 
     if (!row) {
       const naturalKey = managerNaturalIdentity(manager);
-      const candidate = naturalKey · uniqueRemoteByName.get(naturalKey) : null;
-      const uniqueLocal = naturalKey · uniqueLocalByName.get(naturalKey) : null;
+      const candidate = naturalKey ? uniqueRemoteByName.get(naturalKey) : null;
+      const uniqueLocal = naturalKey ? uniqueLocalByName.get(naturalKey) : null;
       if (candidate && uniqueLocal === manager) {
         row = candidate;
         matchedBy = "name";
@@ -21293,7 +21293,7 @@ function setManagersSyncUiBusy(busy) {
   if (!card) return;
   card.querySelectorAll("button").forEach(button => {
     if (busy) {
-      if (!button.dataset.deosManagersWasDisabled) button.dataset.deosManagersWasDisabled = button.disabled · "1" : "0";
+      if (!button.dataset.deosManagersWasDisabled) button.dataset.deosManagersWasDisabled = button.disabled ? "1" : "0";
       button.disabled = true;
       button.setAttribute("aria-busy", "true");
     } else {
@@ -21332,14 +21332,14 @@ async function runManagersUiExclusive(kind, task) {
 }
 
 async function analyzeManagersHybridState() {
-  const remoteRows = managersSyncCanInspectRemote() · await withManagersRemoteTimeout(deosRemoteAdapter.listManagers(), "Lecture des Managers distants") : [];
+  const remoteRows = managersSyncCanInspectRemote() ? await withManagersRemoteTimeout(deosRemoteAdapter.listManagers(), "Lecture des Managers distants") : [];
   const analysis = buildManagersRemotePreview(state.managers, remoteRows);
   refreshManagersSyncRuntimeState({ remoteCount: analysis.remoteCount, lastValidRemoteCount: analysis.remoteCount, lastAnalysisAt: analysis.generatedAt, lastAnalysis: analysis, lastError: "" });
   return analysis;
 }
 async function activateManagersHybridSync() {
   setManagersSyncSettings({ enabled: true, activatedAt: new Date().toISOString(), lastMode: "activated" });
-  refreshManagersSyncRuntimeState({ state: navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY, lastError: "" });
+  refreshManagersSyncRuntimeState({ state: navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY, lastError: "" });
   return deosManagersSyncRuntime;
 }
 function deactivateManagersHybridSync() {
@@ -21364,7 +21364,7 @@ async function reconcileManagerRequestsBeforeConflictCheck(remoteRows = []) {
     let row = remoteById.get(localId);
     if (!row) {
       const key = managerNaturalIdentity(local);
-      row = key · uniqueRemoteByName.get(key) : null;
+      row = key ? uniqueRemoteByName.get(key) : null;
     }
     if (!row) continue;
 
@@ -21404,7 +21404,7 @@ async function syncManagersHybridNow(options = {}) {
   if (deosManagersSyncRuntime.syncing) return deosManagersSyncRuntime;
   if (!managersSyncIsEnabled()) { refreshManagersSyncRuntimeState({ state: DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY, lastError: "" }); return deosManagersSyncRuntime; }
   if (!managersSyncCanUseRemote()) {
-    refreshManagersSyncRuntimeState({ state: navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR, lastError: navigator.onLine === false · "Le navigateur est hors ligne." : "Connexion distante Managers indisponible." });
+    refreshManagersSyncRuntimeState({ state: navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR, lastError: navigator.onLine === false ? "Le navigateur est hors ligne." : "Connexion distante Managers indisponible." });
     return deosManagersSyncRuntime;
   }
   refreshManagersSyncRuntimeState({ syncing: true, state: DEOS_LINKS_SYNC_STATUS.SYNCING, lastError: "" });
@@ -21547,9 +21547,9 @@ async function syncManagersHybridNow(options = {}) {
       throw new Error(`PERSISTENCE_MANAGERS_INCOMPLETE — ${state.managers.length} Manager(s) en mémoire mais ${persistedManagers.length} relu(s) dans le stockage local.`);
     }
     const analysis = buildManagersRemotePreview(state.managers, await withManagersRemoteTimeout(deosRemoteAdapter.listManagers(), "Analyse finale des Managers"));
-    refreshManagersSyncRuntimeState({ syncing: false, remoteCount: analysis.remoteCount, lastValidRemoteCount: analysis.remoteCount, lastAnalysis: analysis, lastAnalysisAt: analysis.generatedAt, lastSyncAt: new Date().toLocaleString("fr-FR"), lastError: "", state: analysis.conflicts.length · DEOS_LINKS_SYNC_STATUS.CONFLICT : DEOS_LINKS_SYNC_STATUS.SYNCED });
+    refreshManagersSyncRuntimeState({ syncing: false, remoteCount: analysis.remoteCount, lastValidRemoteCount: analysis.remoteCount, lastAnalysis: analysis, lastAnalysisAt: analysis.generatedAt, lastSyncAt: new Date().toLocaleString("fr-FR"), lastError: "", state: analysis.conflicts.length ? DEOS_LINKS_SYNC_STATUS.CONFLICT : DEOS_LINKS_SYNC_STATUS.SYNCED });
   } catch (error) {
-    refreshManagersSyncRuntimeState({ syncing: false, remoteCount: Number(deosManagersSyncRuntime.lastValidRemoteCount || deosManagersSyncRuntime.remoteCount || 0), state: navigator.onLine === false · DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR, lastError: error?.message || "Synchronisation Managers impossible." });
+    refreshManagersSyncRuntimeState({ syncing: false, remoteCount: Number(deosManagersSyncRuntime.lastValidRemoteCount || deosManagersSyncRuntime.remoteCount || 0), state: navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.ERROR, lastError: error?.message || "Synchronisation Managers impossible." });
     console.error("[DEOS V5.25F MANAGERS SYNC]", error);
   }
   if (!options.silent && currentView === "settings") renderSettings(deosManagersSyncRuntime.lastError || "Synchronisation Managers actualisée.");
@@ -21625,7 +21625,7 @@ async function repairExactManagerDuplicatesFromSettings() {
     }
     if (localChanged) persist("managers");
     const finalAnalysis = await analyzeManagersHybridState();
-    refreshManagersSyncRuntimeState({ syncing: false, remoteCount: finalAnalysis.remoteCount, lastValidRemoteCount: finalAnalysis.remoteCount, lastAnalysis: finalAnalysis, lastAnalysisAt: finalAnalysis.generatedAt, lastSyncAt: new Date().toLocaleString("fr-FR"), lastError: "", state: finalAnalysis.duplicateCandidates.length · DEOS_LINKS_SYNC_STATUS.ERROR : DEOS_LINKS_SYNC_STATUS.SYNC_READY });
+    refreshManagersSyncRuntimeState({ syncing: false, remoteCount: finalAnalysis.remoteCount, lastValidRemoteCount: finalAnalysis.remoteCount, lastAnalysis: finalAnalysis, lastAnalysisAt: finalAnalysis.generatedAt, lastSyncAt: new Date().toLocaleString("fr-FR"), lastError: "", state: finalAnalysis.duplicateCandidates.length ? DEOS_LINKS_SYNC_STATUS.ERROR : DEOS_LINKS_SYNC_STATUS.SYNC_READY });
     renderSettings(`Réparation terminée : ${repairedRemote} doublon(s) distant(s) supprimé(s) logiquement, ${repairedLocal} doublon(s) local(aux) retiré(s).`);
   } catch (error) {
     refreshManagersSyncRuntimeState({ syncing: false, state: DEOS_LINKS_SYNC_STATUS.ERROR, lastError: error?.message || "Réparation des doublons Managers impossible." });
@@ -21655,7 +21655,7 @@ function renderManagersHybridSettingsCardHtml() {
   const remoteReady = managersSyncCanInspectRemote();
   const analysis = deosManagersSyncRuntime.lastAnalysis;
   const warning = "Seuls les Managers sont concernés par ce pilote. Liens, Actions, Projets et Dossiers conservent leurs pilotes séparés ; les autres catégories restent locales.";
-  return `<div id="managersHybridSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation pilote — Managers</h2><p class="muted">Pilote V5.25F dédié aux Managers, avec lecture distante via RPC dédiée, verrou Safari/iPad, garde anti-doublon et retour visuel immédiat des opérations. Aucune autre donnée métier n'est envoyée.</p></div><span class="remote-mode-badge ${managersSyncStatusClass()}">${esc(managersSyncStatusLabel())}</span></div><div class="settings-warning-box"><strong>Protection des données</strong><p>${esc(warning)}</p></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État pilote</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>État</strong><span>${esc(managersSyncStatusLabel())}</span></div><div class="settings-calendar-summary-item"><strong>Managers locaux</strong><span>${esc(String(state.managers.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Managers distants</strong><span>${esc(String(deosManagersSyncRuntime.remoteCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>En attente</strong><span>${esc(String(deosManagersSyncRuntime.pendingCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchronisation</strong><span>${esc(deosManagersSyncRuntime.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière erreur</strong><span>${esc(deosManagersSyncRuntime.lastError || "Aucune")}</span></div><div class="settings-calendar-summary-item"><strong>Appareil courant</strong><span>${esc(deosManagersSyncRuntime.currentDevice || "Navigateur courant")}</span></div></div>${analysis · `<p class="muted">Dernière analyse: ${esc(analysis.generatedAt || "")}</p>` : `<p class="muted">Aucune analyse de migration exécutée.</p>`}</section><section class="settings-card-block"><h3>Managers</h3><p class="muted">Désactivé par défaut. L'analyse et la prévisualisation sont en lecture seule.</p><div class="row-actions"><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Analyse…','Analyse Managers terminée',analyzeManagersHybridFromSettings)">Analyser les Managers</button><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Prévisualisation…','Prévisualisation Managers terminée',previewManagersMigrationFromSettings)" ${remoteReady · "" : "disabled"}>Prévisualiser la migration</button>${managersSyncIsEnabled() · `<button class="danger" type="button" onclick="deactivateManagersHybridFromSettings()">Désactiver la synchronisation</button>` : `<button class="action" type="button" onclick="runDeosButtonTask(this,'Activation…','Synchronisation Managers activée',activateManagersHybridFromSettings)">Activer la synchronisation</button>`}<button class="secondary" type="button" onclick="runDeosButtonTask(this,'Synchronisation…','Synchronisation Managers terminée',syncManagersHybridFromSettings)" ${managersSyncIsEnabled() · "" : "disabled"}>Synchroniser maintenant</button><button class="secondary" type="button" onclick="showManagersConflictsFromSettings()" ${(deosManagersSyncRuntime.conflictCount || ensureArray(analysis?.conflicts).length) · "" : "disabled"}>Voir les conflits</button><button class="action" type="button" onclick="runDeosButtonTask(this,'Analyse des conflits…','Conflits Managers prêts',openManagersConflictResolutionFromSettings)" ${managersSyncIsEnabled() && remoteReady · "" : "disabled"}>Résoudre les conflits</button><button class="secondary" type="button" onclick="previewExactManagerDuplicatesFromSettings()" ${remoteReady · "" : "disabled"}>Voir les doublons exacts</button><button class="danger" type="button" onclick="runDeosButtonTask(this,'Réparation…','Réparation des doublons Managers terminée',repairExactManagerDuplicatesFromSettings)" ${managersSyncIsEnabled() && analysis?.duplicateCandidates?.length · "" : "disabled"}>Réparer les doublons exacts</button></div>${!remoteReady · `<div class="empty">Authentifiez-vous sur le workspace actif pour comparer les Managers locaux et distants.</div>` : ""}</section></div></div>`;
+  return `<div id="managersHybridSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation pilote — Managers</h2><p class="muted">Pilote V5.25F dédié aux Managers, avec lecture distante via RPC dédiée, verrou Safari/iPad, garde anti-doublon et retour visuel immédiat des opérations. Aucune autre donnée métier n'est envoyée.</p></div><span class="remote-mode-badge ${managersSyncStatusClass()}">${esc(managersSyncStatusLabel())}</span></div><div class="settings-warning-box"><strong>Protection des données</strong><p>${esc(warning)}</p></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État pilote</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>État</strong><span>${esc(managersSyncStatusLabel())}</span></div><div class="settings-calendar-summary-item"><strong>Managers locaux</strong><span>${esc(String(state.managers.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Managers distants</strong><span>${esc(String(deosManagersSyncRuntime.remoteCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>En attente</strong><span>${esc(String(deosManagersSyncRuntime.pendingCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchronisation</strong><span>${esc(deosManagersSyncRuntime.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière erreur</strong><span>${esc(deosManagersSyncRuntime.lastError || "Aucune")}</span></div><div class="settings-calendar-summary-item"><strong>Appareil courant</strong><span>${esc(deosManagersSyncRuntime.currentDevice || "Navigateur courant")}</span></div></div>${analysis ? `<p class="muted">Dernière analyse: ${esc(analysis.generatedAt || "")}</p>` : `<p class="muted">Aucune analyse de migration exécutée.</p>`}</section><section class="settings-card-block"><h3>Managers</h3><p class="muted">Désactivé par défaut. L'analyse et la prévisualisation sont en lecture seule.</p><div class="row-actions"><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Analyse…','Analyse Managers terminée',analyzeManagersHybridFromSettings)">Analyser les Managers</button><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Prévisualisation…','Prévisualisation Managers terminée',previewManagersMigrationFromSettings)" ${remoteReady ? "" : "disabled"}>Prévisualiser la migration</button>${managersSyncIsEnabled() ? `<button class="danger" type="button" onclick="deactivateManagersHybridFromSettings()">Désactiver la synchronisation</button>` : `<button class="action" type="button" onclick="runDeosButtonTask(this,'Activation…','Synchronisation Managers activée',activateManagersHybridFromSettings)">Activer la synchronisation</button>`}<button class="secondary" type="button" onclick="runDeosButtonTask(this,'Synchronisation…','Synchronisation Managers terminée',syncManagersHybridFromSettings)" ${managersSyncIsEnabled() ? "" : "disabled"}>Synchroniser maintenant</button><button class="secondary" type="button" onclick="showManagersConflictsFromSettings()" ${(deosManagersSyncRuntime.conflictCount || ensureArray(analysis?.conflicts).length) ? "" : "disabled"}>Voir les conflits</button><button class="action" type="button" onclick="runDeosButtonTask(this,'Analyse des conflits…','Conflits Managers prêts',openManagersConflictResolutionFromSettings)" ${managersSyncIsEnabled() && remoteReady ? "" : "disabled"}>Résoudre les conflits</button><button class="secondary" type="button" onclick="previewExactManagerDuplicatesFromSettings()" ${remoteReady ? "" : "disabled"}>Voir les doublons exacts</button><button class="danger" type="button" onclick="runDeosButtonTask(this,'Réparation…','Réparation des doublons Managers terminée',repairExactManagerDuplicatesFromSettings)" ${managersSyncIsEnabled() && analysis?.duplicateCandidates?.length ? "" : "disabled"}>Réparer les doublons exacts</button></div>${!remoteReady ? `<div class="empty">Authentifiez-vous sur le workspace actif pour comparer les Managers locaux et distants.</div>` : ""}</section></div></div>`;
 }
 async function analyzeManagersHybridFromSettings() {
   return runManagersUiExclusive("analyze", async () => {
@@ -21663,7 +21663,7 @@ async function analyzeManagersHybridFromSettings() {
     const a = await analyzeManagersHybridState();
     deosManagersConflictDialogAnalysis = a;
     saveManagersLastAnalysisSnapshot(a);
-    const message = `Analyse Managers terminée\n\nManagers locaux : ${a.localCount}\nManagers distants : ${a.remoteCount}\nUniquement locaux : ${a.localOnly.length}\nUniquement distants : ${a.remoteOnly.length}\nPrésents des deux côtés : ${managersAnalysisMatchedCount(a)}\n${a.analysisConsistencyWarning · `Diagnostic technique : ${a.analysisConsistencyWarning}\n` : ""}Conflits potentiels : ${a.conflicts.length}\nDoublons exacts : ${a.duplicateCandidates.length}\nFusions non destructives proposées : ${a.mergeCandidates?.length || 0}\nRapprochements par nom unique : ${a.identityMatches?.length || 0}`;
+    const message = `Analyse Managers terminée\n\nManagers locaux : ${a.localCount}\nManagers distants : ${a.remoteCount}\nUniquement locaux : ${a.localOnly.length}\nUniquement distants : ${a.remoteOnly.length}\nPrésents des deux côtés : ${managersAnalysisMatchedCount(a)}\n${a.analysisConsistencyWarning ? `Diagnostic technique : ${a.analysisConsistencyWarning}\n` : ""}Conflits potentiels : ${a.conflicts.length}\nDoublons exacts : ${a.duplicateCandidates.length}\nFusions non destructives proposées : ${a.mergeCandidates?.length || 0}\nRapprochements par nom unique : ${a.identityMatches?.length || 0}`;
     // V5.22C : retour visible avant tout rerender, afin qu'un éventuel problème d'affichage ne masque jamais le résultat de lecture distante.
     alert(message);
     renderSettings(`Analyse Managers prête: ${a.localCount} local(aux), ${a.remoteCount} distant(s).`);
@@ -21683,7 +21683,7 @@ async function previewManagersMigrationFromSettings() {
   return runManagersUiExclusive("preview", async () => {
   try {
     const a = await managersHybridRepository.analyze();
-    alert(`Prévisualisation de migration Managers\n\nManagers locaux : ${a.localCount}\nManagers distants : ${a.remoteCount}\nUniquement locaux : ${a.localOnly.length}\nUniquement distants : ${a.remoteOnly.length}\nPrésents des deux côtés : ${managersAnalysisMatchedCount(a)}\n${a.analysisConsistencyWarning · `Diagnostic technique : ${a.analysisConsistencyWarning}\n` : ""}Conflits potentiels : ${a.conflicts.length}\nDoublons potentiels : ${a.duplicateCandidates.length}\nFusions non destructives proposées : ${a.mergeCandidates?.length || 0}\nRapprochements par nom unique : ${a.identityMatches?.length || 0}\n\nAucune écriture n'a été effectuée.`);
+    alert(`Prévisualisation de migration Managers\n\nManagers locaux : ${a.localCount}\nManagers distants : ${a.remoteCount}\nUniquement locaux : ${a.localOnly.length}\nUniquement distants : ${a.remoteOnly.length}\nPrésents des deux côtés : ${managersAnalysisMatchedCount(a)}\n${a.analysisConsistencyWarning ? `Diagnostic technique : ${a.analysisConsistencyWarning}\n` : ""}Conflits potentiels : ${a.conflicts.length}\nDoublons potentiels : ${a.duplicateCandidates.length}\nFusions non destructives proposées : ${a.mergeCandidates?.length || 0}\nRapprochements par nom unique : ${a.identityMatches?.length || 0}\n\nAucune écriture n'a été effectuée.`);
   } catch (error) {
     const message = error?.message || "Prévisualisation Managers impossible.";
     alert(`Erreur prévisualisation Managers\n\n${message}`);
@@ -21716,7 +21716,7 @@ function buildManagerConflictDiagnostic(meta = {}) {
     const remoteValue = remoteCanonical[field];
     return `${field}\n  LOCAL   : ${managerConflictDiagnosticValue(localValue)}\n  DISTANT : ${managerConflictDiagnosticValue(remoteValue)}`;
   });
-  return `${title} [${clientId}]\n${rows.length · rows.join("\n") : "Aucune différence métier après canonicalisation."}`;
+  return `${title} [${clientId}]\n${rows.length ? rows.join("\n") : "Aucune différence métier après canonicalisation."}`;
 }
 
 let deosManagersConflictDialogIndex = 0;
@@ -21739,7 +21739,7 @@ function loadManagersLastAnalysisSnapshot() {
     const raw = sessionStorage.getItem(DEOS_MANAGERS_LAST_ANALYSIS_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return parsed && Array.isArray(parsed.conflicts) · parsed : null;
+    return parsed && Array.isArray(parsed.conflicts) ? parsed : null;
   } catch (error) {
     console.warn("[DEOS V5.25I] lecture analyse Managers impossible", error);
     return null;
@@ -21753,11 +21753,11 @@ function managersConflictForDialog(index = deosManagersConflictDialogIndex) {
 }
 function managerConflictChoiceForField(conflict, field) {
   const stored = getManagerConflictChoiceEntry(conflict?.local || {}, conflict?.remote || {}, conflict?.localClientId || "", conflict?.remoteClientId || "");
-  return stored.valid · String(stored.entry?.choices?.[field] || "") : "";
+  return stored.valid ? String(stored.entry?.choices?.[field] || "") : "";
 }
 function managerConflictDisplayValue(value) {
   const raw = managerConflictDiagnosticValue(value);
-  return raw.length > 600 · `${raw.slice(0, 600)}…` : raw;
+  return raw.length > 600 ? `${raw.slice(0, 600)}…` : raw;
 }
 function closeManagersConflictResolutionDialog() { document.getElementById("managersConflictResolutionOverlay")?.remove(); }
 function renderManagersConflictResolutionDialog() {
@@ -21776,10 +21776,10 @@ function renderManagersConflictResolutionDialog() {
     const encodedClientId = encodeURIComponent(conflict.remoteClientId || conflict.localClientId || "");
     const encodedField = encodeURIComponent(field);
     const canMerge = managerConflictFieldCanMerge(field, localCanonical[field], remoteCanonical[field]);
-    const mergeButton = canMerge · `<div class="row-actions" style="margin-top:8px"><button class="${choice === "merge" · "action" : "secondary"}" type="button" onclick="chooseCurrentManagerConflictField('${encodedField}','merge')">${choice === "merge" · "✓ " : ""}Fusionner les deux</button></div>` : "";
-    return `<div class="card" style="margin:10px 0;padding:12px"><strong>${esc(field)}</strong><div class="settings-card-grid" style="margin-top:8px"><section class="settings-card-block"><h3>Local iPad</h3><pre style="white-space:pre-wrap;word-break:break-word;font-size:12px">${esc(managerConflictDisplayValue(localCanonical[field]))}</pre><button class="${choice === "local" · "action" : "secondary"}" type="button" onclick="chooseCurrentManagerConflictField('${encodedField}','local')">${choice === "local" · "✓ " : ""}Conserver LOCAL</button></section><section class="settings-card-block"><h3>Supabase / PC</h3><pre style="white-space:pre-wrap;word-break:break-word;font-size:12px">${esc(managerConflictDisplayValue(remoteCanonical[field]))}</pre><button class="${choice === "remote" · "action" : "secondary"}" type="button" onclick="chooseCurrentManagerConflictField('${encodedField}','remote')">${choice === "remote" · "✓ " : ""}Conserver SUPABASE</button></section></div>${mergeButton}</div>`;
+    const mergeButton = canMerge ? `<div class="row-actions" style="margin-top:8px"><button class="${choice === "merge" ? "action" : "secondary"}" type="button" onclick="chooseCurrentManagerConflictField('${encodedField}','merge')">${choice === "merge" ? "✓ " : ""}Fusionner les deux</button></div>` : "";
+    return `<div class="card" style="margin:10px 0;padding:12px"><strong>${esc(field)}</strong><div class="settings-card-grid" style="margin-top:8px"><section class="settings-card-block"><h3>Local iPad</h3><pre style="white-space:pre-wrap;word-break:break-word;font-size:12px">${esc(managerConflictDisplayValue(localCanonical[field]))}</pre><button class="${choice === "local" ? "action" : "secondary"}" type="button" onclick="chooseCurrentManagerConflictField('${encodedField}','local')">${choice === "local" ? "✓ " : ""}Conserver LOCAL</button></section><section class="settings-card-block"><h3>Supabase / PC</h3><pre style="white-space:pre-wrap;word-break:break-word;font-size:12px">${esc(managerConflictDisplayValue(remoteCanonical[field]))}</pre><button class="${choice === "remote" ? "action" : "secondary"}" type="button" onclick="chooseCurrentManagerConflictField('${encodedField}','remote')">${choice === "remote" ? "✓ " : ""}Conserver SUPABASE</button></section></div>${mergeButton}</div>`;
   }).join("");
-  root.insertAdjacentHTML("beforeend", `<div id="managersConflictResolutionOverlay" class="modal-backdrop"><div class="modal-panel remote-auth-panel" style="max-width:960px"><div class="modal-head"><h2>Fusion Manager — ${esc(conflict.title || conflict.local?.name || conflict.remote?.name || "Manager")}</h2><button class="icon-close" type="button" onclick="closeManagersConflictResolutionDialog()" aria-label="Fermer">×</button></div><div class="remote-auth-body"><p class="muted">Manager ${index + 1}/${total} · ${selectedCount}/${fields.length} champ(s) arbitré(s). Aucun choix n'est envoyé à Supabase à ce stade.</p><div class="row-actions"><button class="secondary" type="button" onclick="chooseAllManagerConflictFields('local')">Tout conserver LOCAL</button><button class="secondary" type="button" onclick="chooseAllManagerConflictFields('remote')">Tout conserver SUPABASE</button><button class="secondary" type="button" onclick="chooseAllMergeableManagerConflictFields()">Fusionner tous les champs compatibles</button></div>${rows}<div class="row-actions"><button class="secondary" type="button" onclick="previousManagerConflictDialog()" ${index <= 0 · "disabled" : ""}>← Précédent</button><button class="secondary" type="button" onclick="nextManagerConflictDialog()" ${index >= total - 1 · "disabled" : ""}>Suivant →</button><button class="action" type="button" onclick="reanalyzeManagersAfterConflictChoices()">Ré-analyser les Managers</button><button class="secondary" type="button" onclick="closeManagersConflictResolutionDialog()">Fermer</button></div></div></div></div>`);
+  root.insertAdjacentHTML("beforeend", `<div id="managersConflictResolutionOverlay" class="modal-backdrop"><div class="modal-panel remote-auth-panel" style="max-width:960px"><div class="modal-head"><h2>Fusion Manager — ${esc(conflict.title || conflict.local?.name || conflict.remote?.name || "Manager")}</h2><button class="icon-close" type="button" onclick="closeManagersConflictResolutionDialog()" aria-label="Fermer">×</button></div><div class="remote-auth-body"><p class="muted">Manager ${index + 1}/${total} · ${selectedCount}/${fields.length} champ(s) arbitré(s). Aucun choix n'est envoyé à Supabase à ce stade.</p><div class="row-actions"><button class="secondary" type="button" onclick="chooseAllManagerConflictFields('local')">Tout conserver LOCAL</button><button class="secondary" type="button" onclick="chooseAllManagerConflictFields('remote')">Tout conserver SUPABASE</button><button class="secondary" type="button" onclick="chooseAllMergeableManagerConflictFields()">Fusionner tous les champs compatibles</button></div>${rows}<div class="row-actions"><button class="secondary" type="button" onclick="previousManagerConflictDialog()" ${index <= 0 ? "disabled" : ""}>← Précédent</button><button class="secondary" type="button" onclick="nextManagerConflictDialog()" ${index >= total - 1 ? "disabled" : ""}>Suivant →</button><button class="action" type="button" onclick="reanalyzeManagersAfterConflictChoices()">Ré-analyser les Managers</button><button class="secondary" type="button" onclick="closeManagersConflictResolutionDialog()">Fermer</button></div></div></div></div>`);
 }
 async function openManagersConflictResolutionFromSettings() {
   try {
@@ -21876,14 +21876,14 @@ function showManagersConflictsFromSettings() {
       const title = conflict.title || conflict.local?.name || conflict.remote?.name || "Manager";
       const fields = ensureArray(conflict.fields);
       const ids = [
-        conflict.localClientId · `ID local: ${conflict.localClientId}` : "",
-        conflict.remoteClientId · `ID distant: ${conflict.remoteClientId}` : "",
-        conflict.matchedBy · `Rapprochement: ${conflict.matchedBy}` : ""
+        conflict.localClientId ? `ID local: ${conflict.localClientId}` : "",
+        conflict.remoteClientId ? `ID distant: ${conflict.remoteClientId}` : "",
+        conflict.matchedBy ? `Rapprochement: ${conflict.matchedBy}` : ""
       ].filter(Boolean).join(" · ");
       const localCanonical = canonicalManagerBusinessData(conflict.local || {});
       const remoteCanonical = canonicalManagerBusinessData(conflict.remote || {});
       const rows = fields.map(field => `${field}\n  LOCAL   : ${managerConflictDiagnosticValue(localCanonical[field])}\n  DISTANT : ${managerConflictDiagnosticValue(remoteCanonical[field])}`);
-      return `${title}${ids · `\n${ids}` : ""}\n${rows.length · rows.join("\n") : "Aucune différence métier après canonicalisation."}`;
+      return `${title}${ids ? `\n${ids}` : ""}\n${rows.length ? rows.join("\n") : "Aucune différence métier après canonicalisation."}`;
     });
     return alert(`Diagnostic conflits Managers V5.25I (${analysisConflicts.length})\n\n${details.join("\n\n---\n\n")}`);
   }
@@ -21913,11 +21913,11 @@ function defaultRemoteAuthRedirectUrl() {
 
 // -- V5.27B : Synchronisation Décisions + Documents ----------------------------
 function normalizeSimpleSyncMetaEntry(value = {}) {
-  const source = value && typeof value === "object" && !Array.isArray(value) · value : {};
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return {
     clientId: String(source.clientId || "").trim(),
     remoteId: String(source.remoteId || "").trim(),
-    remoteVersion: Number.isInteger(Number(source.remoteVersion)) · Number(source.remoteVersion) : 0,
+    remoteVersion: Number.isInteger(Number(source.remoteVersion)) ? Number(source.remoteVersion) : 0,
     lastSyncedAt: String(source.lastSyncedAt || "").trim(),
     remoteUpdatedAt: String(source.remoteUpdatedAt || "").trim(),
     lastLocalFingerprint: String(source.lastLocalFingerprint || "").trim(),
@@ -21927,14 +21927,14 @@ function normalizeSimpleSyncMetaEntry(value = {}) {
   };
 }
 function normalizeSimpleSyncMetaMap(value = {}) {
-  const source = value && typeof value === "object" && !Array.isArray(value) · value : {};
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return Object.fromEntries(Object.entries(source).map(([key, raw]) => {
     const item = normalizeSimpleSyncMetaEntry({ ...(raw || {}), clientId: raw?.clientId || key });
-    return item.clientId · [item.clientId, item] : null;
+    return item.clientId ? [item.clientId, item] : null;
   }).filter(Boolean));
 }
 function simpleSyncBusinessData(item = {}) {
-  const source = item && typeof item === "object" && !Array.isArray(item) · item : {};
+  const source = item && typeof item === "object" && !Array.isArray(item) ? item : {};
   const forbidden = new Set(["id","clientId","remoteId","remoteVersion","lastSyncedAt","remoteUpdatedAt","syncStatus","lastSyncError"]);
   const out = {};
   Object.entries(source).forEach(([key, value]) => {
@@ -21994,10 +21994,10 @@ function createSimpleEntitySyncController(config) {
     refresh();
   };
   const refresh = (patch = {}) => {
-    const meta = normalizeSimpleSyncMetaMap(patch.metaByClientId === undefined · runtime.metaByClientId : patch.metaByClientId);
+    const meta = normalizeSimpleSyncMetaMap(patch.metaByClientId === undefined ? runtime.metaByClientId : patch.metaByClientId);
     const conflicts = Object.values(meta).filter(x => x.syncStatus === DEOS_LINKS_SYNC_STATUS.CONFLICT).length;
     const synced = ensureArray(state[entity]).filter(x => getMeta(simpleSyncClientId(x)).syncStatus === DEOS_LINKS_SYNC_STATUS.SYNCED).length;
-    let st = enabled() · DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY;
+    let st = enabled() ? DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY;
     if (patch.state) st = patch.state;
     else if (conflicts) st = DEOS_LINKS_SYNC_STATUS.CONFLICT;
     else if (patch.syncing || runtime.syncing) st = DEOS_LINKS_SYNC_STATUS.SYNCING;
@@ -22011,7 +22011,7 @@ function createSimpleEntitySyncController(config) {
   };
   const initialize = options => {
     runtime.metaByClientId = normalizeSimpleSyncMetaMap(metaRepository.load({}));
-    refresh({ state: enabled() · DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY });
+    refresh({ state: enabled() ? DEOS_LINKS_SYNC_STATUS.SYNC_READY : DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY });
     if (!options?.skipAutoSync && enabled() && canInspect()) window.setTimeout(() => syncNow({ silent: true, source: "startup" }), 1200);
     return runtime;
   };
@@ -22033,7 +22033,7 @@ function createSimpleEntitySyncController(config) {
     return { localCount: localMap.size, remoteCount: active.length, localOnly, remoteOnly, both, conflicts, remoteRows: rows, generatedAt: new Date().toLocaleString("fr-FR") };
   };
   const analyze = async () => {
-    const rows = canInspect() · await timeout(deosRemoteAdapter[listMethod](), `Lecture des ${plural} distants`) : [];
+    const rows = canInspect() ? await timeout(deosRemoteAdapter[listMethod](), `Lecture des ${plural} distants`) : [];
     const a=buildPreview(state[entity],rows); refresh({remoteCount:a.remoteCount,lastAnalysis:a,lastAnalysisAt:a.generatedAt,lastError:""}); return a;
   };
   const activate = async () => { setSettings({enabled:true,activatedAt:new Date().toISOString(),lastMode:"activated"}); refresh({state:navigator.onLine===false?DEOS_LINKS_SYNC_STATUS.OFFLINE:DEOS_LINKS_SYNC_STATUS.SYNC_READY,lastError:""}); return runtime; };
@@ -22168,7 +22168,7 @@ function createSimpleEntitySyncController(config) {
   const renderCard = () => {
     const a=runtime.lastAnalysis, ready=canInspect();
     const warning = entity === "decisions"
-      · "Ce pilote synchronise uniquement les Décisions. Les Documents conservent leur pilote séparé."
+      ? "Ce pilote synchronise uniquement les Décisions. Les Documents conservent leur pilote séparé."
       : "Ce pilote synchronise uniquement les Documents et leurs comptes-rendus. Les Décisions conservent leur pilote séparé.";
     return `<div id="${settingsCardId}" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation pilote — ${plural}</h2><p class="muted">V5.28A · synchronisation multi-appareils non destructive par identifiant stable, avec détection des conflits.</p></div><span class="remote-mode-badge ${linksSyncStatusClass(runtime.state)}">${esc(linksSyncStatusLabel(runtime.state))}</span></div><div class="settings-warning-box"><strong>Protection des données</strong><p>${esc(warning)}</p></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État pilote</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>${plural} locaux</strong><span>${state[entity].length}</span></div><div class="settings-calendar-summary-item"><strong>${plural} distants</strong><span>${runtime.remoteCount||0}</span></div><div class="settings-calendar-summary-item"><strong>Synchronisés</strong><span>${runtime.syncedCount||0}</span></div><div class="settings-calendar-summary-item"><strong>Conflits</strong><span>${runtime.conflictCount||0}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchro</strong><span>${esc(runtime.lastSyncAt||"Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière erreur</strong><span>${esc(runtime.lastError||"Aucune")}</span></div></div></section><section class="settings-card-block"><h3>Actions</h3><div class="row-actions"><button class="secondary" onclick="simpleSyncAnalyzeFromSettings('${entity}')" ${ready?"":"disabled"}>Analyser</button>${enabled()?`<button class="danger" onclick="simpleSyncDeactivateFromSettings('${entity}')">Désactiver</button>`:`<button class="action" onclick="simpleSyncActivateFromSettings('${entity}')">Activer</button>`}<button class="secondary" onclick="simpleSyncNowFromSettings('${entity}')" ${enabled()?"":"disabled"}>Synchroniser maintenant</button><button class="secondary" onclick="simpleSyncShowConflicts('${entity}')" ${runtime.conflictCount?"":"disabled"}>Voir les conflits</button></div>${!ready?`<div class="empty">Connexion au workspace requise. Les migrations Supabase V5.27B doivent être installées.</div>`:""}${a?`<p class="muted">Dernière analyse : ${a.localCount} local(aux), ${a.remoteCount} distant(s), ${a.conflicts.length} conflit(s).</p>`:""}</section></div></div>`;
   };
@@ -22255,7 +22255,7 @@ async function syncAllMultiDeviceNow(options = {}) {
   const silent = Boolean(options.silent);
   if (deosMultiDeviceSyncRuntime.syncing) return deosMultiDeviceSyncRuntime;
   if (!multiDeviceConnected()) {
-    deosMultiDeviceSyncRuntime.lastError = navigator.onLine === false · "Hors ligne." : "Connexion au workspace requise.";
+    deosMultiDeviceSyncRuntime.lastError = navigator.onLine === false ? "Hors ligne." : "Connexion au workspace requise.";
     if (!silent && currentView === "settings") renderSettings(deosMultiDeviceSyncRuntime.lastError);
     return deosMultiDeviceSyncRuntime;
   }
@@ -22285,7 +22285,7 @@ async function syncAllMultiDeviceNow(options = {}) {
     deosMultiDeviceSyncRuntime.lastResults = results;
     deosMultiDeviceSyncRuntime.lastSyncAt = new Date().toLocaleString("fr-FR");
     const failures = Object.entries(results).filter(([, r]) => !r.ok);
-    deosMultiDeviceSyncRuntime.lastError = failures.length · failures.map(([k, r]) => `${k}: ${r.error}`).join(" · ") : "";
+    deosMultiDeviceSyncRuntime.lastError = failures.length ? failures.map(([k, r]) => `${k}: ${r.error}`).join(" · ") : "";
   } finally {
     deosMultiDeviceSyncRuntime.syncing = false;
   }
@@ -22349,7 +22349,7 @@ function multiDeviceSyncSummary() {
     const runtime = multiDeviceEntityRuntime(entity);
     return {
       entity,
-      state: String(runtime.state || (runtime.enabled · "SYNC_READY" : "LOCAL_ONLY")),
+      state: String(runtime.state || (runtime.enabled ? "SYNC_READY" : "LOCAL_ONLY")),
       conflicts: Number(runtime.conflictCount || 0),
       error: String(runtime.lastError || ""),
       lastSyncAt: String(runtime.lastSyncAt || "")
@@ -22362,7 +22362,7 @@ function renderMultiDeviceSyncSettingsCardHtml() {
   const connected = multiDeviceConnected();
   const summary = multiDeviceSyncSummary();
   const labelMap = { links:"Liens", actions:"Actions", projects:"Projets", folders:"Dossiers", managers:"Managers", decisions:"Décisions", documents:"Documents" };
-  return `<div id="multiDeviceSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation multi-appareils</h2><p class="muted">V5.30Q1 · un seul workspace pour retrouver automatiquement les objets métier principaux sur PC, iPad et autres navigateurs, y compris Priorités / To-Do via Documents.</p></div><span class="remote-mode-badge ${connected · (summary.conflicts · "red" : "green") : "orange"}">${connected · (summary.conflicts · `${summary.conflicts} conflit(s)` : "Cloud connecté") : "Connexion requise"}</span></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Workspace</strong><span>${esc(deosRemoteRuntime.workspace?.name || "--")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchro globale</strong><span>${esc(deosMultiDeviceSyncRuntime.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Conflits</strong><span>${summary.conflicts}</span></div><div class="settings-calendar-summary-item"><strong>Erreurs</strong><span>${summary.errors}</span></div></div><div class="row-actions"><button class="action" type="button" onclick="syncAllMultiDeviceNow({silent:false,source:'manual'})" ${connected && !deosMultiDeviceSyncRuntime.syncing · "" : "disabled"}>${deosMultiDeviceSyncRuntime.syncing · "Synchronisation…" : "Synchroniser maintenant"}</button></div>${deosMultiDeviceSyncRuntime.lastError · `<p class="remote-error-box">${esc(deosMultiDeviceSyncRuntime.lastError)}</p>` : ""}</section><section class="settings-card-block"><h3>Objets synchronisés</h3><div class="settings-calendar-summary">${summary.rows.map(r => `<div class="settings-calendar-summary-item"><strong>${esc(labelMap[r.entity] || r.entity)}</strong><span>${r.conflicts · `${r.conflicts} conflit(s)` : r.error · "Erreur" : "Actif"}</span></div>`).join("")}</div><p class="muted">Le stockage local reste conservé. En cas de modifications concurrentes, les moteurs existants signalent un conflit au lieu d'écraser silencieusement les données.</p></section></div></div>`;
+  return `<div id="multiDeviceSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation multi-appareils</h2><p class="muted">V5.30Q1 · un seul workspace pour retrouver automatiquement les objets métier principaux sur PC, iPad et autres navigateurs, y compris Priorités / To-Do via Documents.</p></div><span class="remote-mode-badge ${connected ? (summary.conflicts ? "red" : "green") : "orange"}">${connected ? (summary.conflicts ? `${summary.conflicts} conflit(s)` : "Cloud connecté") : "Connexion requise"}</span></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Workspace</strong><span>${esc(deosRemoteRuntime.workspace?.name || "--")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchro globale</strong><span>${esc(deosMultiDeviceSyncRuntime.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Conflits</strong><span>${summary.conflicts}</span></div><div class="settings-calendar-summary-item"><strong>Erreurs</strong><span>${summary.errors}</span></div></div><div class="row-actions"><button class="action" type="button" onclick="syncAllMultiDeviceNow({silent:false,source:'manual'})" ${connected && !deosMultiDeviceSyncRuntime.syncing ? "" : "disabled"}>${deosMultiDeviceSyncRuntime.syncing ? "Synchronisation…" : "Synchroniser maintenant"}</button></div>${deosMultiDeviceSyncRuntime.lastError ? `<p class="remote-error-box">${esc(deosMultiDeviceSyncRuntime.lastError)}</p>` : ""}</section><section class="settings-card-block"><h3>Objets synchronisés</h3><div class="settings-calendar-summary">${summary.rows.map(r => `<div class="settings-calendar-summary-item"><strong>${esc(labelMap[r.entity] || r.entity)}</strong><span>${r.conflicts ? `${r.conflicts} conflit(s)` : r.error ? "Erreur" : "Actif"}</span></div>`).join("")}</div><p class="muted">Le stockage local reste conservé. En cas de modifications concurrentes, les moteurs existants signalent un conflit au lieu d'écraser silencieusement les données.</p></section></div></div>`;
 }
 
 function mountMultiDeviceSyncSettingsCard() {
@@ -22378,7 +22378,7 @@ function mountMultiDeviceSyncSettingsCard() {
 function getDefaultRemoteSyncSettings() {
   const remoteApi = window.DeosSupabase;
   const base = remoteApi?.normalizeRemoteConfig
-    · remoteApi.normalizeRemoteConfig(window.DEOS_REMOTE_CONFIG || {})
+    ? remoteApi.normalizeRemoteConfig(window.DEOS_REMOTE_CONFIG || {})
     : {
       enabled: false,
       provider: "supabase",
@@ -22486,13 +22486,13 @@ function resolvedRemoteConfig() {
   const base = getDefaultRemoteSyncSettings();
   const override = getRemoteSyncSettings();
   return remoteApi?.mergeRemoteConfig
-    · remoteApi.mergeRemoteConfig(base, override)
+    ? remoteApi.mergeRemoteConfig(base, override)
     : normalizeRemoteSyncSettings({ ...base, ...override });
 }
 
 function remoteModeKey(config = resolvedRemoteConfig()) {
   if (!config.enabled) return "local";
-  return config.environment === "production" · "production" : "test";
+  return config.environment === "production" ? "production" : "test";
 }
 
 function remoteModeLabel(mode = remoteModeKey()) {
@@ -22542,12 +22542,12 @@ function remoteRoleLabel(role = "") {
 
 function remoteSafeEmail(value) {
   const remoteApi = window.DeosSupabase;
-  return remoteApi?.maskEmailAddress · remoteApi.maskEmailAddress(value) : String(value || "");
+  return remoteApi?.maskEmailAddress ? remoteApi.maskEmailAddress(value) : String(value || "");
 }
 
 function remoteShortValue(value) {
   const remoteApi = window.DeosSupabase;
-  return remoteApi?.truncatePublicValue · remoteApi.truncatePublicValue(value) : String(value || "");
+  return remoteApi?.truncatePublicValue ? remoteApi.truncatePublicValue(value) : String(value || "");
 }
 
 function remoteStartupModeKey() {
@@ -22575,12 +22575,12 @@ function remoteSummaryDisplayName() {
   const profileName = String(deosRemoteRuntime.profile?.display_name || "").trim();
   if (profileName) return profileName;
   const email = String(deosRemoteRuntime.user?.email || "").trim();
-  return email · remoteShortValue(email) : "Utilisateur DEOS";
+  return email ? remoteShortValue(email) : "Utilisateur DEOS";
 }
 
 function remoteDetailEmail() {
   const email = String(deosRemoteRuntime.user?.email || "").trim();
-  return email · remoteSafeEmail(email) : "--";
+  return email ? remoteSafeEmail(email) : "--";
 }
 
 function remoteSummarySiteName() {
@@ -22592,7 +22592,7 @@ function remoteUserConnectionState() {
   if (navigator.onLine === false) {
     return {
       summaryLabel: "Hors ligne",
-      detailLabel: deosRemoteRuntime.temporaryLocal · "Local temporaire hors ligne" : "Hors ligne",
+      detailLabel: deosRemoteRuntime.temporaryLocal ? "Local temporaire hors ligne" : "Hors ligne",
       tone: "offline"
     };
   }
@@ -22679,8 +22679,8 @@ function closeRemoteStartupOverlay(options = {}) {
   updateRemoteStartupDialog({
     open: false,
     busy: false,
-    error: options.keepError · deosRemoteStartupDialog.error : "",
-    message: options.keepMessage · deosRemoteStartupDialog.message : ""
+    error: options.keepError ? deosRemoteStartupDialog.error : "",
+    message: options.keepMessage ? deosRemoteStartupDialog.message : ""
   });
 }
 
@@ -22714,7 +22714,7 @@ function renderRemoteUserContext() {
       sidebar.insertBefore(root, sidebar.querySelector("button.nav") || null);
     }
   }
-  root.className = `sidebar-user-compact${deosRemoteUserContextUi.expanded · " is-expanded" : ""}`;
+  root.className = `sidebar-user-compact${deosRemoteUserContextUi.expanded ? " is-expanded" : ""}`;
   const contextVisible = deosRemoteRuntime.user || deosRemoteRuntime.temporaryLocal || resolvedRemoteConfig().enabled;
   root.hidden = !contextVisible;
   if (!contextVisible) return;
@@ -22723,12 +22723,12 @@ function renderRemoteUserContext() {
   const signedIn = Boolean(deosRemoteAuthService && deosRemoteAuthService.isAuthenticated && deosRemoteAuthService.isAuthenticated() && deosRemoteRuntime.user);
   const workspaceName = String(deosRemoteRuntime.workspace?.name || "--").trim() || "--";
   const siteName = remoteSummarySiteName();
-  const roleLabel = deosRemoteRuntime.role · remoteRoleLabel(deosRemoteRuntime.role) : "--";
+  const roleLabel = deosRemoteRuntime.role ? remoteRoleLabel(deosRemoteRuntime.role) : "--";
   const detailNotes = [];
   if (deosRemoteRuntime.startupMessage) detailNotes.push(deosRemoteRuntime.startupMessage);
   if (alertState.remoteError) detailNotes.push(alertState.remoteError);
-  if (alertState.conflictCount > 0) detailNotes.push(`${alertState.conflictCount} conflit${alertState.conflictCount > 1 · "s" : ""} Liens en attente de résolution.`);
-  root.innerHTML = `<button class="sidebar-user-toggle" type="button" aria-expanded="${deosRemoteUserContextUi.expanded · "true" : "false"}" aria-controls="sidebarUserDetails" onclick="toggleRemoteUserContext()"><span class="sidebar-user-summary"><strong class="sidebar-user-name">${esc(remoteSummaryDisplayName())}</strong><span class="sidebar-user-meta"><span>${esc(siteName)}</span><span class="sidebar-user-meta-sep">·</span><span class="sidebar-user-status sidebar-user-status-${connection.tone}"><span class="sidebar-user-status-dot" aria-hidden="true"></span>${esc(connection.summaryLabel)}</span></span></span><span class="sidebar-user-toggle-side"><span class="sidebar-user-alert${alertState.hasAlert · " is-visible" : ""}" aria-hidden="true"></span><span class="sidebar-user-chevron" aria-hidden="true">${deosRemoteUserContextUi.expanded · "▴" : "▾"}</span></span></button><div id="sidebarUserDetails" class="sidebar-user-details" ${deosRemoteUserContextUi.expanded · "" : "hidden"}><div class="sidebar-user-details-grid"><div class="sidebar-user-detail-row"><span>Utilisateur</span><strong>${esc(remoteDisplayName())}</strong></div><div class="sidebar-user-detail-row"><span>Email</span><strong>${esc(remoteDetailEmail())}</strong></div><div class="sidebar-user-detail-row"><span>Workspace</span><strong>${esc(workspaceName)}</strong></div><div class="sidebar-user-detail-row"><span>Site</span><strong>${esc(siteName)}</strong></div><div class="sidebar-user-detail-row"><span>Rôle</span><strong>${esc(roleLabel)}</strong></div><div class="sidebar-user-detail-row"><span>État</span><strong>${esc(connection.detailLabel)}</strong></div>${alertState.remoteCode · `<div class="sidebar-user-detail-row"><span>Code</span><strong>${esc(alertState.remoteCode)}</strong></div>` : ""}</div>${detailNotes.length · `<div class="sidebar-user-notes">${detailNotes.map(note => `<p>${esc(note)}</p>`).join("")}</div>` : ""}<div class="sidebar-user-actions"><button class="secondary sidebar-user-action" type="button" onclick="focusRemoteWorkspaceArea()">Mon espace</button><button class="secondary sidebar-user-action" type="button" onclick="setView('settings')">Paramètres</button>${signedIn · `<button class="secondary sidebar-user-action" type="button" onclick="remoteSignOut()">Se déconnecter</button>` : `<button class="secondary sidebar-user-action" type="button" onclick="reopenRemoteStartupOverlay()">Se connecter</button>`}</div></div>`;
+  if (alertState.conflictCount > 0) detailNotes.push(`${alertState.conflictCount} conflit${alertState.conflictCount > 1 ? "s" : ""} Liens en attente de résolution.`);
+  root.innerHTML = `<button class="sidebar-user-toggle" type="button" aria-expanded="${deosRemoteUserContextUi.expanded ? "true" : "false"}" aria-controls="sidebarUserDetails" onclick="toggleRemoteUserContext()"><span class="sidebar-user-summary"><strong class="sidebar-user-name">${esc(remoteSummaryDisplayName())}</strong><span class="sidebar-user-meta"><span>${esc(siteName)}</span><span class="sidebar-user-meta-sep">·</span><span class="sidebar-user-status sidebar-user-status-${connection.tone}"><span class="sidebar-user-status-dot" aria-hidden="true"></span>${esc(connection.summaryLabel)}</span></span></span><span class="sidebar-user-toggle-side"><span class="sidebar-user-alert${alertState.hasAlert ? " is-visible" : ""}" aria-hidden="true"></span><span class="sidebar-user-chevron" aria-hidden="true">${deosRemoteUserContextUi.expanded ? "▴" : "▾"}</span></span></button><div id="sidebarUserDetails" class="sidebar-user-details" ${deosRemoteUserContextUi.expanded ? "" : "hidden"}><div class="sidebar-user-details-grid"><div class="sidebar-user-detail-row"><span>Utilisateur</span><strong>${esc(remoteDisplayName())}</strong></div><div class="sidebar-user-detail-row"><span>Email</span><strong>${esc(remoteDetailEmail())}</strong></div><div class="sidebar-user-detail-row"><span>Workspace</span><strong>${esc(workspaceName)}</strong></div><div class="sidebar-user-detail-row"><span>Site</span><strong>${esc(siteName)}</strong></div><div class="sidebar-user-detail-row"><span>Rôle</span><strong>${esc(roleLabel)}</strong></div><div class="sidebar-user-detail-row"><span>État</span><strong>${esc(connection.detailLabel)}</strong></div>${alertState.remoteCode ? `<div class="sidebar-user-detail-row"><span>Code</span><strong>${esc(alertState.remoteCode)}</strong></div>` : ""}</div>${detailNotes.length ? `<div class="sidebar-user-notes">${detailNotes.map(note => `<p>${esc(note)}</p>`).join("")}</div>` : ""}<div class="sidebar-user-actions"><button class="secondary sidebar-user-action" type="button" onclick="focusRemoteWorkspaceArea()">Mon espace</button><button class="secondary sidebar-user-action" type="button" onclick="setView('settings')">Paramètres</button>${signedIn ? `<button class="secondary sidebar-user-action" type="button" onclick="remoteSignOut()">Se déconnecter</button>` : `<button class="secondary sidebar-user-action" type="button" onclick="reopenRemoteStartupOverlay()">Se connecter</button>`}</div></div>`;
 }
 
 function focusRemoteWorkspaceArea() {
@@ -22824,7 +22824,7 @@ function remoteFastSetSession(session) {
   deosRemoteAuthService.session = session || null;
   deosRemoteAuthService.user = session?.user || null;
   deosRemoteAuthService.initialized = true;
-  deosRemoteAuthService.connectionStatus = session?.user · "authenticated" : "signed_out";
+  deosRemoteAuthService.connectionStatus = session?.user ? "authenticated" : "signed_out";
   deosRemoteAuthService.lastError = null;
 }
 
@@ -22847,7 +22847,7 @@ async function remoteFastHydrateContext(session) {
     );
 
     if (!profileResponse?.error) deosRemoteAuthService.profile = profileResponse?.data || null;
-    const memberships = Array.isArray(membershipResponse?.data) · membershipResponse.data : [];
+    const memberships = Array.isArray(membershipResponse?.data) ? membershipResponse.data : [];
 
     const preferenceKey = String(deosRemoteAuthService.workspacePreferenceKey || "deos_remote_workspace_preference");
     const preferredWorkspaceId = String(localStorage.getItem(preferenceKey) || "");
@@ -22872,13 +22872,13 @@ async function remoteFastHydrateContext(session) {
       "Chargement du workspace trop lent."
     );
 
-    const workspace = workspaceResponse?.error · null : (workspaceResponse?.data || null);
-    const site = sitesResponse?.error · null : (Array.isArray(sitesResponse?.data) · sitesResponse.data[0] || null : null);
+    const workspace = workspaceResponse?.error ? null : (workspaceResponse?.data || null);
+    const site = sitesResponse?.error ? null : (Array.isArray(sitesResponse?.data) ? sitesResponse.data[0] || null : null);
 
     deosRemoteAuthService.currentWorkspace = workspace;
     deosRemoteAuthService.currentSite = site;
     deosRemoteAuthService.currentRole = selectedMembership.role || "";
-    deosRemoteAuthService.availableWorkspaces = workspace · [{
+    deosRemoteAuthService.availableWorkspaces = workspace ? [{
       workspaceId: workspace.id,
       workspaceName: workspace.name || "Workspace",
       siteName: site?.name || "",
@@ -23141,7 +23141,7 @@ function renderRemoteStartupOverlay() {
   const hasWorkspace = Boolean(deosRemoteRuntime.workspace);
   const canContinueLocal = resolvedRemoteConfig().environment === "test";
   const workspaceOptions = ensureArray(deosRemoteRuntime.availableWorkspaces || []);
-  root.insertAdjacentHTML("beforeend", `<div id="remoteStartupOverlay" class="modal-backdrop"><div class="modal-panel remote-auth-panel"><div class="modal-head"><h2>Connexion à DEOS</h2><button class="icon-close" type="button" onclick="continueRemoteTemporarilyInLocalMode()" aria-label="Fermer" ${canContinueLocal · "" : "hidden"}>×</button></div><div class="remote-auth-body"><p class="muted">Retrouvez votre espace DEOS et les données synchronisées autorisées depuis cet appareil.</p><p class="muted">V5.27C : en cas de réseau lent, les boutons sont automatiquement réactivés après délai afin d’éviter tout blocage sur iPad/Safari.</p><div class="remote-auth-chip-row"><span class="remote-mode-badge ${remoteModeClass(deosRemoteRuntime.mode)}">${esc(remoteModeLabel(deosRemoteRuntime.mode))}</span><span class="remote-provider-chip">${esc((deosRemoteRuntime.provider || "supabase").toUpperCase())}</span></div>${navigator.onLine === false · `<p class="remote-error-box">Hors ligne — dernière session connue. Les fonctions distantes restent indisponibles tant que le réseau n'est pas revenu.</p>` : ""}${deosRemoteStartupDialog.error · `<p class="remote-error-box">${esc(deosRemoteStartupDialog.error)}</p>` : ""}${deosRemoteStartupDialog.message · `<p class="settings-confirm">${esc(deosRemoteStartupDialog.message)}</p>` : ""}${requiresWorkspaceSelection · `<div class="settings-card-control"><label for="remoteStartupWorkspace">Workspace disponible</label><select id="remoteStartupWorkspace"><option value="">Choisir un workspace</option>${workspaceOptions.map(item => `<option value="${esc(item.workspaceId)}" ${deosRemoteStartupDialog.workspaceId === item.workspaceId · "selected" : ""}>${esc(item.workspaceName)} · ${esc(item.siteName || "Sans site")} · ${esc(remoteRoleLabel(item.role))}</option>`).join("")}</select></div><div class="row-actions"><button class="action" type="button" onclick="selectStartupWorkspace()" ${deosRemoteStartupDialog.busy · "disabled" : ""}>Charger cet espace</button></div>` : !hasWorkspace && deosRemoteRuntime.connectionStatus === "authenticated" · `<p class="muted">Aucun workspace n'est encore rattaché à ce compte.</p><div class="row-actions"><button class="action" type="button" onclick="openRemoteWorkspaceDialogFromStartup()" ${deosRemoteStartupDialog.busy · "disabled" : ""}>Créer mon espace de test</button></div>` : `<input id="remoteStartupEmail" type="email" value="${esc(deosRemoteStartupDialog.email || "")}" placeholder="Email de test"><input id="remoteStartupPassword" type="password" value="${esc(deosRemoteStartupDialog.password || "")}" placeholder="Mot de passe"><div class="row-actions"><button class="action" type="button" onclick="submitStartupPasswordSignIn()" ${deosRemoteStartupDialog.busy · "disabled" : ""}>Se connecter</button><button class="secondary" type="button" onclick="sendStartupMagicLink()" ${deosRemoteStartupDialog.busy · "disabled" : ""}>Recevoir un lien de connexion</button><button class="secondary" type="button" onclick="requestStartupPasswordReset()" ${deosRemoteStartupDialog.busy · "disabled" : ""}>Mot de passe oublié</button></div>${canContinueLocal · `<button class="secondary" type="button" onclick="continueRemoteTemporarilyInLocalMode()" ${deosRemoteStartupDialog.busy · "disabled" : ""}>Continuer temporairement en mode local</button><p class="muted">Les données locales restent disponibles, mais les fonctions multi-appareils sont désactivées tant que vous n’êtes pas connecté.</p>` : ""}`}</div></div>`);
+  root.insertAdjacentHTML("beforeend", `<div id="remoteStartupOverlay" class="modal-backdrop"><div class="modal-panel remote-auth-panel"><div class="modal-head"><h2>Connexion à DEOS</h2><button class="icon-close" type="button" onclick="continueRemoteTemporarilyInLocalMode()" aria-label="Fermer" ${canContinueLocal ? "" : "hidden"}>×</button></div><div class="remote-auth-body"><p class="muted">Retrouvez votre espace DEOS et les données synchronisées autorisées depuis cet appareil.</p><p class="muted">V5.27C : en cas de réseau lent, les boutons sont automatiquement réactivés après délai afin d’éviter tout blocage sur iPad/Safari.</p><div class="remote-auth-chip-row"><span class="remote-mode-badge ${remoteModeClass(deosRemoteRuntime.mode)}">${esc(remoteModeLabel(deosRemoteRuntime.mode))}</span><span class="remote-provider-chip">${esc((deosRemoteRuntime.provider || "supabase").toUpperCase())}</span></div>${navigator.onLine === false ? `<p class="remote-error-box">Hors ligne — dernière session connue. Les fonctions distantes restent indisponibles tant que le réseau n'est pas revenu.</p>` : ""}${deosRemoteStartupDialog.error ? `<p class="remote-error-box">${esc(deosRemoteStartupDialog.error)}</p>` : ""}${deosRemoteStartupDialog.message ? `<p class="settings-confirm">${esc(deosRemoteStartupDialog.message)}</p>` : ""}${requiresWorkspaceSelection ? `<div class="settings-card-control"><label for="remoteStartupWorkspace">Workspace disponible</label><select id="remoteStartupWorkspace"><option value="">Choisir un workspace</option>${workspaceOptions.map(item => `<option value="${esc(item.workspaceId)}" ${deosRemoteStartupDialog.workspaceId === item.workspaceId ? "selected" : ""}>${esc(item.workspaceName)} · ${esc(item.siteName || "Sans site")} · ${esc(remoteRoleLabel(item.role))}</option>`).join("")}</select></div><div class="row-actions"><button class="action" type="button" onclick="selectStartupWorkspace()" ${deosRemoteStartupDialog.busy ? "disabled" : ""}>Charger cet espace</button></div>` : !hasWorkspace && deosRemoteRuntime.connectionStatus === "authenticated" ? `<p class="muted">Aucun workspace n'est encore rattaché à ce compte.</p><div class="row-actions"><button class="action" type="button" onclick="openRemoteWorkspaceDialogFromStartup()" ${deosRemoteStartupDialog.busy ? "disabled" : ""}>Créer mon espace de test</button></div>` : `<input id="remoteStartupEmail" type="email" value="${esc(deosRemoteStartupDialog.email || "")}" placeholder="Email de test"><input id="remoteStartupPassword" type="password" value="${esc(deosRemoteStartupDialog.password || "")}" placeholder="Mot de passe"><div class="row-actions"><button class="action" type="button" onclick="submitStartupPasswordSignIn()" ${deosRemoteStartupDialog.busy ? "disabled" : ""}>Se connecter</button><button class="secondary" type="button" onclick="sendStartupMagicLink()" ${deosRemoteStartupDialog.busy ? "disabled" : ""}>Recevoir un lien de connexion</button><button class="secondary" type="button" onclick="requestStartupPasswordReset()" ${deosRemoteStartupDialog.busy ? "disabled" : ""}>Mot de passe oublié</button></div>${canContinueLocal ? `<button class="secondary" type="button" onclick="continueRemoteTemporarilyInLocalMode()" ${deosRemoteStartupDialog.busy ? "disabled" : ""}>Continuer temporairement en mode local</button><p class="muted">Les données locales restent disponibles, mais les fonctions multi-appareils sont désactivées tant que vous n’êtes pas connecté.</p>` : ""}`}</div></div>`);
 }
 
 function applyRemoteEnvironmentBadge() {
@@ -23165,15 +23165,15 @@ function updateRemoteRuntime(summary = {}) {
     available: Boolean(window.DeosSupabase && window.DeosSupabaseRemote),
     initialized: Boolean(summary.initialized || deosRemoteRuntime.initialized),
     connectionStatus: summary.connectionStatus || deosRemoteRuntime.connectionStatus,
-    user: summary.user === undefined · deosRemoteRuntime.user : summary.user,
-    profile: summary.profile === undefined · deosRemoteRuntime.profile : summary.profile,
-    workspace: summary.workspace === undefined · deosRemoteRuntime.workspace : summary.workspace,
-    site: summary.site === undefined · deosRemoteRuntime.site : summary.site,
-    role: summary.role === undefined · deosRemoteRuntime.role : summary.role,
-    availableWorkspaces: summary.availableWorkspaces === undefined · deosRemoteRuntime.availableWorkspaces : summary.availableWorkspaces,
-    requiresWorkspaceSelection: summary.requiresWorkspaceSelection === undefined · deosRemoteRuntime.requiresWorkspaceSelection : Boolean(summary.requiresWorkspaceSelection),
-    lastError: summary.lastError · summary.lastError.message || String(summary.lastError) : (summary.lastError === null · "" : deosRemoteRuntime.lastError),
-    lastErrorCode: summary.lastError · summary.lastError.code || "REMOTE_ERROR" : (summary.lastError === null · "" : deosRemoteRuntime.lastErrorCode),
+    user: summary.user === undefined ? deosRemoteRuntime.user : summary.user,
+    profile: summary.profile === undefined ? deosRemoteRuntime.profile : summary.profile,
+    workspace: summary.workspace === undefined ? deosRemoteRuntime.workspace : summary.workspace,
+    site: summary.site === undefined ? deosRemoteRuntime.site : summary.site,
+    role: summary.role === undefined ? deosRemoteRuntime.role : summary.role,
+    availableWorkspaces: summary.availableWorkspaces === undefined ? deosRemoteRuntime.availableWorkspaces : summary.availableWorkspaces,
+    requiresWorkspaceSelection: summary.requiresWorkspaceSelection === undefined ? deosRemoteRuntime.requiresWorkspaceSelection : Boolean(summary.requiresWorkspaceSelection),
+    lastError: summary.lastError ? summary.lastError.message || String(summary.lastError) : (summary.lastError === null ? "" : deosRemoteRuntime.lastError),
+    lastErrorCode: summary.lastError ? summary.lastError.code || "REMOTE_ERROR" : (summary.lastError === null ? "" : deosRemoteRuntime.lastErrorCode),
     lastAuthEvent: summary.lastAuthEvent || deosRemoteRuntime.lastAuthEvent,
     startupStatus: remoteStartupModeKey(),
     startupMessage: deosRemoteRuntime.startupMessage || ""
@@ -23211,20 +23211,20 @@ async function initializeRemoteServices(options = {}) {
     environment: config.environment,
     mode: remoteModeKey(config),
     configurationStatus: remoteConfigurationStatus(config),
-    connectionStatus: config.enabled · "pending" : "local_only",
+    connectionStatus: config.enabled ? "pending" : "local_only",
     available: Boolean(window.DeosSupabase && window.DeosSupabaseRemote),
-    lastOperation: config.enabled · "Mode distant de test prepare." : "Mode local actif. Aucun backend contacte.",
+    lastOperation: config.enabled ? "Mode distant de test prepare." : "Mode local actif. Aucun backend contacte.",
     lastError: "",
     lastErrorCode: "",
     temporaryLocal: false,
-    startupStatus: config.enabled · "test_signed_out" : "local",
+    startupStatus: config.enabled ? "test_signed_out" : "local",
     startupMessage: ""
   });
   applyRemoteEnvironmentBadge();
   renderRemoteUserContext();
 
   if (deosRemoteRuntime.configurationStatus !== "ready") {
-    deosRemoteRuntime.connectionStatus = deosRemoteRuntime.configurationStatus === "disabled" · "local_only" : "not_configured";
+    deosRemoteRuntime.connectionStatus = deosRemoteRuntime.configurationStatus === "disabled" ? "local_only" : "not_configured";
     if (deosRemoteRuntime.configurationStatus !== "disabled") {
       deosRemoteRuntime.lastError = remoteConfigurationLabel(deosRemoteRuntime.configurationStatus);
       deosRemoteRuntime.lastErrorCode = deosRemoteRuntime.configurationStatus.toUpperCase();
@@ -23442,9 +23442,9 @@ async function initializeRemoteWorkspace() {
     deosRemoteRuntime.workspace = result.workspace || deosRemoteRuntime.workspace;
     deosRemoteRuntime.site = result.site || deosRemoteRuntime.site;
     deosRemoteRuntime.role = result.role || deosRemoteRuntime.role;
-    setRemoteLastOperation(result.created_workspace · "Espace de test créé avec succès." : "Espace existant retrouvé.");
+    setRemoteLastOperation(result.created_workspace ? "Espace de test créé avec succès." : "Espace existant retrouvé.");
     deosRemoteWorkspaceDialog.busy = false;
-    deosRemoteWorkspaceDialog.message = result.created_workspace · "Espace de test créé avec succès." : "Espace existant retrouvé.";
+    deosRemoteWorkspaceDialog.message = result.created_workspace ? "Espace de test créé avec succès." : "Espace existant retrouvé.";
     deosRemoteWorkspaceDialog.error = "";
     renderSettings(deosRemoteWorkspaceDialog.message);
   } catch (error) {
@@ -23595,7 +23595,7 @@ async function refreshRemoteTestRecords(options = {}) {
   try {
     const rows = await deosRemoteAdapter.listTestRecords();
     deosRemoteRuntime.testRecords = rows;
-    updateRemoteRuntime(deosRemoteAuthService · deosRemoteAuthService.getStateSnapshot() : {});
+    updateRemoteRuntime(deosRemoteAuthService ? deosRemoteAuthService.getStateSnapshot() : {});
     setRemoteLastOperation(`Tests distants actualises (${rows.length}).`);
     if (!options.silent && currentView === "settings") renderSettings("Tests distants actualises.");
     return rows;
@@ -23674,7 +23674,7 @@ function renderRemoteTestRecordsHtml() {
   }
   const rows = ensureArray(deosRemoteRuntime.testRecords);
   if (!rows.length) return `<div class="empty">Aucun enregistrement de test distant pour le workspace actif.</div>`;
-  return rows.map(row => `<div class="item remote-test-item"><div><strong>${esc(row.label || "Test distant")}</strong><span class="muted">Version ${esc(String(row.version || 1))} · ${esc(row.updated_at || row.created_at || "")}</span><span class="meta">ID ${esc(remoteShortValue(row.id || ""))} · owner ${esc(remoteShortValue(row.owner_id || ""))}</span></div>${remoteCanWrite() · `<div class="row-actions"><button class="secondary" type="button" onclick="softDeleteRemoteTestRecord('${esc(row.id)}', ${Number(row.version || 1)})">Suppression logique</button></div>` : ""}</div>`).join("");
+  return rows.map(row => `<div class="item remote-test-item"><div><strong>${esc(row.label || "Test distant")}</strong><span class="muted">Version ${esc(String(row.version || 1))} · ${esc(row.updated_at || row.created_at || "")}</span><span class="meta">ID ${esc(remoteShortValue(row.id || ""))} · owner ${esc(remoteShortValue(row.owner_id || ""))}</span></div>${remoteCanWrite() ? `<div class="row-actions"><button class="secondary" type="button" onclick="softDeleteRemoteTestRecord('${esc(row.id)}', ${Number(row.version || 1)})">Suppression logique</button></div>` : ""}</div>`).join("");
 }
 
 function renderRemoteSettingsCardHtml() {
@@ -23683,9 +23683,9 @@ function renderRemoteSettingsCardHtml() {
   const workspaceName = deosRemoteRuntime.workspace?.name || "--";
   const siteName = deosRemoteRuntime.site?.name || "--";
   const lastConnection = deosRemoteRuntime.lastConnectionTestAt
-    · `${deosRemoteRuntime.lastConnectionTestAt} · ${deosRemoteRuntime.lastConnectionTestResult || "OK"}`
+    ? `${deosRemoteRuntime.lastConnectionTestAt} · ${deosRemoteRuntime.lastConnectionTestResult || "OK"}`
     : "Aucun test realise";
-  return `<div id="remoteSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation multi-appareils - Test</h2><p class="muted">Preparation du backend Supabase de test et de l'authentification, sans migration des donnees metier DEOS.</p></div><span class="remote-mode-badge ${remoteModeClass(deosRemoteRuntime.mode)}">${esc(remoteModeLabel(deosRemoteRuntime.mode))}</span></div><div class="settings-warning-box"><strong>Attention</strong><p>Les donnees metier DEOS ne sont pas encore synchronisees dans cette version.</p></div><div class="settings-info-box">${esc(remoteConfigSourceNotice())}</div><div class="settings-card-grid"><section class="settings-card-block"><h3>Configuration publique</h3><div class="settings-card-control settings-inline-check"><label><input id="remoteEnabled" type="checkbox" ${config.enabled · "checked" : ""}> Activer le mode distant de test</label></div><div class="settings-card-control"><label for="remoteProvider">Fournisseur</label><select id="remoteProvider"><option value="supabase" selected>Supabase</option></select></div><div class="settings-card-control"><label for="remoteEnvironment">Environnement</label><select id="remoteEnvironment"><option value="test" ${config.environment === "test" · "selected" : ""}>Test</option><option value="production" ${config.environment === "production" · "selected" : ""}>Production (bloque)</option></select></div><div class="settings-card-control"><label for="remoteSupabaseUrl">SUPABASE_URL</label><input id="remoteSupabaseUrl" value="${esc(config.supabaseUrl)}" placeholder="https://xxxx.supabase.co"></div><div class="settings-card-control"><label for="remoteSupabasePublishableKey">SUPABASE_PUBLISHABLE_KEY</label><input id="remoteSupabasePublishableKey" value="${esc(config.supabasePublishableKey)}" placeholder="eyJ... cle publique publishable"></div><div class="settings-card-control"><label for="remoteAuthRedirectUrl">URL de redirection Auth</label><input id="remoteAuthRedirectUrl" value="${esc(config.authRedirectUrl)}" placeholder="http://127.0.0.1:5500/index.html"></div><div class="settings-card-control settings-inline-check"><label><input id="remoteDebug" type="checkbox" ${config.debug · "checked" : ""}> Debug distant (desactive par defaut)</label></div><div class="row-actions"><button class="action" type="button" onclick="saveRemoteSettings()">Enregistrer la configuration de test</button><button class="secondary" type="button" onclick="disableRemoteMode()">Desactiver le mode distant</button></div></section><section class="settings-card-block"><h3>Etat distant</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Mode actuel</strong><span>${esc(remoteModeLabel(deosRemoteRuntime.mode))}</span></div><div class="settings-calendar-summary-item"><strong>Fournisseur</strong><span>${esc((deosRemoteRuntime.provider || "supabase").toUpperCase())}</span></div><div class="settings-calendar-summary-item"><strong>Etat de configuration</strong><span>${esc(remoteConfigurationLabel())}</span></div><div class="settings-calendar-summary-item"><strong>Etat de connexion</strong><span>${esc(remoteConnectionLabel())}</span></div><div class="settings-calendar-summary-item"><strong>Email utilisateur</strong><span>${esc(signedIn · (deosRemoteRuntime.user?.email || "") : "--")}</span></div><div class="settings-calendar-summary-item"><strong>Workspace actif</strong><span>${esc(workspaceName)}</span></div><div class="settings-calendar-summary-item"><strong>Site actif</strong><span>${esc(siteName)}</span></div><div class="settings-calendar-summary-item"><strong>Role actif</strong><span>${esc(remoteRoleLabel(deosRemoteRuntime.role))}</span></div><div class="settings-calendar-summary-item"><strong>Derniere operation distante</strong><span>${esc(deosRemoteRuntime.lastOperation || "Aucune operation distante.")}</span></div><div class="settings-calendar-summary-item"><strong>Test de connexion</strong><span>${esc(lastConnection)}</span></div></div>${deosRemoteRuntime.lastError · `<p class="remote-error-box">${esc(deosRemoteRuntime.lastError)}</p>` : ""}<div class="row-actions"><button class="action" type="button" onclick="openRemoteAuthDialog()" ${deosRemoteRuntime.configurationStatus === "ready" · "" : "disabled"}>Se connecter</button><button class="secondary" type="button" onclick="remoteSignOut()" ${signedIn · "" : "disabled"}>Se deconnecter</button><button class="secondary" type="button" onclick="testRemoteConnection()" ${config.enabled · "" : "disabled"}>Tester la connexion</button><button class="secondary" type="button" onclick="createRemoteTestRecord()" ${signedIn && remoteCanWrite() · "" : "disabled"}>Creer un enregistrement test</button><button class="secondary" type="button" onclick="refreshRemoteTestRecords()" ${signedIn · "" : "disabled"}>Actualiser les tests</button></div></section></div><div class="card settings-card remote-records-card"><h3>Enregistrements distants de test</h3>${renderRemoteTestRecordsHtml()}</div></div>`;
+  return `<div id="remoteSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation multi-appareils - Test</h2><p class="muted">Preparation du backend Supabase de test et de l'authentification, sans migration des donnees metier DEOS.</p></div><span class="remote-mode-badge ${remoteModeClass(deosRemoteRuntime.mode)}">${esc(remoteModeLabel(deosRemoteRuntime.mode))}</span></div><div class="settings-warning-box"><strong>Attention</strong><p>Les donnees metier DEOS ne sont pas encore synchronisees dans cette version.</p></div><div class="settings-info-box">${esc(remoteConfigSourceNotice())}</div><div class="settings-card-grid"><section class="settings-card-block"><h3>Configuration publique</h3><div class="settings-card-control settings-inline-check"><label><input id="remoteEnabled" type="checkbox" ${config.enabled ? "checked" : ""}> Activer le mode distant de test</label></div><div class="settings-card-control"><label for="remoteProvider">Fournisseur</label><select id="remoteProvider"><option value="supabase" selected>Supabase</option></select></div><div class="settings-card-control"><label for="remoteEnvironment">Environnement</label><select id="remoteEnvironment"><option value="test" ${config.environment === "test" ? "selected" : ""}>Test</option><option value="production" ${config.environment === "production" ? "selected" : ""}>Production (bloque)</option></select></div><div class="settings-card-control"><label for="remoteSupabaseUrl">SUPABASE_URL</label><input id="remoteSupabaseUrl" value="${esc(config.supabaseUrl)}" placeholder="https://xxxx.supabase.co"></div><div class="settings-card-control"><label for="remoteSupabasePublishableKey">SUPABASE_PUBLISHABLE_KEY</label><input id="remoteSupabasePublishableKey" value="${esc(config.supabasePublishableKey)}" placeholder="eyJ... cle publique publishable"></div><div class="settings-card-control"><label for="remoteAuthRedirectUrl">URL de redirection Auth</label><input id="remoteAuthRedirectUrl" value="${esc(config.authRedirectUrl)}" placeholder="http://127.0.0.1:5500/index.html"></div><div class="settings-card-control settings-inline-check"><label><input id="remoteDebug" type="checkbox" ${config.debug ? "checked" : ""}> Debug distant (desactive par defaut)</label></div><div class="row-actions"><button class="action" type="button" onclick="saveRemoteSettings()">Enregistrer la configuration de test</button><button class="secondary" type="button" onclick="disableRemoteMode()">Desactiver le mode distant</button></div></section><section class="settings-card-block"><h3>Etat distant</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Mode actuel</strong><span>${esc(remoteModeLabel(deosRemoteRuntime.mode))}</span></div><div class="settings-calendar-summary-item"><strong>Fournisseur</strong><span>${esc((deosRemoteRuntime.provider || "supabase").toUpperCase())}</span></div><div class="settings-calendar-summary-item"><strong>Etat de configuration</strong><span>${esc(remoteConfigurationLabel())}</span></div><div class="settings-calendar-summary-item"><strong>Etat de connexion</strong><span>${esc(remoteConnectionLabel())}</span></div><div class="settings-calendar-summary-item"><strong>Email utilisateur</strong><span>${esc(signedIn ? (deosRemoteRuntime.user?.email || "") : "--")}</span></div><div class="settings-calendar-summary-item"><strong>Workspace actif</strong><span>${esc(workspaceName)}</span></div><div class="settings-calendar-summary-item"><strong>Site actif</strong><span>${esc(siteName)}</span></div><div class="settings-calendar-summary-item"><strong>Role actif</strong><span>${esc(remoteRoleLabel(deosRemoteRuntime.role))}</span></div><div class="settings-calendar-summary-item"><strong>Derniere operation distante</strong><span>${esc(deosRemoteRuntime.lastOperation || "Aucune operation distante.")}</span></div><div class="settings-calendar-summary-item"><strong>Test de connexion</strong><span>${esc(lastConnection)}</span></div></div>${deosRemoteRuntime.lastError ? `<p class="remote-error-box">${esc(deosRemoteRuntime.lastError)}</p>` : ""}<div class="row-actions"><button class="action" type="button" onclick="openRemoteAuthDialog()" ${deosRemoteRuntime.configurationStatus === "ready" ? "" : "disabled"}>Se connecter</button><button class="secondary" type="button" onclick="remoteSignOut()" ${signedIn ? "" : "disabled"}>Se deconnecter</button><button class="secondary" type="button" onclick="testRemoteConnection()" ${config.enabled ? "" : "disabled"}>Tester la connexion</button><button class="secondary" type="button" onclick="createRemoteTestRecord()" ${signedIn && remoteCanWrite() ? "" : "disabled"}>Creer un enregistrement test</button><button class="secondary" type="button" onclick="refreshRemoteTestRecords()" ${signedIn ? "" : "disabled"}>Actualiser les tests</button></div></section></div><div class="card settings-card remote-records-card"><h3>Enregistrements distants de test</h3>${renderRemoteTestRecordsHtml()}</div></div>`;
 }
 
 function mountRemoteSettingsCard() {
@@ -23737,9 +23737,9 @@ function renderRemoteWorkspaceInitCardHtml() {
   const lastOperation = deosRemoteRuntime.lastOperation || "Aucune operation distante.";
   const lastOperationAt = deosRemoteRuntime.lastOperationAt || "--";
   const lastConnection = deosRemoteRuntime.lastConnectionTestAt
-    · `${deosRemoteRuntime.lastConnectionTestAt} · ${deosRemoteRuntime.lastConnectionTestResult || "OK"}`
+    ? `${deosRemoteRuntime.lastConnectionTestAt} · ${deosRemoteRuntime.lastConnectionTestResult || "OK"}`
     : "Aucun test realise";
-  return `<div id="remoteWorkspaceSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Espace de test Supabase</h2><p class="muted">Création ou récupération du premier workspace distant sans toucher aux données métier DEOS.</p></div><span class="remote-mode-badge ${remoteModeClass(deosRemoteRuntime.mode)}">${esc(remoteModeLabel(deosRemoteRuntime.mode))}</span></div><div class="settings-card-grid"><section class="settings-card-block"><h3>Etat distant</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Utilisateur</strong><span>${esc(signedIn · (deosRemoteRuntime.user?.email || "") : "--")}</span></div><div class="settings-calendar-summary-item"><strong>Workspace actif</strong><span>${esc(workspaceName)}</span></div><div class="settings-calendar-summary-item"><strong>Site actif</strong><span>${esc(siteName)}</span></div><div class="settings-calendar-summary-item"><strong>Rôle actif</strong><span>${esc(role)}</span></div><div class="settings-calendar-summary-item"><strong>Dernière opération distante</strong><span>${esc(lastOperation)}${lastOperationAt !== "--" · ` · ${esc(lastOperationAt)}` : ""}</span></div><div class="settings-calendar-summary-item"><strong>Dernier test de connexion</strong><span>${esc(lastConnection)}</span></div></div></section><section class="settings-card-block"><h3>Workspace initial</h3><p class="muted">Nom affiché, workspace, site et code sont transmis à la RPC publique <strong>deos_initialize_workspace</strong>.</p><div class="settings-info-box">Les valeurs proposées sont celles du workspace de test demandé.</div>${canInit · `<div class="row-actions"><button class="action" type="button" onclick="openRemoteWorkspaceDialog()">Créer mon espace de test</button></div>` : `<div class="empty">Le bouton est disponible uniquement lorsque Supabase est configuré, que l’utilisateur est connecté et qu’aucun workspace actif n’est encore rattaché.</div>`}</section></div></div>`;
+  return `<div id="remoteWorkspaceSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Espace de test Supabase</h2><p class="muted">Création ou récupération du premier workspace distant sans toucher aux données métier DEOS.</p></div><span class="remote-mode-badge ${remoteModeClass(deosRemoteRuntime.mode)}">${esc(remoteModeLabel(deosRemoteRuntime.mode))}</span></div><div class="settings-card-grid"><section class="settings-card-block"><h3>Etat distant</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Utilisateur</strong><span>${esc(signedIn ? (deosRemoteRuntime.user?.email || "") : "--")}</span></div><div class="settings-calendar-summary-item"><strong>Workspace actif</strong><span>${esc(workspaceName)}</span></div><div class="settings-calendar-summary-item"><strong>Site actif</strong><span>${esc(siteName)}</span></div><div class="settings-calendar-summary-item"><strong>Rôle actif</strong><span>${esc(role)}</span></div><div class="settings-calendar-summary-item"><strong>Dernière opération distante</strong><span>${esc(lastOperation)}${lastOperationAt !== "--" ? ` · ${esc(lastOperationAt)}` : ""}</span></div><div class="settings-calendar-summary-item"><strong>Dernier test de connexion</strong><span>${esc(lastConnection)}</span></div></div></section><section class="settings-card-block"><h3>Workspace initial</h3><p class="muted">Nom affiché, workspace, site et code sont transmis à la RPC publique <strong>deos_initialize_workspace</strong>.</p><div class="settings-info-box">Les valeurs proposées sont celles du workspace de test demandé.</div>${canInit ? `<div class="row-actions"><button class="action" type="button" onclick="openRemoteWorkspaceDialog()">Créer mon espace de test</button></div>` : `<div class="empty">Le bouton est disponible uniquement lorsque Supabase est configuré, que l’utilisateur est connecté et qu’aucun workspace actif n’est encore rattaché.</div>`}</section></div></div>`;
 }
 
 function renderRemoteAuthOverlay() {
@@ -23749,7 +23749,7 @@ function renderRemoteAuthOverlay() {
   if (existing) existing.remove();
   if (!deosRemoteAuthDialog.open) return;
   const mode = remoteModeLabel(deosRemoteRuntime.mode);
-  root.insertAdjacentHTML("beforeend", `<div id="remoteAuthOverlay" class="modal-backdrop"><div class="modal-panel remote-auth-panel"><div class="modal-head"><h2>Connexion DEOS - ${esc(mode)}</h2><button class="icon-close" type="button" onclick="closeRemoteAuthDialog()" aria-label="Fermer">×</button></div><div class="remote-auth-body"><p class="muted">Aucune donnee metier distante n'est exposee avant authentification. Seuls les tests Supabase passent par cet ecran.</p><div class="remote-auth-chip-row"><span class="remote-mode-badge ${remoteModeClass(deosRemoteRuntime.mode)}">${esc(mode)}</span><span class="remote-provider-chip">${esc((deosRemoteRuntime.provider || "supabase").toUpperCase())}</span></div><input id="remoteAuthEmail" type="email" value="${esc(deosRemoteAuthDialog.email || "")}" placeholder="Email de test"><input id="remoteAuthPassword" type="password" value="${esc(deosRemoteAuthDialog.password || "")}" placeholder="Mot de passe">${deosRemoteAuthDialog.error · `<p class="remote-error-box">${esc(deosRemoteAuthDialog.error)}</p>` : ""}${deosRemoteAuthDialog.message · `<p class="settings-confirm">${esc(deosRemoteAuthDialog.message)}</p>` : ""}<div class="row-actions"><button class="action" type="button" onclick="submitRemotePasswordSignIn()" ${deosRemoteAuthDialog.busy · "disabled" : ""}>Se connecter</button><button class="secondary" type="button" onclick="requestRemotePasswordReset()" ${deosRemoteAuthDialog.busy · "disabled" : ""}>Mot de passe oublie</button><button class="secondary" type="button" onclick="sendRemoteMagicLink()" ${deosRemoteAuthDialog.busy · "disabled" : ""}>Recevoir un lien de connexion</button></div></div></div></div>`);
+  root.insertAdjacentHTML("beforeend", `<div id="remoteAuthOverlay" class="modal-backdrop"><div class="modal-panel remote-auth-panel"><div class="modal-head"><h2>Connexion DEOS - ${esc(mode)}</h2><button class="icon-close" type="button" onclick="closeRemoteAuthDialog()" aria-label="Fermer">×</button></div><div class="remote-auth-body"><p class="muted">Aucune donnee metier distante n'est exposee avant authentification. Seuls les tests Supabase passent par cet ecran.</p><div class="remote-auth-chip-row"><span class="remote-mode-badge ${remoteModeClass(deosRemoteRuntime.mode)}">${esc(mode)}</span><span class="remote-provider-chip">${esc((deosRemoteRuntime.provider || "supabase").toUpperCase())}</span></div><input id="remoteAuthEmail" type="email" value="${esc(deosRemoteAuthDialog.email || "")}" placeholder="Email de test"><input id="remoteAuthPassword" type="password" value="${esc(deosRemoteAuthDialog.password || "")}" placeholder="Mot de passe">${deosRemoteAuthDialog.error ? `<p class="remote-error-box">${esc(deosRemoteAuthDialog.error)}</p>` : ""}${deosRemoteAuthDialog.message ? `<p class="settings-confirm">${esc(deosRemoteAuthDialog.message)}</p>` : ""}<div class="row-actions"><button class="action" type="button" onclick="submitRemotePasswordSignIn()" ${deosRemoteAuthDialog.busy ? "disabled" : ""}>Se connecter</button><button class="secondary" type="button" onclick="requestRemotePasswordReset()" ${deosRemoteAuthDialog.busy ? "disabled" : ""}>Mot de passe oublie</button><button class="secondary" type="button" onclick="sendRemoteMagicLink()" ${deosRemoteAuthDialog.busy ? "disabled" : ""}>Recevoir un lien de connexion</button></div></div></div></div>`);
 }
 
 function remoteCanInitializeWorkspace() {
@@ -23768,7 +23768,7 @@ function renderRemoteWorkspaceOverlay() {
   const existing = document.getElementById("remoteWorkspaceOverlay");
   if (existing) existing.remove();
   if (!deosRemoteWorkspaceDialog.open) return;
-  root.insertAdjacentHTML("beforeend", `<div id="remoteWorkspaceOverlay" class="modal-backdrop"><div class="modal-panel remote-auth-panel"><div class="modal-head"><h2>Créer mon espace de test</h2><button class="icon-close" type="button" onclick="closeRemoteWorkspaceDialog()" aria-label="Fermer">×</button></div><div class="remote-auth-body"><p class="muted">L'appel Supabase utilise une RPC publique dédiée et réutilise automatiquement l'espace si un doublon existe déjà.</p><div class="settings-card-control"><label for="remoteWorkspaceDisplayName">Nom affiché</label><input id="remoteWorkspaceDisplayName" value="${esc(deosRemoteWorkspaceDialog.displayName || "")}" placeholder="Ludovic Aoust"></div><div class="settings-card-control"><label for="remoteWorkspaceName">Nom du workspace</label><input id="remoteWorkspaceName" value="${esc(deosRemoteWorkspaceDialog.workspaceName || "")}" placeholder="DEOS Ludovic Aoust"></div><div class="settings-card-control"><label for="remoteWorkspaceSiteName">Nom du site</label><input id="remoteWorkspaceSiteName" value="${esc(deosRemoteWorkspaceDialog.siteName || "")}" placeholder="Saint-Gilles"></div><div class="settings-card-control"><label for="remoteWorkspaceSiteCode">Code du site</label><input id="remoteWorkspaceSiteCode" value="${esc(deosRemoteWorkspaceDialog.siteCode || "")}" placeholder="STG"></div>${deosRemoteWorkspaceDialog.error · `<p class="remote-error-box">${esc(deosRemoteWorkspaceDialog.error)}</p>` : ""}${deosRemoteWorkspaceDialog.message · `<p class="settings-confirm">${esc(deosRemoteWorkspaceDialog.message)}</p>` : ""}<div class="row-actions"><button class="action" type="button" onclick="initializeRemoteWorkspace()" ${deosRemoteWorkspaceDialog.busy · "disabled" : ""}>Créer ou retrouver l’espace</button><button class="secondary" type="button" onclick="closeRemoteWorkspaceDialog()" ${deosRemoteWorkspaceDialog.busy · "disabled" : ""}>Annuler</button></div></div></div></div>`);
+  root.insertAdjacentHTML("beforeend", `<div id="remoteWorkspaceOverlay" class="modal-backdrop"><div class="modal-panel remote-auth-panel"><div class="modal-head"><h2>Créer mon espace de test</h2><button class="icon-close" type="button" onclick="closeRemoteWorkspaceDialog()" aria-label="Fermer">×</button></div><div class="remote-auth-body"><p class="muted">L'appel Supabase utilise une RPC publique dédiée et réutilise automatiquement l'espace si un doublon existe déjà.</p><div class="settings-card-control"><label for="remoteWorkspaceDisplayName">Nom affiché</label><input id="remoteWorkspaceDisplayName" value="${esc(deosRemoteWorkspaceDialog.displayName || "")}" placeholder="Ludovic Aoust"></div><div class="settings-card-control"><label for="remoteWorkspaceName">Nom du workspace</label><input id="remoteWorkspaceName" value="${esc(deosRemoteWorkspaceDialog.workspaceName || "")}" placeholder="DEOS Ludovic Aoust"></div><div class="settings-card-control"><label for="remoteWorkspaceSiteName">Nom du site</label><input id="remoteWorkspaceSiteName" value="${esc(deosRemoteWorkspaceDialog.siteName || "")}" placeholder="Saint-Gilles"></div><div class="settings-card-control"><label for="remoteWorkspaceSiteCode">Code du site</label><input id="remoteWorkspaceSiteCode" value="${esc(deosRemoteWorkspaceDialog.siteCode || "")}" placeholder="STG"></div>${deosRemoteWorkspaceDialog.error ? `<p class="remote-error-box">${esc(deosRemoteWorkspaceDialog.error)}</p>` : ""}${deosRemoteWorkspaceDialog.message ? `<p class="settings-confirm">${esc(deosRemoteWorkspaceDialog.message)}</p>` : ""}<div class="row-actions"><button class="action" type="button" onclick="initializeRemoteWorkspace()" ${deosRemoteWorkspaceDialog.busy ? "disabled" : ""}>Créer ou retrouver l’espace</button><button class="secondary" type="button" onclick="closeRemoteWorkspaceDialog()" ${deosRemoteWorkspaceDialog.busy ? "disabled" : ""}>Annuler</button></div></div></div></div>`);
 }
 
 function safeRemoteDiagnosticHints(value) {
@@ -23844,10 +23844,10 @@ async function runLinksRemoteDiagnostic() {
     syncEnabled: linksSyncIsEnabled(),
     canInspectRemote: linksSyncCanInspectRemote(),
     canUseRemote: linksSyncCanUseRemote(),
-    adapterOwnKeys: deosRemoteAdapter · Object.keys(deosRemoteAdapter).sort() : [],
+    adapterOwnKeys: deosRemoteAdapter ? Object.keys(deosRemoteAdapter).sort() : [],
     adapterHints: safeRemoteDiagnosticHints(deosRemoteAdapter),
     adapterMethods: remoteDiagnosticMethodNames(deosRemoteAdapter),
-    authOwnKeys: deosRemoteAuthService · Object.keys(deosRemoteAuthService).sort() : [],
+    authOwnKeys: deosRemoteAuthService ? Object.keys(deosRemoteAuthService).sort() : [],
     authHints: safeRemoteDiagnosticHints(deosRemoteAuthService),
     authMethods: remoteDiagnosticMethodNames(deosRemoteAuthService),
     listLinksCount: null,
@@ -23902,7 +23902,7 @@ async function copyLinksRemoteDiagnostic() {
 function renderLinksRemoteDiagnosticHtml() {
   const diag = deosLinksRemoteDiagnostic;
   const text = linksRemoteDiagnosticText();
-  return `<div class="settings-warning-box" style="margin-top:14px"><strong>Diagnostic multi-appareils V5.21G</strong><p>Lecture seule : aucun Lien n'est créé, modifié ou supprimé par ce diagnostic.</p><div class="row-actions"><button class="secondary" type="button" onclick="runLinksRemoteDiagnostic()" ${diag.running · "disabled" : ""}>${diag.running · "Diagnostic en cours..." : "Diagnostiquer la lecture distante"}</button><button class="secondary" type="button" onclick="copyLinksRemoteDiagnostic()" ${diag.result || diag.error · "" : "disabled"}>Copier le diagnostic</button></div>${diag.result || diag.error · `<pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto;background:#fff;border:1px solid #d7dee8;border-radius:10px;padding:10px;margin-top:10px;font-size:11px">${esc(text)}</pre>` : `<p class="muted" style="margin-top:10px">Aucun diagnostic exécuté sur cet appareil.</p>`}</div>`;
+  return `<div class="settings-warning-box" style="margin-top:14px"><strong>Diagnostic multi-appareils V5.21G</strong><p>Lecture seule : aucun Lien n'est créé, modifié ou supprimé par ce diagnostic.</p><div class="row-actions"><button class="secondary" type="button" onclick="runLinksRemoteDiagnostic()" ${diag.running ? "disabled" : ""}>${diag.running ? "Diagnostic en cours..." : "Diagnostiquer la lecture distante"}</button><button class="secondary" type="button" onclick="copyLinksRemoteDiagnostic()" ${diag.result || diag.error ? "" : "disabled"}>Copier le diagnostic</button></div>${diag.result || diag.error ? `<pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:360px;overflow:auto;background:#fff;border:1px solid #d7dee8;border-radius:10px;padding:10px;margin-top:10px;font-size:11px">${esc(text)}</pre>` : `<p class="muted" style="margin-top:10px">Aucun diagnostic exécuté sur cet appareil.</p>`}</div>`;
 }
 
 function renderLinksHybridSettingsCardHtml() {
@@ -23912,7 +23912,7 @@ function renderLinksHybridSettingsCardHtml() {
   const remoteReady = Boolean(signedIn && deosRemoteRuntime.workspace && deosRemoteAdapter);
   const lastSync = deosLinksSyncRuntime.lastSyncAt || "Jamais";
   const lastError = deosLinksSyncRuntime.lastError || "Aucune";
-  return `<div id="linksHybridSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation pilote — Liens</h2><p class="muted">Seuls les Liens sont concernés par cette synchronisation pilote. Aucun autre objet métier DEOS n'est envoyé.</p></div><span class="remote-mode-badge ${linksSyncStatusClass()}">${esc(stateLabel)}</span></div><div class="settings-warning-box"><strong>Protection des données</strong><p>Managers, Documents, Agenda, Google Calendar, Performance, Dossiers, Projets, Décisions et Journal restent strictement locaux. Les Actions disposent désormais de leur propre pilote V5.22A séparé.</p></div><div class="settings-card-grid"><section class="settings-card-block"><h3>Etat pilote</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Etat</strong><span>${esc(stateLabel)}</span></div><div class="settings-calendar-summary-item"><strong>Liens locaux</strong><span>${esc(String(state.links.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Liens distants</strong><span>${esc(String(deosLinksSyncRuntime.remoteCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>En attente</strong><span>${esc(String(deosLinksSyncRuntime.pendingCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchronisation</strong><span>${esc(lastSync)}</span></div><div class="settings-calendar-summary-item"><strong>Dernière erreur</strong><span>${esc(lastError)}</span></div><div class="settings-calendar-summary-item"><strong>Appareil courant</strong><span>${esc(deosLinksSyncRuntime.currentDevice || "Navigateur courant")}</span></div></div>${analysis · `<p class="muted">Dernière analyse: ${esc(analysis.generatedAt || deosLinksSyncRuntime.lastAnalysisAt || "")}</p>` : `<p class="muted">Aucune analyse de migration exécutée.</p>`}</section><section class="settings-card-block"><h3>Actions</h3><p class="muted">Le pilote reste désactivé par défaut et n'utilise que le workspace actif.</p><div class="row-actions"><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Analyse…','Analyse Liens terminée',analyzeLinksHybridFromSettings)">Analyser les Liens</button><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Prévisualisation…','Prévisualisation Liens prête',openLinksSyncPreviewDialog)" ${remoteReady · "" : "disabled"}>Prévisualiser la migration</button>${linksSyncIsEnabled() · `<button class="danger" type="button" onclick="deactivateLinksHybridFromSettings()">Désactiver la synchronisation</button>` : `<button class="action" type="button" onclick="runDeosButtonTask(this,'Activation…','Synchronisation Liens activée',activateLinksHybridFromSettings)">Activer la synchronisation</button>`}<button class="secondary" type="button" onclick="runDeosButtonTask(this,'Synchronisation…','Synchronisation Liens terminée',syncLinksHybridFromSettings)" ${linksSyncIsEnabled() · "" : "disabled"}>Synchroniser maintenant</button><button class="secondary" type="button" onclick="openLinksConflictsDialog()" ${deosLinksSyncRuntime.conflictCount > 0 · "" : "disabled"}>Voir les conflits</button></div>${!remoteReady · `<div class="empty">Authentifiez-vous sur le workspace actif pour comparer les Liens locaux et distants.</div>` : ""}${renderLinksRemoteDiagnosticHtml()}</section></div></div>`;
+  return `<div id="linksHybridSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation pilote — Liens</h2><p class="muted">Seuls les Liens sont concernés par cette synchronisation pilote. Aucun autre objet métier DEOS n'est envoyé.</p></div><span class="remote-mode-badge ${linksSyncStatusClass()}">${esc(stateLabel)}</span></div><div class="settings-warning-box"><strong>Protection des données</strong><p>Managers, Documents, Agenda, Google Calendar, Performance, Dossiers, Projets, Décisions et Journal restent strictement locaux. Les Actions disposent désormais de leur propre pilote V5.22A séparé.</p></div><div class="settings-card-grid"><section class="settings-card-block"><h3>Etat pilote</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Etat</strong><span>${esc(stateLabel)}</span></div><div class="settings-calendar-summary-item"><strong>Liens locaux</strong><span>${esc(String(state.links.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Liens distants</strong><span>${esc(String(deosLinksSyncRuntime.remoteCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>En attente</strong><span>${esc(String(deosLinksSyncRuntime.pendingCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchronisation</strong><span>${esc(lastSync)}</span></div><div class="settings-calendar-summary-item"><strong>Dernière erreur</strong><span>${esc(lastError)}</span></div><div class="settings-calendar-summary-item"><strong>Appareil courant</strong><span>${esc(deosLinksSyncRuntime.currentDevice || "Navigateur courant")}</span></div></div>${analysis ? `<p class="muted">Dernière analyse: ${esc(analysis.generatedAt || deosLinksSyncRuntime.lastAnalysisAt || "")}</p>` : `<p class="muted">Aucune analyse de migration exécutée.</p>`}</section><section class="settings-card-block"><h3>Actions</h3><p class="muted">Le pilote reste désactivé par défaut et n'utilise que le workspace actif.</p><div class="row-actions"><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Analyse…','Analyse Liens terminée',analyzeLinksHybridFromSettings)">Analyser les Liens</button><button class="secondary" type="button" onclick="runDeosButtonTask(this,'Prévisualisation…','Prévisualisation Liens prête',openLinksSyncPreviewDialog)" ${remoteReady ? "" : "disabled"}>Prévisualiser la migration</button>${linksSyncIsEnabled() ? `<button class="danger" type="button" onclick="deactivateLinksHybridFromSettings()">Désactiver la synchronisation</button>` : `<button class="action" type="button" onclick="runDeosButtonTask(this,'Activation…','Synchronisation Liens activée',activateLinksHybridFromSettings)">Activer la synchronisation</button>`}<button class="secondary" type="button" onclick="runDeosButtonTask(this,'Synchronisation…','Synchronisation Liens terminée',syncLinksHybridFromSettings)" ${linksSyncIsEnabled() ? "" : "disabled"}>Synchroniser maintenant</button><button class="secondary" type="button" onclick="openLinksConflictsDialog()" ${deosLinksSyncRuntime.conflictCount > 0 ? "" : "disabled"}>Voir les conflits</button></div>${!remoteReady ? `<div class="empty">Authentifiez-vous sur le workspace actif pour comparer les Liens locaux et distants.</div>` : ""}${renderLinksRemoteDiagnosticHtml()}</section></div></div>`;
 }
 
 async function analyzeLinksHybridFromSettings() {
@@ -24094,7 +24094,7 @@ function linksPreviewSelectionCount() {
 function confirmLinksPreviewSelection(actionLabel, items) {
   const workspaceName = deosRemoteRuntime.workspace?.name || "workspace actif";
   const count = items.length;
-  const label = count > 1 · `${count} Liens seront ${actionLabel}` : `1 Lien sera ${actionLabel}`;
+  const label = count > 1 ? `${count} Liens seront ${actionLabel}` : `1 Lien sera ${actionLabel}`;
   const lines = items.map(item => `- ${item.name}`).join("\n");
   return confirm(`${label} vers le workspace ${workspaceName} :\n${lines}\n\nContinuer ?`);
 }
@@ -24108,9 +24108,9 @@ async function applyLinksSyncPreviewChoice(mode) {
     deosLinksSyncPreviewDialog = {
       ...deosLinksSyncPreviewDialog,
       error: mode === "local_to_remote"
-        · "Sélectionnez au moins un Lien local avant l'envoi vers Supabase."
+        ? "Sélectionnez au moins un Lien local avant l'envoi vers Supabase."
         : mode === "remote_to_local"
-          · "Sélectionnez au moins un Lien distant avant la récupération locale."
+          ? "Sélectionnez au moins un Lien distant avant la récupération locale."
           : "Sélectionnez au moins un Lien avant de lancer la migration."
     };
     renderSettings();
@@ -24182,7 +24182,7 @@ async function applyLinksSyncPreviewChoice(mode) {
     }
     await linksHybridRepository.syncNow({ silent: true, source: `preview_${mode}` });
     closeLinksSyncPreviewDialog();
-    renderSettings(mode === "local_to_remote" · "Envoi de la sélection locale vers Supabase lancé." : mode === "remote_to_local" · "Récupération de la sélection distante appliquée localement." : "Fusion non destructive de la sélection lancée.");
+    renderSettings(mode === "local_to_remote" ? "Envoi de la sélection locale vers Supabase lancé." : mode === "remote_to_local" ? "Récupération de la sélection distante appliquée localement." : "Fusion non destructive de la sélection lancée.");
   } catch (error) {
     deosLinksSyncPreviewDialog = {
       ...deosLinksSyncPreviewDialog,
@@ -24329,9 +24329,9 @@ function renderLinksSyncPreviewOverlay() {
   const selectedRemoteCount = selectedLinksPreviewItemsForMode("remote_to_local").length;
   const selectedMergeCount = selectedLinksPreviewItemsForMode("merge").length;
   const body = deosLinksSyncPreviewDialog.mode === "conflicts"
-    · `${conflicts.length · conflicts.map(conflict => `<div class="item"><strong>${esc(conflict.title)}</strong><span class="muted">Version locale ${esc(String(conflict.localRevision || 0))} · version distante ${esc(String(conflict.remoteVersion || 0))}</span><span class="meta">Local ${esc(conflict.localDate || "--")} · Distant ${esc(conflict.remoteDate || "--")}</span><span class="meta">Champs différents : ${esc(conflict.fields.join(", ") || "Aucun")}</span><div class="row-actions"><button class="secondary" type="button" onclick="resolveLinkConflictKeepLocal('${esc(conflict.clientId)}')">Conserver la version locale</button><button class="secondary" type="button" onclick="resolveLinkConflictKeepRemote('${esc(conflict.clientId)}')">Conserver la version distante</button><button class="secondary" type="button" onclick="openLinksConflictMergeDialog('${esc(conflict.clientId)}')">Fusionner manuellement</button><button class="secondary" type="button" onclick="closeLinksSyncPreviewDialog()">Reporter</button></div></div>`).join("") : `<div class="empty">Aucun conflit actif.</div>`}`
-    : `${analysis · `<div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Liens locaux</strong><span>${esc(String(analysis.localCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Liens distants</strong><span>${esc(String(analysis.remoteCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Uniquement locaux</strong><span>${esc(String(analysis.localOnly.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Uniquement distants</strong><span>${esc(String(analysis.remoteOnly.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Présents des deux côtés</strong><span>${esc(String(analysis.both.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Conflits potentiels</strong><span>${esc(String(analysis.conflicts.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Doublons potentiels</strong><span>${esc(String(analysis.duplicateCandidates.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Favoris / archivés</strong><span>${esc(`${analysis.favorites || 0} / ${analysis.archived || 0}`)}</span></div></div><p class="muted">Catégories: ${esc(Object.entries(analysis.categoryCounts || {}).map(([key, count]) => `${key} (${count})`).join(", ") || "Aucune")}</p><p class="muted">${esc(deosLinksSyncPreviewDialog.message || "")}</p><div class="card"><h3>Liste détaillée</h3>${previewItems.length · previewItems.map(item => `<label class="item" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer"><input type="checkbox" ${ensureArray(deosLinksSyncPreviewDialog.selectedClientIds).includes(item.clientId) · "checked" : ""} onchange="toggleLinksPreviewSelection('${esc(item.clientId)}')" ${deosLinksSyncPreviewDialog.busy · "disabled" : ""}><div><strong>${esc(item.name)}</strong><span class="muted">${esc(item.domain || item.url || "")}</span><span class="meta">${esc(item.category)} · ${esc(item.status)}${item.favorite · " · Favori" : ""} · ${esc(item.origin)}${item.hasConflict · " · Conflit" : ""}</span></div></label>`).join("") : `<div class="empty">Aucun Lien concerné par cette migration.</div>`}</div><p class="muted">${esc(String(selectedCount))} sélectionné(s). Aucune case n'est cochée par défaut.</p><div class="row-actions"><button class="action" type="button" onclick="applyLinksSyncPreviewChoice('local_to_remote')" ${(deosLinksSyncPreviewDialog.busy || selectedLocalCount === 0) · "disabled" : ""}>Envoyer les Liens sélectionnés vers Supabase</button><button class="secondary" type="button" onclick="applyLinksSyncPreviewChoice('remote_to_local')" ${(deosLinksSyncPreviewDialog.busy || selectedRemoteCount === 0) · "disabled" : ""}>Récupérer les Liens sélectionnés</button><button class="secondary" type="button" onclick="applyLinksSyncPreviewChoice('merge')" ${(deosLinksSyncPreviewDialog.busy || selectedMergeCount === 0) · "disabled" : ""}>Fusionner non destructivement les Liens sélectionnés</button><button class="secondary" type="button" onclick="applyLinksSyncPreviewChoice('cancel')" ${deosLinksSyncPreviewDialog.busy · "disabled" : ""}>Annuler</button></div>` : `<div class="empty">Analyse en cours…</div>`}`;
-  root.insertAdjacentHTML("beforeend", `<div id="linksSyncPreviewOverlay" class="modal-backdrop"><div class="modal-panel remote-auth-panel"><div class="modal-head"><h2>${deosLinksSyncPreviewDialog.mode === "conflicts" · "Conflits Liens" : "Prévisualisation de migration Liens"}</h2><button class="icon-close" type="button" onclick="closeLinksSyncPreviewDialog()" aria-label="Fermer">×</button></div><div class="remote-auth-body">${deosLinksSyncPreviewDialog.error · `<p class="remote-error-box">${esc(deosLinksSyncPreviewDialog.error)}</p>` : ""}${body}</div></div></div>`);
+    ? `${conflicts.length ? conflicts.map(conflict => `<div class="item"><strong>${esc(conflict.title)}</strong><span class="muted">Version locale ${esc(String(conflict.localRevision || 0))} · version distante ${esc(String(conflict.remoteVersion || 0))}</span><span class="meta">Local ${esc(conflict.localDate || "--")} · Distant ${esc(conflict.remoteDate || "--")}</span><span class="meta">Champs différents : ${esc(conflict.fields.join(", ") || "Aucun")}</span><div class="row-actions"><button class="secondary" type="button" onclick="resolveLinkConflictKeepLocal('${esc(conflict.clientId)}')">Conserver la version locale</button><button class="secondary" type="button" onclick="resolveLinkConflictKeepRemote('${esc(conflict.clientId)}')">Conserver la version distante</button><button class="secondary" type="button" onclick="openLinksConflictMergeDialog('${esc(conflict.clientId)}')">Fusionner manuellement</button><button class="secondary" type="button" onclick="closeLinksSyncPreviewDialog()">Reporter</button></div></div>`).join("") : `<div class="empty">Aucun conflit actif.</div>`}`
+    : `${analysis ? `<div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Liens locaux</strong><span>${esc(String(analysis.localCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Liens distants</strong><span>${esc(String(analysis.remoteCount || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Uniquement locaux</strong><span>${esc(String(analysis.localOnly.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Uniquement distants</strong><span>${esc(String(analysis.remoteOnly.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Présents des deux côtés</strong><span>${esc(String(analysis.both.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Conflits potentiels</strong><span>${esc(String(analysis.conflicts.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Doublons potentiels</strong><span>${esc(String(analysis.duplicateCandidates.length || 0))}</span></div><div class="settings-calendar-summary-item"><strong>Favoris / archivés</strong><span>${esc(`${analysis.favorites || 0} / ${analysis.archived || 0}`)}</span></div></div><p class="muted">Catégories: ${esc(Object.entries(analysis.categoryCounts || {}).map(([key, count]) => `${key} (${count})`).join(", ") || "Aucune")}</p><p class="muted">${esc(deosLinksSyncPreviewDialog.message || "")}</p><div class="card"><h3>Liste détaillée</h3>${previewItems.length ? previewItems.map(item => `<label class="item" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer"><input type="checkbox" ${ensureArray(deosLinksSyncPreviewDialog.selectedClientIds).includes(item.clientId) ? "checked" : ""} onchange="toggleLinksPreviewSelection('${esc(item.clientId)}')" ${deosLinksSyncPreviewDialog.busy ? "disabled" : ""}><div><strong>${esc(item.name)}</strong><span class="muted">${esc(item.domain || item.url || "")}</span><span class="meta">${esc(item.category)} · ${esc(item.status)}${item.favorite ? " · Favori" : ""} · ${esc(item.origin)}${item.hasConflict ? " · Conflit" : ""}</span></div></label>`).join("") : `<div class="empty">Aucun Lien concerné par cette migration.</div>`}</div><p class="muted">${esc(String(selectedCount))} sélectionné(s). Aucune case n'est cochée par défaut.</p><div class="row-actions"><button class="action" type="button" onclick="applyLinksSyncPreviewChoice('local_to_remote')" ${(deosLinksSyncPreviewDialog.busy || selectedLocalCount === 0) ? "disabled" : ""}>Envoyer les Liens sélectionnés vers Supabase</button><button class="secondary" type="button" onclick="applyLinksSyncPreviewChoice('remote_to_local')" ${(deosLinksSyncPreviewDialog.busy || selectedRemoteCount === 0) ? "disabled" : ""}>Récupérer les Liens sélectionnés</button><button class="secondary" type="button" onclick="applyLinksSyncPreviewChoice('merge')" ${(deosLinksSyncPreviewDialog.busy || selectedMergeCount === 0) ? "disabled" : ""}>Fusionner non destructivement les Liens sélectionnés</button><button class="secondary" type="button" onclick="applyLinksSyncPreviewChoice('cancel')" ${deosLinksSyncPreviewDialog.busy ? "disabled" : ""}>Annuler</button></div>` : `<div class="empty">Analyse en cours…</div>`}`;
+  root.insertAdjacentHTML("beforeend", `<div id="linksSyncPreviewOverlay" class="modal-backdrop"><div class="modal-panel remote-auth-panel"><div class="modal-head"><h2>${deosLinksSyncPreviewDialog.mode === "conflicts" ? "Conflits Liens" : "Prévisualisation de migration Liens"}</h2><button class="icon-close" type="button" onclick="closeLinksSyncPreviewDialog()" aria-label="Fermer">×</button></div><div class="remote-auth-body">${deosLinksSyncPreviewDialog.error ? `<p class="remote-error-box">${esc(deosLinksSyncPreviewDialog.error)}</p>` : ""}${body}</div></div></div>`);
 }
 
 function renderLinksSyncMergeOverlay() {
@@ -24342,20 +24342,20 @@ function renderLinksSyncMergeOverlay() {
   if (!deosLinksSyncMergeDialog.open) return;
   const local = deosLinksSyncMergeDialog.local || normalizeEntity("links", { id: deosLinksSyncMergeDialog.clientId });
   const remote = deosLinksSyncMergeDialog.remote || normalizeEntity("links", { id: deosLinksSyncMergeDialog.clientId });
-  root.insertAdjacentHTML("beforeend", `<div id="linksSyncMergeOverlay" class="modal-backdrop"><div class="modal-panel remote-auth-panel"><div class="modal-head"><h2>Fusion manuelle du Lien</h2><button class="icon-close" type="button" onclick="closeLinksSyncPreviewDialog()" aria-label="Fermer">×</button></div><div class="remote-auth-body"><p class="muted">Choisissez explicitement la version finale pour les champs simples du Lien.</p><div class="settings-card-grid"><section class="settings-card-block"><h3>Local</h3><div class="item"><strong>${esc(local.name || "Lien")}</strong><span class="muted">${esc(local.url || "")}</span><span class="meta">${esc(local.category || "Autre")} · ${esc(local.status || "actif")}</span></div></section><section class="settings-card-block"><h3>Distant</h3><div class="item"><strong>${esc(remote.name || "Lien")}</strong><span class="muted">${esc(remote.url || "")}</span><span class="meta">${esc(remote.category || "Autre")} · ${esc(remote.status || "actif")}</span></div></section></div><div class="form-grid"><input id="linksMergeName" value="${esc(local.name || remote.name || "")}" placeholder="Nom du lien"><input id="linksMergeUrl" value="${esc(local.url || remote.url || "")}" placeholder="URL"><input id="linksMergeCategory" value="${esc(local.category || remote.category || "Autre")}" placeholder="Catégorie"><select id="linksMergeStatus">${linkStatuses.map(status => `<option value="${esc(status)}" ${(local.status || remote.status || "actif") === status · "selected" : ""}>${esc(status)}</option>`).join("")}</select><input id="linksMergeIcon" value="${esc(local.icon || remote.icon || "")}" placeholder="Icône"><input id="linksMergeOrder" type="number" value="${esc(String(local.order || remote.order || Date.now()))}" placeholder="Ordre"><label class="check-row"><input id="linksMergeFavorite" type="checkbox" ${(local.favorite || remote.favorite) · "checked" : ""}><span>Favori</span></label><textarea id="linksMergeDescription" class="full" placeholder="Description">${esc(local.description || remote.description || "")}</textarea></div>${deosLinksSyncMergeDialog.error · `<p class="remote-error-box">${esc(deosLinksSyncMergeDialog.error)}</p>` : ""}<div class="row-actions"><button class="action" type="button" onclick="saveLinksConflictMerge()">Enregistrer la fusion manuelle</button><button class="secondary" type="button" onclick="closeLinksSyncPreviewDialog()">Annuler</button></div></div></div></div>`);
+  root.insertAdjacentHTML("beforeend", `<div id="linksSyncMergeOverlay" class="modal-backdrop"><div class="modal-panel remote-auth-panel"><div class="modal-head"><h2>Fusion manuelle du Lien</h2><button class="icon-close" type="button" onclick="closeLinksSyncPreviewDialog()" aria-label="Fermer">×</button></div><div class="remote-auth-body"><p class="muted">Choisissez explicitement la version finale pour les champs simples du Lien.</p><div class="settings-card-grid"><section class="settings-card-block"><h3>Local</h3><div class="item"><strong>${esc(local.name || "Lien")}</strong><span class="muted">${esc(local.url || "")}</span><span class="meta">${esc(local.category || "Autre")} · ${esc(local.status || "actif")}</span></div></section><section class="settings-card-block"><h3>Distant</h3><div class="item"><strong>${esc(remote.name || "Lien")}</strong><span class="muted">${esc(remote.url || "")}</span><span class="meta">${esc(remote.category || "Autre")} · ${esc(remote.status || "actif")}</span></div></section></div><div class="form-grid"><input id="linksMergeName" value="${esc(local.name || remote.name || "")}" placeholder="Nom du lien"><input id="linksMergeUrl" value="${esc(local.url || remote.url || "")}" placeholder="URL"><input id="linksMergeCategory" value="${esc(local.category || remote.category || "Autre")}" placeholder="Catégorie"><select id="linksMergeStatus">${linkStatuses.map(status => `<option value="${esc(status)}" ${(local.status || remote.status || "actif") === status ? "selected" : ""}>${esc(status)}</option>`).join("")}</select><input id="linksMergeIcon" value="${esc(local.icon || remote.icon || "")}" placeholder="Icône"><input id="linksMergeOrder" type="number" value="${esc(String(local.order || remote.order || Date.now()))}" placeholder="Ordre"><label class="check-row"><input id="linksMergeFavorite" type="checkbox" ${(local.favorite || remote.favorite) ? "checked" : ""}><span>Favori</span></label><textarea id="linksMergeDescription" class="full" placeholder="Description">${esc(local.description || remote.description || "")}</textarea></div>${deosLinksSyncMergeDialog.error ? `<p class="remote-error-box">${esc(deosLinksSyncMergeDialog.error)}</p>` : ""}<div class="row-actions"><button class="action" type="button" onclick="saveLinksConflictMerge()">Enregistrer la fusion manuelle</button><button class="secondary" type="button" onclick="closeLinksSyncPreviewDialog()">Annuler</button></div></div></div></div>`);
 }
 
 function settingsCalendarConnectionCard() {
   const settings = getCalendarConnectionSettings();
-  const status = settings.connectionStatus || (settings.provider === "google" · "connection_required" : "not_configured");
-  const visibleStatus = status === "connected" · "connection_required" : status;
-  const statusClass = visibleStatus === "connection_required" · "orange" : "red";
+  const status = settings.connectionStatus || (settings.provider === "google" ? "connection_required" : "not_configured");
+  const visibleStatus = status === "connected" ? "connection_required" : status;
+  const statusClass = visibleStatus === "connection_required" ? "orange" : "red";
   const statusLabel = {
     not_configured: "Non configuré",
     connection_required: "Connexion requise",
     connection_error: "Erreur de connexion"
   }[visibleStatus] || "Non configuré";
-  return `<div class="card settings-card settings-calendar-card"><div class="settings-card-heading"><h2>Agenda et connexions externes</h2><p class="muted">Configurez le calendrier professionnel qui pourra être synchronisé avec DEOS.</p><div class="settings-info-box">Aucun accès à votre compte Google n’est réalisé dans cette version.</div></div><div class="settings-card-grid"><section class="settings-card-block"><h3>Connexion</h3><div class="settings-card-control"><label for="ccProvider">Fournisseur de calendrier</label><select id="ccProvider"><option value="none"${settings.provider !== "google" · " selected" : ""}>Aucun</option><option value="google"${settings.provider === "google" · " selected" : ""}>Google Calendar</option></select></div><div class="settings-card-control"><label for="ccAccountEmail">Adresse e-mail du compte professionnel</label><input id="ccAccountEmail" type="email" value="${esc(settings.accountEmail)}" placeholder="adresse@exemple.com"></div><div class="settings-card-control"><label for="ccCalendarName">Nom du calendrier à synchroniser</label><input id="ccCalendarName" value="${esc(settings.calendarName)}" placeholder="Par exemple : Agenda pro"></div></section><section class="settings-card-block"><h3>Synchronisation</h3><div class="settings-card-grid-2col"><div class="settings-card-control"><label for="ccSyncDirection">Sens de synchronisation</label><select id="ccSyncDirection"><option value="import"${settings.syncDirection === "import" · " selected" : ""}>Importer uniquement vers DEOS</option><option value="two-way"${settings.syncDirection === "two-way" · " selected" : ""}>Synchronisation bidirectionnelle</option></select></div><div class="settings-card-control"><label for="ccSyncFrequency">Fréquence de synchronisation</label><select id="ccSyncFrequency"><option value="manual"${settings.syncFrequency === "manual" · " selected" : ""}>Synchronisation manuelle</option><option value="hourly"${settings.syncFrequency === "hourly" · " selected" : ""}>Toutes les heures</option><option value="daily"${settings.syncFrequency === "daily" · " selected" : ""}>Quotidien</option></select></div></div><p class="muted settings-help-text">Cette option sera utilisée lorsque la synchronisation automatique sera activée.</p></section><section class="settings-card-block"><h3>Affichage dans DEOS</h3><div class="settings-card-check"><label><input id="ccShowInAgenda" type="checkbox"${settings.showInAgenda · " checked" : ""}><span>Afficher les événements externes dans la page Agenda</span></label></div><div class="settings-card-check"><label><input id="ccShowTodayInCockpit" type="checkbox"${settings.showTodayInCockpit · " checked" : ""}><span>Afficher les rendez-vous du jour dans le Cockpit</span></label></div><div class="settings-card-check"><label><input id="ccMaskPrivateEvents" type="checkbox"${settings.maskPrivateEvents · " checked" : ""}><span>Importer les événements privés en masquant leur contenu</span></label></div></section><section class="settings-card-block settings-calendar-status"><h3>État et informations</h3><div class="settings-calendar-badge-row"><div><strong>État de la connexion</strong></div><div><span class="badge ${statusClass}">${esc(statusLabel)}</span></div></div><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Dernière synchronisation</strong><span>${esc(settings.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Prochain contrôle</strong><span>${esc(settings.nextSyncAt || "Non planifié")}</span></div></div></section></div><div class="row-actions settings-calendar-buttons"><button class="action" onclick="saveCalendarConnectionSettings()">Enregistrer la configuration</button><div class="settings-calendar-actions-right"><button class="secondary" onclick="prepareGoogleCalendarConnection()">Préparer la connexion Google</button><button class="secondary" onclick="resetCalendarConnectionSettings()">Réinitialiser</button></div></div><p class="muted settings-calendar-note">Ces réglages sont stockés localement. La synchronisation réelle sera déployée plus tard.</p></div>`;
+  return `<div class="card settings-card settings-calendar-card"><div class="settings-card-heading"><h2>Agenda et connexions externes</h2><p class="muted">Configurez le calendrier professionnel qui pourra être synchronisé avec DEOS.</p><div class="settings-info-box">Aucun accès à votre compte Google n’est réalisé dans cette version.</div></div><div class="settings-card-grid"><section class="settings-card-block"><h3>Connexion</h3><div class="settings-card-control"><label for="ccProvider">Fournisseur de calendrier</label><select id="ccProvider"><option value="none"${settings.provider !== "google" ? " selected" : ""}>Aucun</option><option value="google"${settings.provider === "google" ? " selected" : ""}>Google Calendar</option></select></div><div class="settings-card-control"><label for="ccAccountEmail">Adresse e-mail du compte professionnel</label><input id="ccAccountEmail" type="email" value="${esc(settings.accountEmail)}" placeholder="adresse@exemple.com"></div><div class="settings-card-control"><label for="ccCalendarName">Nom du calendrier à synchroniser</label><input id="ccCalendarName" value="${esc(settings.calendarName)}" placeholder="Par exemple : Agenda pro"></div></section><section class="settings-card-block"><h3>Synchronisation</h3><div class="settings-card-grid-2col"><div class="settings-card-control"><label for="ccSyncDirection">Sens de synchronisation</label><select id="ccSyncDirection"><option value="import"${settings.syncDirection === "import" ? " selected" : ""}>Importer uniquement vers DEOS</option><option value="two-way"${settings.syncDirection === "two-way" ? " selected" : ""}>Synchronisation bidirectionnelle</option></select></div><div class="settings-card-control"><label for="ccSyncFrequency">Fréquence de synchronisation</label><select id="ccSyncFrequency"><option value="manual"${settings.syncFrequency === "manual" ? " selected" : ""}>Synchronisation manuelle</option><option value="hourly"${settings.syncFrequency === "hourly" ? " selected" : ""}>Toutes les heures</option><option value="daily"${settings.syncFrequency === "daily" ? " selected" : ""}>Quotidien</option></select></div></div><p class="muted settings-help-text">Cette option sera utilisée lorsque la synchronisation automatique sera activée.</p></section><section class="settings-card-block"><h3>Affichage dans DEOS</h3><div class="settings-card-check"><label><input id="ccShowInAgenda" type="checkbox"${settings.showInAgenda ? " checked" : ""}><span>Afficher les événements externes dans la page Agenda</span></label></div><div class="settings-card-check"><label><input id="ccShowTodayInCockpit" type="checkbox"${settings.showTodayInCockpit ? " checked" : ""}><span>Afficher les rendez-vous du jour dans le Cockpit</span></label></div><div class="settings-card-check"><label><input id="ccMaskPrivateEvents" type="checkbox"${settings.maskPrivateEvents ? " checked" : ""}><span>Importer les événements privés en masquant leur contenu</span></label></div></section><section class="settings-card-block settings-calendar-status"><h3>État et informations</h3><div class="settings-calendar-badge-row"><div><strong>État de la connexion</strong></div><div><span class="badge ${statusClass}">${esc(statusLabel)}</span></div></div><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Dernière synchronisation</strong><span>${esc(settings.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Prochain contrôle</strong><span>${esc(settings.nextSyncAt || "Non planifié")}</span></div></div></section></div><div class="row-actions settings-calendar-buttons"><button class="action" onclick="saveCalendarConnectionSettings()">Enregistrer la configuration</button><div class="settings-calendar-actions-right"><button class="secondary" onclick="prepareGoogleCalendarConnection()">Préparer la connexion Google</button><button class="secondary" onclick="resetCalendarConnectionSettings()">Réinitialiser</button></div></div><p class="muted settings-calendar-note">Ces réglages sont stockés localement. La synchronisation réelle sera déployée plus tard.</p></div>`;
 }
 
 // Ancienne version de settingsCalendarConnectionCard() supprimée (remplacée par version V5.6 ligne ~5891)
@@ -24377,7 +24377,7 @@ function saveCalendarConnectionSettings() {
 }
 
 function resetCalendarConnectionSettings() {
-  if (!confirm("Réinitialiser uniquement les réglages Agenda et connexions externes · Les rendez-vous et autres données DEOS resteront inchangés.")) return;
+  if (!confirm("Réinitialiser uniquement les réglages Agenda et connexions externes ? Les rendez-vous et autres données DEOS resteront inchangés.")) return;
   state.settings.calendarConnection = getDefaultCalendarConnectionSettings();
   persistSettings();
   renderSettings("Réglages Agenda réinitialisés.");
@@ -24389,10 +24389,10 @@ function prepareGoogleCalendarConnection() {
 
 function settingsPreviewHtml(data = identity) {
   const logo = data.logoType === "image" && data.logoImage
-    · `<span class="settings-logo settings-logo-image" style="background-image:url('${esc(data.logoImage)}')"></span>`
+    ? `<span class="settings-logo settings-logo-image" style="background-image:url('${esc(data.logoImage)}')"></span>`
     : `<span class="settings-logo">${esc(data.logoText || data.appName?.slice(0, 1) || "D")}</span>`;
-  const org = data.organizationName · `<span>${esc(data.organizationName)}</span>` : "";
-  return `<div class="settings-preview">${logo}<div><strong>${esc(data.appName || "DEOS")}</strong><span>${esc(data.siteName || "")}</span>${org}<small>${esc(data.directorName || "")}${data.directorRole · " · " + esc(data.directorRole) : ""}</small></div></div>`;
+  const org = data.organizationName ? `<span>${esc(data.organizationName)}</span>` : "";
+  return `<div class="settings-preview">${logo}<div><strong>${esc(data.appName || "DEOS")}</strong><span>${esc(data.siteName || "")}</span>${org}<small>${esc(data.directorName || "")}${data.directorRole ? " · " + esc(data.directorRole) : ""}</small></div></div>`;
 }
 
 
@@ -24401,8 +24401,8 @@ const DEOS_SETTINGS_ACCORDION_STATE_KEY = "deos_settings_accordion_state_v526a";
 function settingsAccordionReadState() {
   try {
     const raw = localStorage.getItem(DEOS_SETTINGS_ACCORDION_STATE_KEY);
-    const parsed = raw · JSON.parse(raw) : {};
-    return parsed && typeof parsed === "object" · parsed : {};
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
   } catch (_) {
     return {};
   }
@@ -24437,9 +24437,9 @@ function toggleSettingsAccordion(key) {
   const willOpen = body.hidden;
   body.hidden = !willOpen;
   card.classList.toggle("is-open", willOpen);
-  toggle.setAttribute("aria-expanded", willOpen · "true" : "false");
+  toggle.setAttribute("aria-expanded", willOpen ? "true" : "false");
   const chevron = toggle.querySelector(".settings-accordion-chevron");
-  if (chevron) chevron.textContent = willOpen · "▴" : "▾";
+  if (chevron) chevron.textContent = willOpen ? "▴" : "▾";
 
   const stateMap = settingsAccordionReadState();
   stateMap[key] = willOpen;
@@ -24466,7 +24466,7 @@ function enhanceSettingsAccordions() {
     const key = settingsAccordionKey(card, index);
     const defaultOpen = title === "Identité";
     const isOpen = Object.prototype.hasOwnProperty.call(stateMap, key)
-      · Boolean(stateMap[key])
+      ? Boolean(stateMap[key])
       : defaultOpen;
 
     const children = Array.from(card.childNodes);
@@ -24479,9 +24479,9 @@ function enhanceSettingsAccordions() {
     const toggle = document.createElement("button");
     toggle.type = "button";
     toggle.className = "settings-accordion-toggle";
-    toggle.setAttribute("aria-expanded", isOpen · "true" : "false");
+    toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
     toggle.setAttribute("onclick", `toggleSettingsAccordion(${JSON.stringify(key)})`);
-    toggle.innerHTML = `<span class="settings-accordion-title">${esc(title)}</span><span class="settings-accordion-chevron" aria-hidden="true">${isOpen · "▴" : "▾"}</span>`;
+    toggle.innerHTML = `<span class="settings-accordion-title">${esc(title)}</span><span class="settings-accordion-chevron" aria-hidden="true">${isOpen ? "▴" : "▾"}</span>`;
 
     body.hidden = !isOpen;
     card.classList.toggle("is-open", isOpen);
@@ -24499,7 +24499,7 @@ function renderSettings(message = "") {
   document.querySelectorAll(".nav").forEach(btn => btn.classList.toggle("active", btn.dataset.view === "settings"));
   const statusMessage = message || restoreSuccessMessage;
   restoreSuccessMessage = "";
-  appHtml(`<div class="card hero settings-hero"><h2>⚙️ Paramètres généraux</h2><p class="muted">Personnalisez uniquement l'identité de l'application. Les données métier restent intactes.</p></div><div class="grid two"><div class="card settings-card"><h2>Identité</h2><div class="form-grid"><input id="setAppName" value="${esc(identity.appName)}" placeholder="Nom de l'application" oninput="updateSettingsPreview()"><input id="setAppVersion" value="${esc(DEOS_VERSION)}" placeholder="Version" readonly><input id="setSiteName" value="${esc(identity.siteName)}" placeholder="Nom du site" oninput="updateSettingsPreview()"><input id="setDirectorName" value="${esc(identity.directorName)}" placeholder="Nom du directeur" oninput="updateSettingsPreview()"><input id="setDirectorRole" value="${esc(identity.directorRole)}" placeholder="Fonction" oninput="updateSettingsPreview()"><input id="setOrganizationName" value="${esc(identity.organizationName)}" placeholder="Organisation / entreprise" oninput="updateSettingsPreview()"><select id="setLogoType" onchange="updateSettingsPreview()"><option value="monogram" ${identity.logoType !== "image" · "selected" : ""}>Monogramme</option><option value="image" ${identity.logoType === "image" · "selected" : ""}>Image</option></select><input id="setLogoText" value="${esc(identity.logoText)}" placeholder="Lettre ou initiales" oninput="updateSettingsPreview()"><input id="setLogoImage" class="full" value="${esc(identity.logoImage)}" placeholder="URL d'image optionnelle" oninput="updateSettingsPreview()"></div><div class="row-actions"><button class="action" onclick="saveSettings()">Enregistrer les paramètres</button><button class="secondary" onclick="resetIdentitySettings()">Rétablir les valeurs actuelles</button></div>${statusMessage · `<p class="settings-confirm">${esc(statusMessage)}</p>` : ""}</div><div class="card settings-card"><h2>Aperçu</h2><div id="settingsPreview">${settingsPreviewHtml(identity)}</div><p class="muted">Cet aperçu correspond aux zones d'identité : barre latérale, titre, Brief du jour, signatures de comptes rendus et valeurs par défaut des créations futures.</p></div></div>${settingsCalendarConnectionCard()}<div class="card settings-card"><h2>Sauvegarde et restauration</h2><p class="muted">Les données restent enregistrées localement dans ce navigateur et, lorsque le Cloud DEOS est connecté, les objets métier compatibles sont également synchronisés entre vos appareils. Conservez néanmoins des sauvegardes régulières.</p><div class="row-actions"><button id="backupExportBtn" class="action" onclick="exportBackup()">Exporter toutes les données</button><button id="backupImportBtn" class="secondary" onclick="triggerBackupImport()">Importer une sauvegarde</button><input id="backupFileInput" type="file" accept=".json,application/json" style="display:none" onchange="onBackupFileInputChange(event)"></div><div class="form-grid"><div class="item"><strong>Date dernière exportation</strong><span class="muted">${esc(getBackupMetadata().lastExport)}</span></div><div class="item"><strong>Date dernière restauration</strong><span class="muted">${esc(getBackupMetadata().lastRestore)}</span></div><div class="item"><strong>Catégories métier actuellement présentes</strong><span class="muted">${esc(String(currentLocalStorageCategoryCount()))}</span></div></div>${backupPreviewOpen · renderBackupPreviewCard({ date: backupPreviewPayload.date, categoryCount: backupPreviewSummary.categoryCount, counts: backupPreviewSummary.counts }) : ""}${backupPreviewOpen · `<div class="row-actions"><button class="action" onclick="confirmRestoreBackup()">Confirmer la restauration</button><button class="secondary" onclick="closeBackupPreview()">Annuler</button></div>` : ""}</div><div class="card settings-card"><h2>Ce qui n'est pas modifié</h2><p class="muted">Les dossiers, projets, managers, décisions, actions, documents, journal, KPI, imports, liens utiles et historiques ne sont pas modifiés par ces paramètres.</p></div>`);
+  appHtml(`<div class="card hero settings-hero"><h2>⚙️ Paramètres généraux</h2><p class="muted">Personnalisez uniquement l'identité de l'application. Les données métier restent intactes.</p></div><div class="grid two"><div class="card settings-card"><h2>Identité</h2><div class="form-grid"><input id="setAppName" value="${esc(identity.appName)}" placeholder="Nom de l'application" oninput="updateSettingsPreview()"><input id="setAppVersion" value="${esc(DEOS_VERSION)}" placeholder="Version" readonly><input id="setSiteName" value="${esc(identity.siteName)}" placeholder="Nom du site" oninput="updateSettingsPreview()"><input id="setDirectorName" value="${esc(identity.directorName)}" placeholder="Nom du directeur" oninput="updateSettingsPreview()"><input id="setDirectorRole" value="${esc(identity.directorRole)}" placeholder="Fonction" oninput="updateSettingsPreview()"><input id="setOrganizationName" value="${esc(identity.organizationName)}" placeholder="Organisation / entreprise" oninput="updateSettingsPreview()"><select id="setLogoType" onchange="updateSettingsPreview()"><option value="monogram" ${identity.logoType !== "image" ? "selected" : ""}>Monogramme</option><option value="image" ${identity.logoType === "image" ? "selected" : ""}>Image</option></select><input id="setLogoText" value="${esc(identity.logoText)}" placeholder="Lettre ou initiales" oninput="updateSettingsPreview()"><input id="setLogoImage" class="full" value="${esc(identity.logoImage)}" placeholder="URL d'image optionnelle" oninput="updateSettingsPreview()"></div><div class="row-actions"><button class="action" onclick="saveSettings()">Enregistrer les paramètres</button><button class="secondary" onclick="resetIdentitySettings()">Rétablir les valeurs actuelles</button></div>${statusMessage ? `<p class="settings-confirm">${esc(statusMessage)}</p>` : ""}</div><div class="card settings-card"><h2>Aperçu</h2><div id="settingsPreview">${settingsPreviewHtml(identity)}</div><p class="muted">Cet aperçu correspond aux zones d'identité : barre latérale, titre, Brief du jour, signatures de comptes rendus et valeurs par défaut des créations futures.</p></div></div>${settingsCalendarConnectionCard()}<div class="card settings-card"><h2>Sauvegarde et restauration</h2><p class="muted">Les données restent enregistrées localement dans ce navigateur et, lorsque le Cloud DEOS est connecté, les objets métier compatibles sont également synchronisés entre vos appareils. Conservez néanmoins des sauvegardes régulières.</p><div class="row-actions"><button id="backupExportBtn" class="action" onclick="exportBackup()">Exporter toutes les données</button><button id="backupImportBtn" class="secondary" onclick="triggerBackupImport()">Importer une sauvegarde</button><input id="backupFileInput" type="file" accept=".json,application/json" style="display:none" onchange="onBackupFileInputChange(event)"></div><div class="form-grid"><div class="item"><strong>Date dernière exportation</strong><span class="muted">${esc(getBackupMetadata().lastExport)}</span></div><div class="item"><strong>Date dernière restauration</strong><span class="muted">${esc(getBackupMetadata().lastRestore)}</span></div><div class="item"><strong>Catégories métier actuellement présentes</strong><span class="muted">${esc(String(currentLocalStorageCategoryCount()))}</span></div></div>${backupPreviewOpen ? renderBackupPreviewCard({ date: backupPreviewPayload.date, categoryCount: backupPreviewSummary.categoryCount, counts: backupPreviewSummary.counts }) : ""}${backupPreviewOpen ? `<div class="row-actions"><button class="action" onclick="confirmRestoreBackup()">Confirmer la restauration</button><button class="secondary" onclick="closeBackupPreview()">Annuler</button></div>` : ""}</div><div class="card settings-card"><h2>Ce qui n'est pas modifié</h2><p class="muted">Les dossiers, projets, managers, décisions, actions, documents, journal, KPI, imports, liens utiles et historiques ne sont pas modifiés par ces paramètres.</p></div>`);
 }
 
 const renderSettingsBase = renderSettings;
@@ -24539,7 +24539,7 @@ function saveSettings() {
 }
 
 function resetIdentitySettings() {
-  if (!confirm("Rétablir uniquement les paramètres d'identité actuels · Les données métier ne seront pas modifiées.")) return;
+  if (!confirm("Rétablir uniquement les paramètres d'identité actuels ? Les données métier ne seront pas modifiées.")) return;
   identity = normalizeIdentity(identityDefaults);
   persistIdentity();
   applyIdentity();
@@ -24547,7 +24547,7 @@ function resetIdentitySettings() {
 }
 
 function activityItem(a) {
-  return `<div class="item"><strong>${esc(a.type)} · ${esc(a.title)}</strong><span class="muted">${esc(a.date || "")}${a.detail · " · " + esc(a.detail) : ""}</span><span class="meta">ID ${esc(a.id)}${a.entityId · " · Entité " + esc(a.entityId) : ""}${esc(activityDeletedFolderHint(a))}</span></div>`;
+  return `<div class="item"><strong>${esc(a.type)} · ${esc(a.title)}</strong><span class="muted">${esc(a.date || "")}${a.detail ? " · " + esc(a.detail) : ""}</span><span class="meta">ID ${esc(a.id)}${a.entityId ? " ? Entité " + esc(a.entityId) : ""}${esc(activityDeletedFolderHint(a))}</span></div>`;
 }
 
 function renderActivity() {
@@ -24562,7 +24562,7 @@ function runSearch(query) {
   }
   const relationText = item => {
     const managers = state.managers.filter(m => (item.linkedManagers || []).includes(m.id)).map(m => `${m.name} ${m.role || ""}`).join(" ");
-    const owner = item.ownerId · state.managers.filter(m => m.id === item.ownerId).map(m => `${m.name} ${m.role || ""}`).join(" ") : "";
+    const owner = item.ownerId ? state.managers.filter(m => m.id === item.ownerId).map(m => `${m.name} ${m.role || ""}`).join(" ") : "";
     const projects = state.projects.filter(p => (item.linkedProjects || []).includes(p.id)).map(p => p.name).join(" ");
     const actions = state.actions.filter(a => (item.linkedActions || []).includes(a.id)).map(a => a.title).join(" ");
     const decisions = state.decisions.filter(d => (item.linkedDecisions || []).includes(d.id)).map(d => d.title).join(" ");
@@ -24571,13 +24571,13 @@ function runSearch(query) {
     return `${managers} ${owner} ${projects} ${actions} ${decisions} ${documents} ${folders}`;
   };
   const results = entities.flatMap(name => state[name].map(item => {
-    const agenda = name === "meetingPreparations" · byId("agenda", item.agendaId) : null;
-    const performanceImportTitle = name === "performance_imports" · `Import Performance · ${item.sourceFile || item.sourceType || item.id}` : "";
+    const agenda = name === "meetingPreparations" ? byId("agenda", item.agendaId) : null;
+    const performanceImportTitle = name === "performance_imports" ? `Import Performance · ${item.sourceFile || item.sourceType || item.id}` : "";
     return {
       entity: name,
       id: item.id,
-      title: agenda · `Préparation · ${agenda.title}` : performanceImportTitle || item.title || item.name || item.type || item.id,
-      text: `${JSON.stringify(item)} ${agenda · JSON.stringify(agenda) : ""} ${relationText(item)}`
+      title: agenda ? `Préparation · ${agenda.title}` : performanceImportTitle || item.title || item.name || item.type || item.id,
+      text: `${JSON.stringify(item)} ${agenda ? JSON.stringify(agenda) : ""} ${relationText(item)}`
     };
   })).filter(x => `${x.title} ${x.text}`.toLowerCase().includes(q));
   document.getElementById("viewTitle").textContent = "Recherche";
@@ -24593,17 +24593,17 @@ function listItems(items, prefix = "") {
 // -------------------------------------------------------------------------------
 // Bibliothèque : Google Identity Services (https://accounts.google.com/gsi/client)
 // Méthode OAuth : initTokenClient (Token Request / Implicit-like Grant)
-//   · Aucun client secret requis côté navigateur
-//   · Aucun redirect URI nécessaire
+//   ? Aucun client secret requis côté navigateur
+//   ? Aucun redirect URI nécessaire
 // Scopes demandés (2 scopes combinés) :
 //   1. https://www.googleapis.com/auth/calendar.readonly — lecture seule aux événements
 //   2. https://www.googleapis.com/auth/calendar.calendarlist.readonly — lecture seule à la liste des calendriers
 // Stockage du token : sessionStorage uniquement (deos_gc_token)
-//   · Jamais localStorage, jamais hardcodé dans le code source
-//   · Token effacé à la fermeture du navigateur
+//   ? Jamais localStorage, jamais hardcodé dans le code source
+//   ? Token effacé à la fermeture du navigateur
 // Client ID : configuré par l'utilisateur dans Paramètres > Agenda
-//   · Valeur publique, stockée dans deos_settings (localStorage)
-//   · JAMAIS de Client Secret dans DEOS
+//   ? Valeur publique, stockée dans deos_settings (localStorage)
+//   ? JAMAIS de Client Secret dans DEOS
 // Configuration Google Cloud Console requise :
 //   1. Créer un projet Google Cloud
 //   2. Activer Google Calendar API
@@ -24709,7 +24709,7 @@ function connectGoogleCalendar() {
 }
 
 function disconnectGoogleCalendar() {
-  if (!confirm("Déconnecter Google Calendar · Les événements déjà importés seront supprimés de DEOS.")) return;
+  if (!confirm("Déconnecter Google Calendar ? Les événements déjà importés seront supprimés de DEOS.")) return;
   // V5.6 — Arrêter auto-sync
   stopGoogleCalendarAutoSync();
   const token = getGoogleAccessToken();
@@ -24795,8 +24795,8 @@ function normalizeGoogleCalendarEvent(gcEvent, calendarId, calendarName) {
   const priv = isGoogleEventPrivate(gcEvent);
   const settings = getCalendarConnectionSettings();
   if (priv && !settings.maskPrivateEvents) return null;
-  const title = priv && settings.maskPrivateEvents · "Prive" : (gcEvent.summary || "Sans titre");
-  const description = priv && settings.maskPrivateEvents · "" : (gcEvent.description || "");
+  const title = priv && settings.maskPrivateEvents ? "Prive" : (gcEvent.summary || "Sans titre");
+  const description = priv && settings.maskPrivateEvents ? "" : (gcEvent.description || "");
   // [DEOS AGENDA TRACE] Generate deduplication key
   const deduplicationKey = `google_${gcEvent.id}`;
   
@@ -24829,8 +24829,8 @@ function normalizeGoogleCalendarEvent(gcEvent, calendarId, calendarName) {
     id: `gc_${gcEvent.id}`,
     title,
     date: localDate,
-    startTime: allDay · "" : startRaw.slice(11, 16),
-    endTime: allDay · "" : endRaw.slice(11, 16),
+    startTime: allDay ? "" : startRaw.slice(11, 16),
+    endTime: allDay ? "" : endRaw.slice(11, 16),
     allDay,
     location: gcEvent.location || "",
     description,
@@ -24901,13 +24901,13 @@ async function syncGoogleCalendarNow() {
   console.log("[DEOS SYNC TRACE] syncGoogleCalendarNow entered");
   console.log("[DEOS SYNC TRACE] lock state - googleSyncInProgress:", googleSyncInProgress);
   if (googleSyncInProgress) {
-    console.warn("[DEOS SYNC TRACE] · EXIT: Sync already in progress");
+    console.warn("[DEOS SYNC TRACE] ? EXIT: Sync already in progress");
     return;
   }
   const token = getGoogleAccessToken();
   console.log("[DEOS SYNC TRACE] token present:", !!token);
   if (!token) {
-    console.warn("[DEOS SYNC TRACE] · EXIT: No token");
+    console.warn("[DEOS SYNC TRACE] ? EXIT: No token");
     renderSettings("Session Google expirée, reconnectez-vous pour continuer.");
     return;
   }
@@ -24915,11 +24915,11 @@ async function syncGoogleCalendarNow() {
   console.log("[DEOS SYNC TRACE] calendarId present:", !!settings.googleCalendarId);
   console.log("[DEOS SYNC TRACE] calendarId value:", settings.googleCalendarId || "(empty)");
   if (!settings.googleCalendarId) {
-    console.warn("[DEOS SYNC TRACE] · EXIT: No calendar selected");
+    console.warn("[DEOS SYNC TRACE] ? EXIT: No calendar selected");
     renderSettings("Veuillez sélectionner un calendrier dans la liste avant de synchroniser.");
     return;
   }
-  console.log("[DEOS SYNC TRACE] · All pre-checks passed, proceeding with sync");
+  console.log("[DEOS SYNC TRACE] ? All pre-checks passed, proceeding with sync");
   googleSyncInProgress = true;
   renderSettings("Synchronisation en cours...");
   try {
@@ -24932,13 +24932,13 @@ async function syncGoogleCalendarNow() {
     // Vérifier si le token a expiré durant la récupération
     if (googleConnectionStatus === "session_expired") {
       googleSyncInProgress = false;
-      console.error("[DEOS SYNC TRACE] · Token expired during fetch");
+      console.error("[DEOS SYNC TRACE] ? Token expired during fetch");
       handleGoogleTokenExpired();
       return;
     }
     if (googleConnectionStatus === "connection_error") {
       googleSyncInProgress = false;
-      console.error("[DEOS SYNC TRACE] · Network error during fetch");
+      console.error("[DEOS SYNC TRACE] ? Network error during fetch");
       renderSettings("Erreur réseau lors de la synchronisation. Vérifiez votre connexion.");
       return;
     }
@@ -25047,14 +25047,14 @@ async function syncGoogleCalendarNow() {
     console.log("[DEOS STATE TRACE] after persistence:", state.externalCalendarEvents.length);
     googleSyncInProgress = false;
     const msg = `Synchronisation réussie : ${reconciliation.added} ajoutés, ${reconciliation.updated} mis à jour, ${reconciliation.removed} supprimés.`;
-    console.log("[DEOS SYNC TRACE] · Sync completed successfully");
+    console.log("[DEOS SYNC TRACE] ? Sync completed successfully");
     console.log("[DEOS SYNC TRACE] Message:", msg);
     // [DEOS STATE TRACE] Before renderSettings
     console.log("[DEOS STATE TRACE] before renderSettings:", state.externalCalendarEvents.length);
     renderSettings(msg);
     updateGoogleSyncUi();
   } catch (e) {
-    console.error("[DEOS SYNC TRACE] · Sync failed with exception:", e);
+    console.error("[DEOS SYNC TRACE] ? Sync failed with exception:", e);
     googleSyncInProgress = false;
     renderSettings("Erreur inattendue lors de la synchronisation. Consultez la console pour plus de détails.");
   }
@@ -25108,11 +25108,11 @@ function settingsCalendarConnectionCard() {
 
   // Liste des calendriers disponibles (apres authentification)
   const calendarOptions = googleAvailableCalendars.length > 0
-    · googleAvailableCalendars.map(c =>
-        `<option value="${esc(c.id)}"${s.googleCalendarId === c.id · " selected" : ""}>${esc(c.name)}${c.primary · " (principal)" : ""}</option>`
+    ? googleAvailableCalendars.map(c =>
+        `<option value="${esc(c.id)}"${s.googleCalendarId === c.id ? " selected" : ""}>${esc(c.name)}${c.primary ? " (principal)" : ""}</option>`
       ).join("")
     : (s.googleCalendarId
-        · `<option value="${esc(s.googleCalendarId)}" selected>${esc(s.googleCalendarName || s.googleCalendarId)}</option>`
+        ? `<option value="${esc(s.googleCalendarId)}" selected>${esc(s.googleCalendarName || s.googleCalendarId)}</option>`
         : `<option value="">-- Connectez-vous d'abord --</option>`);
 
   return `<div class="card settings-card settings-calendar-card">
@@ -25139,12 +25139,12 @@ function settingsCalendarConnectionCard() {
           <label>Statut de connexion</label>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:4px">
             <span class="badge ${statusClass}">${esc(statusLabel)}</span>
-            ${connected && googleConnectedEmail · `<span style="color:#475569;font-size:13px">Compte : ${esc(googleConnectedEmail)}</span>` : ""}
+            ${connected && googleConnectedEmail ? `<span style="color:#475569;font-size:13px">Compte : ${esc(googleConnectedEmail)}</span>` : ""}
           </div>
         </div>
         <div class="row-actions" style="margin-top:12px">
           ${!connected
-            · `<button class="action" onclick="saveCalendarConnectionSettings();connectGoogleCalendar()">Connecter Google Calendar</button>`
+            ? `<button class="action" onclick="saveCalendarConnectionSettings();connectGoogleCalendar()">Connecter Google Calendar</button>`
             : `<button class="secondary" onclick="renderGoogleCalendarsList()">Actualiser les calendriers</button><button class="danger" onclick="disconnectGoogleCalendar()">Deconnecter Google</button>`
           }
         </div>
@@ -25153,7 +25153,7 @@ function settingsCalendarConnectionCard() {
         <h3>Calendrier a synchroniser</h3>
         <div class="settings-card-control">
           <label for="ccGoogleCalendarId">Calendrier Google</label>
-          <select id="ccGoogleCalendarId" ${!connected && googleAvailableCalendars.length === 0 · "disabled" : ""}>
+          <select id="ccGoogleCalendarId" ${!connected && googleAvailableCalendars.length === 0 ? "disabled" : ""}>
             ${calendarOptions}
           </select>
           <small class="muted">Selectionnez votre calendrier professionnel apres connexion.</small>
@@ -25161,23 +25161,23 @@ function settingsCalendarConnectionCard() {
         <div class="settings-card-control" style="margin-top:10px">
           <label for="ccSyncFrequency">Frequence de synchronisation</label>
           <select id="ccSyncFrequency">
-            <option value="manual"${s.syncFrequency === "manual" · " selected" : ""}>Synchronisation manuelle</option>
-            <option value="15min"${s.syncFrequency === "15min" · " selected" : ""}>Toutes les 15 minutes</option>
-            <option value="hourly"${s.syncFrequency === "hourly" · " selected" : ""}>Toutes les heures</option>
-            <option value="daily"${s.syncFrequency === "daily" · " selected" : ""}>Une fois par jour</option>
+            <option value="manual"${s.syncFrequency === "manual" ? " selected" : ""}>Synchronisation manuelle</option>
+            <option value="15min"${s.syncFrequency === "15min" ? " selected" : ""}>Toutes les 15 minutes</option>
+            <option value="hourly"${s.syncFrequency === "hourly" ? " selected" : ""}>Toutes les heures</option>
+            <option value="daily"${s.syncFrequency === "daily" ? " selected" : ""}>Une fois par jour</option>
           </select>
         </div>
       </section>
       <section class="settings-card-block">
         <h3>Affichage dans DEOS</h3>
         <div class="settings-card-check">
-          <label><input id="ccShowInAgenda" type="checkbox" ${s.showInAgenda · "checked" : ""}> Afficher les evenements externes dans la page Agenda</label>
+          <label><input id="ccShowInAgenda" type="checkbox" ${s.showInAgenda ? "checked" : ""}> Afficher les evenements externes dans la page Agenda</label>
         </div>
         <div class="settings-card-check">
-          <label><input id="ccShowTodayInCockpit" type="checkbox" ${s.showTodayInCockpit · "checked" : ""}> Afficher les rendez-vous du jour dans le Cockpit</label>
+          <label><input id="ccShowTodayInCockpit" type="checkbox" ${s.showTodayInCockpit ? "checked" : ""}> Afficher les rendez-vous du jour dans le Cockpit</label>
         </div>
         <div class="settings-card-check">
-          <label><input id="ccMaskPrivateEvents" type="checkbox" ${s.maskPrivateEvents · "checked" : ""}> Importer les evenements prives en masquant leur contenu</label>
+          <label><input id="ccMaskPrivateEvents" type="checkbox" ${s.maskPrivateEvents ? "checked" : ""}> Importer les evenements prives en masquant leur contenu</label>
         </div>
       </section>
       <section class="settings-card-block">
@@ -25187,11 +25187,11 @@ function settingsCalendarConnectionCard() {
           <div class="settings-calendar-summary-item"><strong>Prochaine synchro</strong><span>${esc(syncUi.nextSync)}</span></div>
           <div class="settings-calendar-summary-item"><strong>Evenements importes</strong><span>${externalCount}</span></div>
           <div class="settings-calendar-summary-item"><strong>Calendrier selectionne</strong><span>${esc(s.googleCalendarName || s.googleCalendarId || "--")}</span></div>
-          <div class="settings-calendar-summary-item"><strong>Frequence active</strong><span>${esc(s.syncFrequency === "manual" · "Manuelle" : s.syncFrequency)}</span></div>
-          <div class="settings-calendar-summary-item"><strong>Fournisseur</strong><span>${esc(s.provider === "google" · "Google Calendar" : "Aucun")}</span></div>
+          <div class="settings-calendar-summary-item"><strong>Frequence active</strong><span>${esc(s.syncFrequency === "manual" ? "Manuelle" : s.syncFrequency)}</span></div>
+          <div class="settings-calendar-summary-item"><strong>Fournisseur</strong><span>${esc(s.provider === "google" ? "Google Calendar" : "Aucun")}</span></div>
         </div>
         ${connected
-          · `<div style="margin-top:14px"><button class="action" onclick="onClickSyncGoogleNow()" ${googleSyncInProgress · "disabled" : ""}>Synchroniser maintenant</button></div>`
+          ? `<div style="margin-top:14px"><button class="action" onclick="onClickSyncGoogleNow()" ${googleSyncInProgress ? "disabled" : ""}>Synchroniser maintenant</button></div>`
           : ""
         }
       </section>
@@ -25223,7 +25223,7 @@ function readCalendarConnectionSettingsForm() {
   return {
     ...getDefaultCalendarConnectionSettings(),
     ...current,
-    provider: googleClientId · "google" : current.provider,
+    provider: googleClientId ? "google" : current.provider,
     googleClientId,
     googleCalendarId: googleCalendarId || current.googleCalendarId,
     googleCalendarName: googleCalendarName || current.googleCalendarName,
@@ -25394,8 +25394,8 @@ function removeMissingGoogleEventsInWindow() {
 function updateGoogleSyncUi() {
   const settings = getCalendarConnectionSettings();
   const freq = settings.syncFrequency || "manual";
-  const lastSync = googleLastSyncAt · new Date(googleLastSyncAt).toLocaleString("fr-FR") : "Jamais";
-  const nextSync = googleNextSyncAt · new Date(googleNextSyncAt).toLocaleString("fr-FR") : (freq === "manual" · "Manuelle" : "Non planifiée");
+  const lastSync = googleLastSyncAt ? new Date(googleLastSyncAt).toLocaleString("fr-FR") : "Jamais";
+  const nextSync = googleNextSyncAt ? new Date(googleNextSyncAt).toLocaleString("fr-FR") : (freq === "manual" ? "Manuelle" : "Non planifiée");
   const eventCount = state.externalCalendarEvents.filter(e => e._calendarId === settings.googleCalendarId).length;
   return { lastSync, nextSync, eventCount };
 }
@@ -25909,7 +25909,7 @@ function deleteDecision(id) {
     window.setTimeout(() => {
       const app = document.getElementById("app");
       if (!app) return;
-      let target = preferredSelector · app.querySelector(preferredSelector) : null;
+      let target = preferredSelector ? app.querySelector(preferredSelector) : null;
       if (!target) {
         target = app.querySelector(".grid.two > .card.full-span:first-child, .grid.two > .card:first-child, form, .card.full-span");
       }
@@ -25940,9 +25940,9 @@ function deleteDecision(id) {
     if (typeof original !== "function" || original.__deosOpeningWrapped) return;
     const wrapped = function(...args) {
       const result = original.apply(this, args);
-      const mode = modeAware · String(args[1] || "") : "";
+      const mode = modeAware ? String(args[1] || "") : "";
       if (mode) {
-        const selector = typeof selectorResolver === "function" · selectorResolver(args) : "";
+        const selector = typeof selectorResolver === "function" ? selectorResolver(args) : "";
         focusInlineForm(selector);
       } else {
         focusViewTop();
@@ -25972,7 +25972,7 @@ function deleteDecision(id) {
   // Fiches principales et sous-formulaires intégrés.
   wrapGlobal("openAction");
   wrapGlobal("openFolder", true);
-  wrapGlobal("openManager", true, args => String(args[1] || "").startsWith("request") · "#manager-request-form" : "");
+  wrapGlobal("openManager", true, args => String(args[1] || "").startsWith("request") ? "#manager-request-form" : "");
   wrapGlobal("openProject", true);
   wrapGlobal("openDecision", true);
   wrapGlobal("openJournal", true);
@@ -26104,7 +26104,7 @@ function getPerformanceSelectedPeriod() {
     return String(performanceDashboardFilters.period).trim();
   }
 
-  const selected = typeof perfSelected === "function" · perfSelected() : null;
+  const selected = typeof perfSelected === "function" ? perfSelected() : null;
   if (selected && Number(selected.month) >= 1 && Number(selected.month) <= 12 && Number(selected.year)) {
     return performancePeriodKey(selected);
   }
@@ -26145,7 +26145,7 @@ function readPerformanceImportedSources() {
   appendImports(state.performance_imports);
   try {
     const raw = localStorage.getItem("deos_performance_imports");
-    appendImports(raw · JSON.parse(raw) : []);
+    appendImports(raw ? JSON.parse(raw) : []);
   } catch (error) {
     console.warn("[DEOS] Lecture deos_performance_imports impossible", error);
   }
@@ -26248,7 +26248,7 @@ function readPerformanceImportedSources() {
         Number(
           item.detectedCount ||
           item.importedCount ||
-          (Array.isArray(item.indicators) · item.indicators.length : 0) ||
+          (Array.isArray(item.indicators) ? item.indicators.length : 0) ||
           0
         )
       )
@@ -26277,7 +26277,7 @@ function readPerformanceImportedSources() {
       ...source,
       found: valid && !partial,
       partial,
-      status: partial · "partial" : "ok",
+      status: partial ? "partial" : "ok",
       details: details.join(" · ")
     };
   });
@@ -26308,7 +26308,7 @@ function renderPerformanceSourcesSummary() {
 
   button.textContent =
     `Sources : ${currentCount}/${sources.length} à jour` +
-    (partialCount · ` · ${partialCount} à vérifier` : "") +
+    (partialCount ? ` · ${partialCount} à vérifier` : "") +
     " ▾";
 
   const panel = document.createElement("div");
@@ -26322,14 +26322,14 @@ function renderPerformanceSourcesSummary() {
           <div class="perf-source-name">${source.label}</div>
           <div class="perf-source-detail">
             ${source.status === "ok"
-              · (source.details || "Import disponible")
+              ? (source.details || "Import disponible")
               : source.status === "partial"
-                · (source.details || "Import présent, métadonnées à vérifier")
+                ? (source.details || "Import présent, métadonnées à vérifier")
                 : "Aucun import pour cette période"}
           </div>
         </div>
-        <div class="perf-source-status ${source.status === "ok" · "ok" : source.status === "partial" · "partial" : "missing"}">
-          ${source.status === "ok" · "✓ À jour" : source.status === "partial" · "⚠ À vérifier" : "○ Non importé"}
+        <div class="perf-source-status ${source.status === "ok" ? "ok" : source.status === "partial" ? "partial" : "missing"}">
+          ${source.status === "ok" ? "✓ À jour" : source.status === "partial" ? "⚠ À vérifier" : "○ Non importé"}
         </div>
       </div>
     `).join("")}
@@ -26418,10 +26418,10 @@ function renderPerformanceSourcesSummary() {
     pathname.includes("deos-test-") ||
     isLocal;
 
-  const ENV = isTest · "TEST" : "PROD";
-  const COLOR = isTest · "#f59e0b" : "#2563eb";
-  const BG = isTest · "#fff7ed" : "#eff6ff";
-  const TEXT = isTest · "#9a3412" : "#1e3a8a";
+  const ENV = isTest ? "TEST" : "PROD";
+  const COLOR = isTest ? "#f59e0b" : "#2563eb";
+  const BG = isTest ? "#fff7ed" : "#eff6ff";
+  const TEXT = isTest ? "#9a3412" : "#1e3a8a";
 
   window.DEOS_ENVIRONMENT = ENV;
   document.documentElement.dataset.deosEnvironment = ENV;
@@ -26438,18 +26438,18 @@ function renderPerformanceSourcesSummary() {
 
   function setIdentity() {
     // Onglet navigateur + nom proposé lors de l'ajout à l'écran d'accueil.
-    document.title = ENV === "TEST" · "DEOS TEST" : "DEOS";
+    document.title = ENV === "TEST" ? "DEOS TEST" : "DEOS";
     setOrCreateMeta(
       "apple-mobile-web-app-title",
-      ENV === "TEST" · "DEOS TEST" : "DEOS"
+      ENV === "TEST" ? "DEOS TEST" : "DEOS"
     );
     setOrCreateMeta(
       "application-name",
-      ENV === "TEST" · "DEOS TEST" : "DEOS"
+      ENV === "TEST" ? "DEOS TEST" : "DEOS"
     );
 
     // Favicon autonome, distinct selon l'environnement.
-    const label = ENV === "TEST" · "T" : "D";
+    const label = ENV === "TEST" ? "T" : "D";
     const svg =
       `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">` +
       `<rect width="64" height="64" rx="14" fill="${COLOR}"/>` +
@@ -26520,18 +26520,18 @@ function renderPerformanceSourcesSummary() {
       marker.setAttribute("aria-hidden", "true");
       document.body.appendChild(marker);
     }
-    marker.textContent = ENV === "TEST" · "DEOS TEST" : "DEOS PROD";
+    marker.textContent = ENV === "TEST" ? "DEOS TEST" : "DEOS PROD";
     marker.title =
       ENV === "TEST"
-        · "Environnement de test"
+        ? "Environnement de test"
         : "Environnement de production";
   }
 
   // Corrige aussi un ancien libellé MODE TEST / MODE PROD éventuellement
   // conservé par le code ou un état local.
   function normalizeVisibleModeLabels() {
-    const wanted = ENV === "TEST" · "MODE TEST" : "MODE PROD";
-    const unwanted = ENV === "TEST" · "MODE PROD" : "MODE TEST";
+    const wanted = ENV === "TEST" ? "MODE TEST" : "MODE PROD";
+    const unwanted = ENV === "TEST" ? "MODE PROD" : "MODE TEST";
 
     document.querySelectorAll("body *").forEach((el) => {
       if (el.children.length !== 0) return;
@@ -26570,119 +26570,6 @@ function renderPerformanceSourcesSummary() {
     document.addEventListener("DOMContentLoaded", init, { once: true });
   } else {
     init();
-  }
-})();
-
-
-
-
-/* V5.30Q4 — sens métier des KPI Performance */
-function deosPerformanceDirection(metricLabel = "") {
-  const s = String(metricLabel || "").toLowerCase();
-
-  // Plus haut = mieux
-  if (
-    s.includes("productivité") ||
-    s.includes("réception") ||
-    s.includes("manutention") ||
-    s.includes("chargement") ||
-    s.includes("transit") ||
-    s.includes("préparation") ||
-    s.includes("ipo")
-  ) return "higher";
-
-  // Plus bas = mieux
-  if (
-    s.includes("absent") ||
-    s.includes("litige") ||
-    s.includes("casse") ||
-    s.includes("gains & pertes") ||
-    s.includes("gains et pertes") ||
-    s.includes("coût") ||
-    s.includes("heures supplémentaires") ||
-    s.includes("heures de nuit")
-  ) return "lower";
-
-  return "neutral";
-}
-
-function deosPerformanceStatusFromBudget(metricLabel, actual, budget) {
-  const a = Number(actual);
-  const b = Number(budget);
-  if (!Number.isFinite(a) || !Number.isFinite(b) || b === 0) {
-    return { label: "À compléter", level: "neutral" };
-  }
-
-  const direction = deosPerformanceDirection(metricLabel);
-  const pct = ((a - b) / Math.abs(b)) * 100;
-  const absPct = Math.abs(pct);
-
-  if (direction === "neutral") {
-    if (absPct <= 2) return { label: "Maîtrisé", level: "good" };
-    if (absPct <= 5) return { label: "À suivre", level: "watch" };
-    return { label: "Critique", level: "bad" };
-  }
-
-  const favorable = direction === "higher" ? pct >= 0 : pct <= 0;
-  if (favorable) return { label: "Maîtrisé", level: "good" };
-
-  if (absPct <= 3) return { label: "À suivre", level: "watch" };
-  return { label: "Critique", level: "bad" };
-}
-
-
-
-
-/* V5.30Q4 — Synthèse DE compacte et lisible */
-(() => {
-  const styleId = "deos-q4-performance-style";
-  if (!document.getElementById(styleId)) {
-    const style = document.createElement("style");
-    style.id = styleId;
-    style.textContent = `
-      .deos-performance-synthesis,
-      .performance-synthesis,
-      .synthese-de {
-        display:grid !important;
-        grid-template-columns: 1fr 1fr !important;
-        gap:8px 12px !important;
-        align-items:start !important;
-      }
-      .deos-performance-synthesis .section,
-      .performance-synthesis .section,
-      .synthese-de .section {
-        min-width:0 !important;
-        margin:0 !important;
-      }
-      .deos-performance-synthesis ul,
-      .performance-synthesis ul,
-      .synthese-de ul {
-        margin:2px 0 0 16px !important;
-        padding:0 !important;
-      }
-      .deos-performance-synthesis li,
-      .performance-synthesis li,
-      .synthese-de li {
-        margin:0 0 2px 0 !important;
-        line-height:1.2 !important;
-      }
-      .deos-performance-synthesis .sources,
-      .performance-synthesis .sources,
-      .synthese-de .sources {
-        grid-column:1 / -1 !important;
-        font-size:.92em !important;
-        opacity:.8 !important;
-        margin-top:0 !important;
-      }
-      @media (max-width: 760px) {
-        .deos-performance-synthesis,
-        .performance-synthesis,
-        .synthese-de {
-          grid-template-columns:1fr !important;
-        }
-      }
-    `;
-    document.head.appendChild(style);
   }
 })();
 
