@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q3B";
+const DEOS_VERSION = "V5.30Q4A";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -9996,6 +9996,23 @@ function perfStatus(metric) {
   return "green";
 }
 
+// V5.30Q4A — statut spécifique productivité : plus haut = mieux.
+// Une donnée absente ne doit jamais ressortir "Maîtrisé".
+function perfProductivityStatus(metric) {
+  if (!metric || !perfHas(metric.actual) || !perfHas(metric.budget)) return "";
+  const gap = perfGap(metric.actual, metric.budget).pct;
+  if (gap === "") return "";
+  if (gap >= 0) return "green";
+  if (gap >= -3) return "orange";
+  return "red";
+}
+
+function perfProductivityBadge(metric) {
+  const status = perfProductivityStatus(metric);
+  if (!status) return `<span class="badge" style="background:#eef1f5;color:#64748b">À compléter</span>`;
+  return badge(status);
+}
+
 function perfPeriodLabel(p) {
   return `${perfMonths[(Number(p.month) || 1) - 1]} ${p.year}`;
 }
@@ -11205,8 +11222,8 @@ function performanceView(p) {
   const actions = state.actions.filter(a => (a.linkedPerformance || []).includes(p.id) || (p.link || "").includes(perfPeriodLabel(p)));
   const decisions = state.decisions.filter(d => (d.linkedPerformance || []).includes(p.id));
   const documents = state.documents.filter(d => (d.linkedPerformance || []).includes(p.id));
-  return `<div class="card"><div class="row"><div><h2>${esc(perfPeriodLabel(p))}</h2><span class="muted">Statut : ${esc(p.status)} · Dernière mise à jour : ${esc(p.updatedAt || "")}</span></div><div class="row-actions"><button class="action" onclick="performanceEdit=true;renderPerformance()">Modifier</button><button class="secondary" onclick="startPerformanceRdp('${p.id}')">Générer une synthèse RDP</button></div></div></div><div class="grid two">${performanceOverviewSection()}<div class="card"><h2>Activité</h2>${perfMetricBlock("Colis", viewP.activity)}</div><div class="card"><h2>IPO</h2>${perfMetricBlock("IPO total", viewP.ipo.total)}${perfMetricBlock("IPO variable", viewP.ipo.variable)}</div><div class="card full-span"><h2>Productivité par métier</h2>${perfProductivityTable(viewP)}</div><div class="card"><h2>Heures</h2>${perfMetricBlock("Heures totales", viewP.hours.total)}${perfMetricBlock("Heures indirectes", viewP.hours.indirect)}</div><div class="card"><h2>Absentéisme</h2>${perfMetricBlock("Absentéisme total", viewP.absenteeism.total)}</div><div class="card"><h2>Qualité et Gains & Pertes</h2>${perfQualitySummary(viewP)}</div><div class="card"><h2>Hauteur palette</h2>${perfPalletSummary(viewP)}</div><div class="card"><h2>Synthèse DE</h2><p>${esc(p.synthesis || buildPerformanceSynthesis(viewP))}</p></div>${performanceSourceBlock(p)}<div class="card"><h2>Actions liées</h2>${actions.map(a => `<div class="item"><strong>${esc(a.title)}</strong><span class="muted">${esc(a.owner || "")} · ${esc(a.due || "")}</span></div>`).join("") || `<div class="empty">Aucune action liée.</div>`}</div><div class="card"><h2>Décisions liées</h2>${decisions.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(decisionStatusLabel(d.status))}</span></div>`).join("") || `<div class="empty">Aucune décision liée.</div>`}</div><div class="card full-span"><h2>Documents et comptes rendus liés</h2>${documents.map(d => `<div class="item clickable" onclick="openDocument('${d.id}')"><strong>${esc(d.title || d.name || "Document")}</strong><span class="muted">${esc(d.type || d.category || "")}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`}</div></div>`;
-  return `<div class="card"><div class="row"><div><h2>${esc(perfPeriodLabel(p))}</h2><span class="muted">Statut : ${esc(p.status)} ? Dernière mise à jour : ${esc(p.updatedAt || "")}</span></div><div class="row-actions"><button class="action" onclick="performanceEdit=true;renderPerformance()">Modifier</button><button class="secondary" onclick="startPerformanceRdp('${p.id}')">Générer une synthèse RDP</button></div></div></div><div class="grid two"><div class="card"><h2>Activité</h2>${perfMetricBlock("Colis", viewP.activity)}</div><div class="card"><h2>IPO</h2>${perfMetricBlock("IPO total", viewP.ipo.total)}${perfMetricBlock("IPO variable", viewP.ipo.variable)}</div><div class="card full-span"><h2>Productivité par métier</h2>${perfProductivityTable(viewP)}</div><div class="card"><h2>Heures</h2>${perfMetricBlock("Heures totales", viewP.hours.total)}${perfMetricBlock("Heures indirectes", viewP.hours.indirect)}</div><div class="card"><h2>Absentéisme</h2>${perfMetricBlock("Absentéisme total", viewP.absenteeism.total)}</div><div class="card"><h2>Qualité et Gains & Pertes</h2>${perfQualitySummary(viewP)}</div><div class="card"><h2>Hauteur palette</h2>${perfPalletSummary(viewP)}</div><div class="card"><h2>Synthèse DE</h2><p>${esc(p.synthesis || buildPerformanceSynthesis(viewP))}</p></div><div class="card full-span"><h2>Historique et tendances</h2>${perfCharts()}</div><div class="card"><h2>Actions liées</h2>${actions.map(a => `<div class="item"><strong>${esc(a.title)}</strong><span class="muted">${esc(a.owner || "")} · ${esc(a.due || "")}</span></div>`).join("") || `<div class="empty">Aucune action liée.</div>`}</div><div class="card"><h2>Décisions liées</h2>${decisions.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(decisionStatusLabel(d.status))}</span></div>`).join("") || `<div class="empty">Aucune décision liée.</div>`}</div><div class="card full-span"><h2>Documents et comptes rendus liés</h2>${documents.map(d => `<div class="item clickable" onclick="editDocument('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(d.type || "")} · ${esc(d.category || "")} · ${esc(d.status || "")}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`}</div>${performanceSourceBlock(p)}<div class="card full-span">${performanceImportHistory()}</div></div>`;
+  return `<div class="card"><div class="row"><div><h2>${esc(perfPeriodLabel(p))}</h2><span class="muted">Statut : ${esc(p.status)} · Dernière mise à jour : ${esc(p.updatedAt || "")}</span></div><div class="row-actions"><button class="action" onclick="performanceEdit=true;renderPerformance()">Modifier</button><button class="secondary" onclick="startPerformanceRdp('${p.id}')">Générer une synthèse RDP</button></div></div></div><div class="grid two">${performanceOverviewSection()}<div class="card"><h2>Activité</h2>${perfMetricBlock("Colis", viewP.activity)}</div><div class="card"><h2>IPO</h2>${perfMetricBlock("IPO total", viewP.ipo.total)}${perfMetricBlock("IPO variable", viewP.ipo.variable)}</div><div class="card full-span"><h2>Productivité par métier</h2>${perfProductivityTable(viewP)}</div><div class="card"><h2>Heures</h2>${perfMetricBlock("Heures totales", viewP.hours.total)}${perfMetricBlock("Heures indirectes", viewP.hours.indirect)}</div><div class="card"><h2>Absentéisme</h2>${perfMetricBlock("Absentéisme total", viewP.absenteeism.total)}</div><div class="card"><h2>Qualité et Gains & Pertes</h2>${perfQualitySummary(viewP)}</div><div class="card"><h2>Hauteur palette</h2>${perfPalletSummary(viewP)}</div><div class="card"><h2>Synthèse DE</h2>${renderPerformanceSynthesisCard(p, viewP)}</div>${performanceSourceBlock(p)}<div class="card"><h2>Actions liées</h2>${actions.map(a => `<div class="item"><strong>${esc(a.title)}</strong><span class="muted">${esc(a.owner || "")} · ${esc(a.due || "")}</span></div>`).join("") || `<div class="empty">Aucune action liée.</div>`}</div><div class="card"><h2>Décisions liées</h2>${decisions.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(decisionStatusLabel(d.status))}</span></div>`).join("") || `<div class="empty">Aucune décision liée.</div>`}</div><div class="card full-span"><h2>Documents et comptes rendus liés</h2>${documents.map(d => `<div class="item clickable" onclick="openDocument('${d.id}')"><strong>${esc(d.title || d.name || "Document")}</strong><span class="muted">${esc(d.type || d.category || "")}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`}</div></div>`;
+  return `<div class="card"><div class="row"><div><h2>${esc(perfPeriodLabel(p))}</h2><span class="muted">Statut : ${esc(p.status)} ? Dernière mise à jour : ${esc(p.updatedAt || "")}</span></div><div class="row-actions"><button class="action" onclick="performanceEdit=true;renderPerformance()">Modifier</button><button class="secondary" onclick="startPerformanceRdp('${p.id}')">Générer une synthèse RDP</button></div></div></div><div class="grid two"><div class="card"><h2>Activité</h2>${perfMetricBlock("Colis", viewP.activity)}</div><div class="card"><h2>IPO</h2>${perfMetricBlock("IPO total", viewP.ipo.total)}${perfMetricBlock("IPO variable", viewP.ipo.variable)}</div><div class="card full-span"><h2>Productivité par métier</h2>${perfProductivityTable(viewP)}</div><div class="card"><h2>Heures</h2>${perfMetricBlock("Heures totales", viewP.hours.total)}${perfMetricBlock("Heures indirectes", viewP.hours.indirect)}</div><div class="card"><h2>Absentéisme</h2>${perfMetricBlock("Absentéisme total", viewP.absenteeism.total)}</div><div class="card"><h2>Qualité et Gains & Pertes</h2>${perfQualitySummary(viewP)}</div><div class="card"><h2>Hauteur palette</h2>${perfPalletSummary(viewP)}</div><div class="card"><h2>Synthèse DE</h2>${renderPerformanceSynthesisCard(p, viewP)}</div><div class="card full-span"><h2>Historique et tendances</h2>${perfCharts()}</div><div class="card"><h2>Actions liées</h2>${actions.map(a => `<div class="item"><strong>${esc(a.title)}</strong><span class="muted">${esc(a.owner || "")} · ${esc(a.due || "")}</span></div>`).join("") || `<div class="empty">Aucune action liée.</div>`}</div><div class="card"><h2>Décisions liées</h2>${decisions.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(decisionStatusLabel(d.status))}</span></div>`).join("") || `<div class="empty">Aucune décision liée.</div>`}</div><div class="card full-span"><h2>Documents et comptes rendus liés</h2>${documents.map(d => `<div class="item clickable" onclick="editDocument('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(d.type || "")} · ${esc(d.category || "")} · ${esc(d.status || "")}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`}</div>${performanceSourceBlock(p)}<div class="card full-span">${performanceImportHistory()}</div></div>`;
 }
 
 function performanceSourceBlock(p) {
@@ -11302,13 +11319,13 @@ function performanceLegacyImportSummaryCard(item) {
 function perfMetricBlock(label, metric) {
   const rb = perfGap(metric.actual, metric.budget);
   const rh = perfGap(metric.actual, metric.historical);
-  return `<div class="performance-metric"><strong>${esc(label)}</strong><span>Historique ${perfFmt(metric.historical)} ? Budget ${perfFmt(metric.budget)} ? Réalisé ${perfFmt(metric.actual)}</span><small>Écart budget ${perfFmt(rb.value)} (${perfFmt(rb.pct, "%")}) ? Écart historique ${perfFmt(rh.value)} (${perfFmt(rh.pct, "%")})</small></div>`;
+  return `<div class="performance-metric"><strong>${esc(label)}</strong><span>Historique ${perfFmt(metric.historical)} · Budget ${perfFmt(metric.budget)} · Réalisé ${perfFmt(metric.actual)}</span><small>Écart budget ${perfFmt(rb.value)} (${perfFmt(rb.pct, "%")}) · Écart historique ${perfFmt(rh.value)} (${perfFmt(rh.pct, "%")})</small></div>`;
 }
 
 function perfProductivityTable(p) {
   return `<table class="perf-table"><thead><tr><th>Métier</th><th>Historique</th><th>Budget</th><th>Réalisé</th><th>Écart budget</th><th>Écart historique</th><th>Statut</th><th></th></tr></thead><tbody>${perfJobs.map(job => {
-    const m = p.productivity[job], rb = perfGap(m.actual, m.budget), rh = perfGap(m.actual, m.historical), st = perfStatus(m);
-    return `<tr><td>${esc(job)}</td><td>${perfFmt(m.historical)}</td><td>${perfFmt(m.budget)}</td><td>${perfFmt(m.actual)}</td><td>${perfFmt(rb.value)}</td><td>${perfFmt(rh.value)}</td><td>${badge(st)}</td><td><button class="secondary" onclick="performanceIndicatorAction('${p.id}','Productivité ${esc(job)}')">Créer une action</button><button class="secondary" onclick="performanceIndicatorDecision('${p.id}','Productivité ${esc(job)}')">Créer une décision</button></td></tr>`;
+    const m = p.productivity[job], rb = perfGap(m.actual, m.budget), rh = perfGap(m.actual, m.historical);
+    return `<tr><td>${esc(job)}</td><td>${perfFmt(m.historical)}</td><td>${perfFmt(m.budget)}</td><td>${perfFmt(m.actual)}</td><td>${perfFmt(rb.value)}</td><td>${perfFmt(rh.value)}</td><td>${perfProductivityBadge(m)}</td><td><button class="secondary" onclick="performanceIndicatorAction('${p.id}','Productivité ${esc(job)}')">Créer une action</button><button class="secondary" onclick="performanceIndicatorDecision('${p.id}','Productivité ${esc(job)}')">Créer une décision</button></td></tr>`;
   }).join("")}</tbody></table>`;
 }
 
@@ -11402,6 +11419,61 @@ function buildPerformanceSynthesis(p) {
   return `Points positifs\n${positives}\n\nPoints de vigilance\n${vigilance}\n\nIndicateurs éloignés du budget\n${vigilance}\n\nActions prioritaires\n${reportActions(state.actions.filter(a => (a.linkedPerformance || []).includes(p.id)))}\n\nDécisions attendues\n${reportDecisions(state.decisions.filter(d => (d.linkedPerformance || []).includes(p.id)))}`;
 }
 
+// V5.30Q4A — rendu compact de la Synthèse DE sans augmenter la hauteur.
+function renderPerformanceSynthesisCard(p, viewP) {
+  const raw = String(p.synthesis || buildPerformanceSynthesis(viewP) || "").trim();
+
+  const headings = [
+    "Points positifs",
+    "Points de vigilance",
+    "Indicateurs éloignés du budget",
+    "Actions prioritaires",
+    "Décisions attendues"
+  ];
+
+  const normalized = raw.replace(/\r/g, "");
+  const sections = {};
+  headings.forEach((heading, index) => {
+    const start = normalized.indexOf(heading);
+    if (start < 0) return;
+    let end = normalized.length;
+    headings.slice(index + 1).forEach(next => {
+      const pos = normalized.indexOf(next, start + heading.length);
+      if (pos >= 0 && pos < end) end = pos;
+    });
+    sections[heading] = normalized
+      .slice(start + heading.length, end)
+      .trim()
+      .replace(/^\s*[-–]\s*/gm, "")
+      .replace(/\n+/g, " · ");
+  });
+
+  // Si une ancienne synthèse stockée est "à plat", on la segmente aussi par libellé.
+  if (!Object.keys(sections).length) {
+    const markerRegex = /(Points positifs|Points de vigilance|Indicateurs éloignés du budget|Actions prioritaires|Décisions attendues)/g;
+    const parts = normalized.split(markerRegex).filter(Boolean);
+    for (let i = 0; i < parts.length - 1; i += 2) {
+      if (headings.includes(parts[i])) sections[parts[i]] = String(parts[i + 1] || "").trim();
+    }
+  }
+
+  const cell = (title, icon, value, tone) => `
+    <div style="min-width:0;padding:6px 8px;border:1px solid #e5eaf1;border-radius:10px;background:${tone};">
+      <div style="font-size:12px;font-weight:800;margin-bottom:3px;white-space:nowrap">${icon} ${esc(title)}</div>
+      <div style="font-size:12px;line-height:1.25;color:#334155;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical">${esc(value || "À compléter")}</div>
+    </div>`;
+
+  return `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px 8px;">
+      ${cell("Points positifs", "✓", sections["Points positifs"], "#f5fbf7")}
+      ${cell("Points de vigilance", "!", sections["Points de vigilance"], "#fff9f2")}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px 8px;margin-top:7px;">
+      ${cell("Actions prioritaires", "→", sections["Actions prioritaires"], "#f8fafc")}
+      ${cell("Décisions attendues", "◆", sections["Décisions attendues"], "#f8fafc")}
+    </div>`;
+}
+
 function perfCharts() {
   const series = [["Activité", "activity"], ["IPO Total", "ipo.total"], ["IPO Variable", "ipo.variable"], ["Productivité Préparation", "productivity.Préparation"], ["Heures totales", "hours.total"], ["Heures indirectes", "hours.indirect"], ["Absentéisme", "absenteeism.total"], ["Gains & Pertes", "quality.indicators.Total Gains & Pertes"], ["Hauteur palette", "palletHeight"]];
   return `<div class="perf-charts">${series.map(([label, path]) => perfChart(label, path)).join("")}</div>`;
@@ -11415,7 +11487,7 @@ function perfChart(label, path) {
   const rows = state.performance.slice().sort((a, b) => a.year - b.year || a.month - b.month).map(p => ({ p, m: perfPath(p, path) })).filter(x => x.m && (perfHas(x.m.historical) || perfHas(x.m.budget) || perfHas(x.m.actual)));
   if (rows.length < 1) return `<div class="perf-chart"><strong>${esc(label)}</strong><div class="empty">Données insuffisantes</div></div>`;
   const max = Math.max(1, ...rows.flatMap(x => [perfNum(x.m.historical), perfNum(x.m.budget), perfNum(x.m.actual)]));
-  return `<div class="perf-chart"><strong>${esc(label)}</strong>${rows.map(x => `<div class="perf-bars"><span>${esc(perfMonths[x.p.month - 1].slice(0, 3))}</span><i style="height:${perfNum(x.m.historical) / max * 70}px"></i><i class="budget" style="height:${perfNum(x.m.budget) / max * 70}px"></i><i class="actual" style="height:${perfNum(x.m.actual) / max * 70}px"></i></div>`).join("")}<small>Historique ? Budget ? Réalisé</small></div>`;
+  return `<div class="perf-chart"><strong>${esc(label)}</strong>${rows.map(x => `<div class="perf-bars"><span>${esc(perfMonths[x.p.month - 1].slice(0, 3))}</span><i style="height:${perfNum(x.m.historical) / max * 70}px"></i><i class="budget" style="height:${perfNum(x.m.budget) / max * 70}px"></i><i class="actual" style="height:${perfNum(x.m.actual) / max * 70}px"></i></div>`).join("")}<small>Historique · Budget · Réalisé</small></div>`;
 }
 
 function performanceIndicatorAction(id, label) {
@@ -13773,7 +13845,7 @@ function cgtabDestinationPath(metricKey = "") {
 }
 
 function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skippedMetrics = []) {
-  // V5.30Q3B — CGTAB = analytique MENSUEL.
+  // V5.30Q4A — CGTAB = analytique MENSUEL.
   // IMPORTANT : ne jamais écrire les heures mensuelles CGTAB dans les KPI cumulés GPO.
   // Toutes les valeurs CGTAB restent donc dans un espace complémentaire mensuel dédié.
   const monthlyLabelByMetricKey = {
