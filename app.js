@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q3";
+const DEOS_VERSION = "V5.30Q3A";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -9691,9 +9691,9 @@ const performanceImportTargetCatalog = [
   { id: "hours.direct", label: "Heures directes", path: "hours.direct.actual", type: "existing", unit: "heures", aliases: ["heures directes", "heures direct"] },
   { id: "hours.indirect", label: "Heures indirectes", path: "hours.indirect.actual", type: "existing", unit: "heures", aliases: ["heures indirectes", "heures indirect"] },
   { id: "hours.indirect_share", label: "Poids heures indirectes", path: "hours.indirect.totalShare", type: "existing", unit: "pourcentage", aliases: ["pourcentage heures indirectes", "poids heures indirectes", "% heures indirectes"] },
-  { id: "hours.night", label: "Heures de nuit cumul", path: "hours", destinationField: "night", type: "existing", unit: "h", aliases: ["heures de nuit", "heures de nuit cumul", "hrs nuit"] },
-  { id: "hours.overtime", label: "Heures supplémentaires cumul", path: "hours", destinationField: "overtime", type: "existing", unit: "h", aliases: ["heures supplementaires", "heures supplémentaires", "heures supplémentaires cumul", "hrs supp"] },
-  { id: "hours.sundays", label: "Dimanches / fériés cumul", path: "hours", destinationField: "sundays", type: "existing", unit: "h", aliases: ["dimanches feries", "dimanches / fériés", "dimanches fériés cumul", "hrs dim"] },
+  { id: "hours.night", label: "Heures de nuit du mois", path: "hours", destinationField: "night", type: "existing", unit: "h", aliases: ["heures de nuit", "heures de nuit cumul", "hrs nuit"] },
+  { id: "hours.overtime", label: "Heures supplémentaires du mois", path: "hours", destinationField: "overtime", type: "existing", unit: "h", aliases: ["heures supplementaires", "heures supplémentaires", "heures supplémentaires cumul", "hrs supp"] },
+  { id: "hours.sundays", label: "Dimanches / fériés du mois", path: "hours", destinationField: "sundays", type: "existing", unit: "h", aliases: ["dimanches feries", "dimanches / fériés", "dimanches fériés cumul", "hrs dim"] },
   { id: "gpo.hours_gap_budget", label: "Écart heures vs Budget", path: "complementary.gpo.hours.total.budget_gap", type: "complementary", unit: "heures", aliases: ["ecart heures vs budget", "écart heures vs budget"] },
   { id: "gpo.hours_gap_historical", label: "Écart heures vs Historique", path: "complementary.gpo.hours.total.historical_gap", type: "complementary", unit: "heures", aliases: ["ecart heures vs historique", "écart heures vs historique"] },
   { id: "absenteeism.total", label: "Absentéisme total", path: "absenteeism.total.actual", type: "existing", unit: "pourcentage", aliases: ["absenteisme total", "absentéisme total", "taux d absence"] },
@@ -11843,7 +11843,7 @@ function performanceImportStepPreview() {
   const unmappedTable = unmappedRows.length ? `<div class="card"><h3>Indicateurs détectés mais non mappés</h3><table class="perf-table import-preview-table"><thead><tr><th>Période</th><th>Type</th><th>Catégorie</th><th>Population</th><th>Bannière</th><th>Centre de coûts</th><th>Direct.</th><th>Indicateur source</th><th>Réel</th><th>Budget</th><th>Historique</th><th>Écart Budget</th><th>Écart Historique</th><th>Unité</th><th>Agrégation</th><th>Contributeurs</th><th>Règle confidentialité</th><th>Colonnes source</th><th>Niveau privacy</th><th>Feuille</th><th>Cellule</th><th>Confiance</th><th>Destination</th></tr></thead><tbody>${unmappedRows.map(row => `<tr class="import-orange"><td>${esc(row.period || "à confirmer")}</td><td>${esc(typeLabel(row))}</td><td>${esc(row.category || "")}</td><td>${esc(row.population || "")}</td><td>${esc(row.banner || "")}</td><td>${esc(row.costCenter || "")}</td><td>${esc(row.directness || "")}</td><td>${esc(row.label || row.indicator)}</td><td>${esc(formatImportActualDisplay(row))}</td><td>${esc(row.budget ?? "")}</td><td>${esc(row.historical ?? "")}</td><td>${esc(deltaLabel(row.deltaBudget, row.deltaBudgetPercent))}</td><td>${esc(deltaLabel(row.deltaHistorical, row.deltaHistoricalPercent))}</td><td>${esc(row.unit || "")}</td><td>${esc(row.aggregationType || "")}</td><td>${esc(row.employeeCount ?? "")}</td><td>${esc(row.privacyRule || "")}</td><td>${esc(row.sourceColumns || "")}</td><td>${esc(row.privacyLevel || "")}</td><td>${esc(row.sourceSheet || row.sourcePage || "")}</td><td>${esc(row.sourceCell || row.pageSource || row.sourceRef || "")}</td><td>${esc(row.confidenceText || "")}</td><td><select onchange="setImportPreviewTarget('${row.id}', this.value)">${targetOptions.map(target => `<option value="${esc(target.id)}" ${(row.targetId || row.destinationId || "ignore") === target.id ? "selected" : ""}>${esc(target.label)}</option>`).join("")}</select></td></tr>`).join("")}</tbody></table></div>` : "";
   const maskedGroupsTable = maskedGroups.length ? `<div class="card"><h3>Groupes masqués pour confidentialité</h3><table class="perf-table import-preview-table"><thead><tr><th>Période</th><th>Type</th><th>Valeur</th><th>Contributeurs</th><th>Règle</th><th>Feuille</th></tr></thead><tbody>${maskedGroups.map(row => `<tr class="import-gray"><td>${esc(row.period || "")}</td><td>${esc(row.groupType || "")}</td><td>${esc(row.label || row.value || "")}</td><td>${esc(row.employeeCount || "")}</td><td>${esc(row.rule || "")}</td><td>${esc(row.sourceSheet || "")}</td></tr>`).join("")}</tbody></table></div>` : "";
   const emptyDiagnostic = performanceImportEmptyDiagnostic();
-  return `<div class="card"><h2>Aperçu avant import</h2><p class="muted">Aucune donnée Performance existante ne sera écrasée silencieusement. Les correspondances sont proposées, révisables et mémorisées uniquement si vous les validez.</p><div class="item alert-blue"><strong>Règle V5.28O</strong><span class="muted">Les 21 KPI GPO reconnus utilisent désormais un mapping explicite. Les anciennes valeurs DEOS restent comparées, mais les destinations GPO ne sont plus proposées via une liste générique. Vous gardez la validation finale.</span></div>${privacyBanner}${tbagPrivacyBanner}${gaDetailPrivacyBanner}${gaDetailComparisonCards}${periodSelector}<table class="perf-table import-preview-table"><thead><tr><th></th><th>Période</th><th>Type</th><th>Catégorie</th><th>Population</th><th>Bannière</th><th>Centre de coûts</th><th>Direct.</th><th>KPI</th><th>Réel</th><th>Budget</th><th>Historique</th><th>Écart Budget</th><th>Écart Historique</th><th>Unité</th><th>Agrégation</th><th>Contributeurs</th><th>Règle confidentialité</th><th>Colonnes source</th><th>Niveau privacy</th><th>Feuille</th><th>Cellule</th><th>Destination DEOS</th><th>Valeur DEOS</th><th>Confiance</th><th>Action prévue</th></tr></thead><tbody>${rows || `<tr><td colspan="26">${emptyDiagnostic}</td></tr>`}</tbody></table>${maskedGroupsTable}${unmappedTable}<div class="row-actions"><button class="secondary" onclick="setPerformanceImportStep(2)">Retour</button><button class="secondary" onclick="cancelPerformanceImport()">Annuler</button><button class="action" onclick="setPerformanceImportStep(4)">Valider l'aperçu</button></div></div>`;
+  return `<div class="card"><h2>Aperçu avant import</h2><p class="muted">Aucune donnée Performance existante ne sera écrasée silencieusement. Les correspondances sont proposées, révisables et mémorisées uniquement si vous les validez.</p><div class="item alert-blue"><strong>Règle V5.28O</strong><span class="muted">Les 21 KPI GPO reconnus utilisent désormais un mapping explicite. CGTAB est traité comme analytique mensuel et n’écrase jamais les KPI cumulés GPO. Les anciennes valeurs DEOS restent comparées, mais les destinations GPO ne sont plus proposées via une liste générique. Vous gardez la validation finale.</span></div>${privacyBanner}${tbagPrivacyBanner}${gaDetailPrivacyBanner}${gaDetailComparisonCards}${periodSelector}<table class="perf-table import-preview-table"><thead><tr><th></th><th>Période</th><th>Type</th><th>Catégorie</th><th>Population</th><th>Bannière</th><th>Centre de coûts</th><th>Direct.</th><th>KPI</th><th>Réel</th><th>Budget</th><th>Historique</th><th>Écart Budget</th><th>Écart Historique</th><th>Unité</th><th>Agrégation</th><th>Contributeurs</th><th>Règle confidentialité</th><th>Colonnes source</th><th>Niveau privacy</th><th>Feuille</th><th>Cellule</th><th>Destination DEOS</th><th>Valeur DEOS</th><th>Confiance</th><th>Action prévue</th></tr></thead><tbody>${rows || `<tr><td colspan="26">${emptyDiagnostic}</td></tr>`}</tbody></table>${maskedGroupsTable}${unmappedTable}<div class="row-actions"><button class="secondary" onclick="setPerformanceImportStep(2)">Retour</button><button class="secondary" onclick="cancelPerformanceImport()">Annuler</button><button class="action" onclick="setPerformanceImportStep(4)">Valider l'aperçu</button></div></div>`;
 }
 
 function performanceImportRawIndicators(file) {
@@ -13773,13 +13773,13 @@ function cgtabDestinationPath(metricKey = "") {
 }
 
 function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skippedMetrics = []) {
-  // V5.30Q3 — mapping CGTAB explicite vers les KPI DEOS.
-  // Les KPI d'absence issus de CGTAB sont des HEURES : ils restent donc en
-  // complémentaires tant qu'une règle de conversion vers un taux (%) n'est pas validée.
-  const coreTargetByMetricKey = {
-    "hours.paid": "hours.total",
-    "hours.productive": "hours.direct",
-    "hours.non_productive": "hours.indirect"
+  // V5.30Q3A — CGTAB = analytique MENSUEL.
+  // IMPORTANT : ne jamais écrire les heures mensuelles CGTAB dans les KPI cumulés GPO.
+  // Toutes les valeurs CGTAB restent donc dans un espace complémentaire mensuel dédié.
+  const monthlyLabelByMetricKey = {
+    "hours.paid": "Heures payées du mois",
+    "hours.productive": "Heures directes du mois",
+    "hours.non_productive": "Heures indirectes du mois"
   };
 
   const aggregatesByMetricKey = new Map();
@@ -13795,10 +13795,9 @@ function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skipped
     }
 
     aggregatesByMetricKey.set(definition.metricKey, { definition, aggregate });
-    const coreTargetId = coreTargetByMetricKey[definition.metricKey] || "";
-    const coreTarget = coreTargetId ? performanceImportTargetById(coreTargetId) : null;
-    const destinationPath = coreTarget?.path || cgtabDestinationPath(definition.metricKey);
-    const destinationField = coreTarget?.destinationField || (coreTarget ? "actual" : "");
+    const monthlyLabel = monthlyLabelByMetricKey[definition.metricKey] || definition.label;
+    const destinationPath = cgtabDestinationPath(definition.metricKey);
+    const destinationField = "";
 
     return {
       id: newId("preview"),
@@ -13828,16 +13827,16 @@ function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skipped
       sourceColumns: aggregate.sourceColumns,
       privacyLevel: "aggregated",
       confidence: "élevée",
-      sourceConfidenceScore: coreTarget ? 98 : 92,
+      sourceConfidenceScore: monthlyLabelByMetricKey[definition.metricKey] ? 98 : 92,
       sourceSheet: CGTAB_REQUIRED_SHEET,
       sourceCell: aggregate.sourceCell,
       sourceRef: `CGTAB · ${aggregate.sourceColumns}`,
       destinationPath,
-      destinationLabel: coreTarget?.label || `${definition.label} · ${CGTAB_SCOPE}`,
+      destinationLabel: `${monthlyLabel} · ${CGTAB_SCOPE} · ${period}`,
       destinationField,
-      destinationId: coreTarget?.id || destinationPath,
-      targetId: coreTarget?.id || destinationPath,
-      targetType: coreTarget ? "existing" : "complementary",
+      destinationId: destinationPath,
+      targetId: destinationPath,
+      targetType: "complementary",
       selected: true,
       action: ""
     };
@@ -13853,11 +13852,13 @@ function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skipped
     .filter(Boolean)
     .join(" + ");
 
-  const makeDerivedExistingRow = ({ metricKey, label, targetId, sourceMetricKeys }) => {
-    const target = performanceImportTargetById(targetId);
-    if (!target) return null;
+  const makeDerivedMonthlyRow = ({ metricKey, label, sourceMetricKeys }) => {
     const actual = cgtabRound(sumMetrics(sourceMetricKeys), 2);
-    const contributors = sourceMetricKeys.reduce((max, key) => Math.max(max, Number(aggregatesByMetricKey.get(key)?.aggregate?.contributors || 0)), 0);
+    const contributors = sourceMetricKeys.reduce(
+      (max, key) => Math.max(max, Number(aggregatesByMetricKey.get(key)?.aggregate?.contributors || 0)),
+      0
+    );
+    const destinationPath = cgtabDestinationPath(metricKey);
     return {
       id: newId("preview"),
       period,
@@ -13890,34 +13891,31 @@ function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skipped
       sourceSheet: CGTAB_REQUIRED_SHEET,
       sourceCell: "agrégé",
       sourceRef: `CGTAB · agrégation ${sourceColumnsFor(sourceMetricKeys)}`,
-      destinationPath: target.path,
-      destinationLabel: target.label,
-      destinationField: target.destinationField || "actual",
-      destinationId: target.id,
-      targetId: target.id,
-      targetType: "existing",
+      destinationPath,
+      destinationLabel: `${label} · ${CGTAB_SCOPE} · ${period}`,
+      destinationField: "",
+      destinationId: destinationPath,
+      targetId: destinationPath,
+      targetType: "complementary",
       selected: true,
       action: ""
     };
   };
 
   [
-    makeDerivedExistingRow({
+    makeDerivedMonthlyRow({
       metricKey: "hours.night",
       label: "Heures de nuit cumul",
-      targetId: "hours.night",
       sourceMetricKeys: ["premium_hours.night_10_25", "premium_hours.night_28", "premium_hours.night_30", "premium_hours.night_60"]
     }),
-    makeDerivedExistingRow({
+    makeDerivedMonthlyRow({
       metricKey: "hours.overtime",
       label: "Heures supplémentaires cumul",
-      targetId: "hours.overtime",
       sourceMetricKeys: ["premium_hours.overtime_25", "premium_hours.overtime_50"]
     }),
-    makeDerivedExistingRow({
+    makeDerivedMonthlyRow({
       metricKey: "hours.sundays",
       label: "Dimanches / fériés cumul",
-      targetId: "hours.sundays",
       sourceMetricKeys: ["premium_hours.sunday_100", "premium_hours.sunday_200", "premium_hours.public_holiday_worked"]
     })
   ].filter(Boolean).forEach(row => rows.push(row));
