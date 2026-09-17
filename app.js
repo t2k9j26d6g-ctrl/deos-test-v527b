@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q2";
+const DEOS_VERSION = "V5.30Q3";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -13773,8 +13773,17 @@ function cgtabDestinationPath(metricKey = "") {
 }
 
 function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skippedMetrics = []) {
-  return CGTAB_KPI_DEFINITIONS.map(definition => {
-    const destinationPath = cgtabDestinationPath(definition.metricKey);
+  // V5.30Q3 — mapping CGTAB explicite vers les KPI DEOS.
+  // Les KPI d'absence issus de CGTAB sont des HEURES : ils restent donc en
+  // complémentaires tant qu'une règle de conversion vers un taux (%) n'est pas validée.
+  const coreTargetByMetricKey = {
+    "hours.paid": "hours.total",
+    "hours.productive": "hours.direct",
+    "hours.non_productive": "hours.indirect"
+  };
+
+  const aggregatesByMetricKey = new Map();
+  const rows = CGTAB_KPI_DEFINITIONS.map(definition => {
     const aggregate = cgtabAggregateForMetric(definition, employeeRows, sheet, headerMap);
     if (aggregate?.unavailable) {
       skippedMetrics.push({
@@ -13784,6 +13793,13 @@ function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skipped
       });
       return null;
     }
+
+    aggregatesByMetricKey.set(definition.metricKey, { definition, aggregate });
+    const coreTargetId = coreTargetByMetricKey[definition.metricKey] || "";
+    const coreTarget = coreTargetId ? performanceImportTargetById(coreTargetId) : null;
+    const destinationPath = coreTarget?.path || cgtabDestinationPath(definition.metricKey);
+    const destinationField = coreTarget?.destinationField || (coreTarget ? "actual" : "");
+
     return {
       id: newId("preview"),
       period,
@@ -13805,25 +13821,108 @@ function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skipped
       unit: definition.unit,
       scope: CGTAB_SCOPE,
       activityType: definition.category === "workforce" ? "workforce" : "aggregated",
-      directness: "",
+      directness: definition.metricKey === "hours.productive" ? "direct" : definition.metricKey === "hours.non_productive" ? "indirect" : "",
       costCenter: "",
       aggregationType: definition.aggregationType,
       employeeCount: normalizeImportNullableNumericValue(aggregate.contributors),
       sourceColumns: aggregate.sourceColumns,
       privacyLevel: "aggregated",
       confidence: "élevée",
+      sourceConfidenceScore: coreTarget ? 98 : 92,
       sourceSheet: CGTAB_REQUIRED_SHEET,
       sourceCell: aggregate.sourceCell,
       sourceRef: `CGTAB · ${aggregate.sourceColumns}`,
       destinationPath,
-      destinationLabel: `${definition.label} · ${CGTAB_SCOPE}`,
-      destinationId: destinationPath,
-      targetId: destinationPath,
-      targetType: "complementary",
+      destinationLabel: coreTarget?.label || `${definition.label} · ${CGTAB_SCOPE}`,
+      destinationField,
+      destinationId: coreTarget?.id || destinationPath,
+      targetId: coreTarget?.id || destinationPath,
+      targetType: coreTarget ? "existing" : "complementary",
       selected: true,
       action: ""
     };
   }).filter(Boolean);
+
+  const sumMetrics = metricKeys => metricKeys.reduce((total, key) => {
+    const value = normalizeImportNullableNumericValue(aggregatesByMetricKey.get(key)?.aggregate?.actual);
+    return total + (typeof value === "number" && Number.isFinite(value) ? value : 0);
+  }, 0);
+
+  const sourceColumnsFor = metricKeys => metricKeys
+    .map(key => aggregatesByMetricKey.get(key)?.aggregate?.sourceColumns || "")
+    .filter(Boolean)
+    .join(" + ");
+
+  const makeDerivedExistingRow = ({ metricKey, label, targetId, sourceMetricKeys }) => {
+    const target = performanceImportTargetById(targetId);
+    if (!target) return null;
+    const actual = cgtabRound(sumMetrics(sourceMetricKeys), 2);
+    const contributors = sourceMetricKeys.reduce((max, key) => Math.max(max, Number(aggregatesByMetricKey.get(key)?.aggregate?.contributors || 0)), 0);
+    return {
+      id: newId("preview"),
+      period,
+      periodType: "monthly",
+      source: "CGTAB",
+      sourceType: "CGTAB XLSB",
+      category: "hours",
+      metricKey,
+      indicator: label,
+      label,
+      actual,
+      value: actual,
+      budget: null,
+      historical: null,
+      deltaBudget: null,
+      deltaHistorical: null,
+      deltaBudgetPercent: null,
+      deltaHistoricalPercent: null,
+      unit: "h",
+      scope: CGTAB_SCOPE,
+      activityType: "aggregated",
+      directness: "",
+      costCenter: "",
+      aggregationType: "sum",
+      employeeCount: contributors,
+      sourceColumns: sourceColumnsFor(sourceMetricKeys),
+      privacyLevel: "aggregated",
+      confidence: "élevée",
+      sourceConfidenceScore: 98,
+      sourceSheet: CGTAB_REQUIRED_SHEET,
+      sourceCell: "agrégé",
+      sourceRef: `CGTAB · agrégation ${sourceColumnsFor(sourceMetricKeys)}`,
+      destinationPath: target.path,
+      destinationLabel: target.label,
+      destinationField: target.destinationField || "actual",
+      destinationId: target.id,
+      targetId: target.id,
+      targetType: "existing",
+      selected: true,
+      action: ""
+    };
+  };
+
+  [
+    makeDerivedExistingRow({
+      metricKey: "hours.night",
+      label: "Heures de nuit cumul",
+      targetId: "hours.night",
+      sourceMetricKeys: ["premium_hours.night_10_25", "premium_hours.night_28", "premium_hours.night_30", "premium_hours.night_60"]
+    }),
+    makeDerivedExistingRow({
+      metricKey: "hours.overtime",
+      label: "Heures supplémentaires cumul",
+      targetId: "hours.overtime",
+      sourceMetricKeys: ["premium_hours.overtime_25", "premium_hours.overtime_50"]
+    }),
+    makeDerivedExistingRow({
+      metricKey: "hours.sundays",
+      label: "Dimanches / fériés cumul",
+      targetId: "hours.sundays",
+      sourceMetricKeys: ["premium_hours.sunday_100", "premium_hours.sunday_200", "premium_hours.public_holiday_worked"]
+    })
+  ].filter(Boolean).forEach(row => rows.push(row));
+
+  return rows;
 }
 
 const GA_ST_GILLES_KNOWN_SHA256 = "D000A9940051F314AAE81B8B73FEFB2683341E6B978C25423C9A936BBDC110B5";
@@ -26298,6 +26397,8 @@ function renderPerformanceSourcesSummary() {
   }
 
 })();
+
+
 /* ==========================================================================
    DEOS — Identification automatique TEST / PROD
    Patch autonome : peut rester dans le même app.js en TEST puis en PROD.
@@ -26473,3 +26574,4 @@ function renderPerformanceSourcesSummary() {
     init();
   }
 })();
+
