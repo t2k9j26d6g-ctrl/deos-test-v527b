@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q5";
+const DEOS_VERSION = "V5.30Q5A";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -9908,7 +9908,7 @@ function zGemedResolvedMapping(label = "", periodType = "monthly") {
   const definition = zGemedMetricDefinition(label);
   if (!definition) return null;
 
-  // V5.30Q5 — mapping Z GEMED explicite.
+  // V5.30Q5A — mapping Z GEMED explicite.
   // Chaque définition connue est considérée comme fiable et conserve
   // strictement la distinction Mensuel / Cumul.
   if (definition.targetType === "existing" && periodType === "monthly") {
@@ -10008,7 +10008,7 @@ function perfStatus(metric) {
   return "green";
 }
 
-// V5.30Q5 — statut spécifique productivité : plus haut = mieux.
+// V5.30Q5A — statut spécifique productivité : plus haut = mieux.
 // Une donnée absente ne doit jamais ressortir "Maîtrisé".
 function perfProductivityStatus(metric) {
   if (!metric || !perfHas(metric.actual) || !perfHas(metric.budget)) return "";
@@ -11431,7 +11431,7 @@ function buildPerformanceSynthesis(p) {
   return `Points positifs\n${positives}\n\nPoints de vigilance\n${vigilance}\n\nIndicateurs éloignés du budget\n${vigilance}\n\nActions prioritaires\n${reportActions(state.actions.filter(a => (a.linkedPerformance || []).includes(p.id)))}\n\nDécisions attendues\n${reportDecisions(state.decisions.filter(d => (d.linkedPerformance || []).includes(p.id)))}`;
 }
 
-// V5.30Q5 — rendu compact de la Synthèse DE sans augmenter la hauteur.
+// V5.30Q5A — rendu compact de la Synthèse DE sans augmenter la hauteur.
 function renderPerformanceSynthesisCard(p, viewP) {
   const raw = String(p.synthesis || buildPerformanceSynthesis(viewP) || "").trim();
 
@@ -11912,15 +11912,27 @@ function performanceImportStepPreview() {
     const statusText = row.status || performanceImportStatusLabel(row.status);
     const selectable = row.targetType !== "ignore";
     const roleHint = gaRoleLabel(row);
-    const targetHint = row.targetType === "complementary" ? "KPI complémentaire · À vérifier" : row.targetType === "existing" ? "KPI DEOS existant" : "À vérifier";
+    const explicitZGemedMapping = performanceSourceKey(row.source || row.sourceType || "") === "Z_GEMED"
+      && Boolean(currentTargetId)
+      && Boolean(row.destinationPath)
+      && Number(row.confidenceScore || 0) >= 85;
+    const targetHint = explicitZGemedMapping
+      ? "Mapping Z GEMED explicite"
+      : row.targetType === "complementary"
+        ? "KPI complémentaire · À vérifier"
+        : row.targetType === "existing"
+          ? "KPI DEOS existant"
+          : "À vérifier";
     const catalogHasCurrentTarget = targetOptions.some(target => target.id === currentTargetId);
     const dynamicTargetOption = currentTargetId && !catalogHasCurrentTarget
       ? `<option value="${esc(currentTargetId)}" selected>${esc(row.destinationLabel || row.label || row.indicator || currentTargetId)}</option>`
       : "";
     const selectHtml = dynamicTargetOption + targetOptions.map(target => `<option value="${esc(target.id)}" ${currentTargetId === target.id ? "selected" : ""}>${esc(target.label)}</option>`).join("");
     const explicitGpoMapping = performanceSourceKey(row.source || row.sourceType || "") === "GPO" && Boolean(currentTargetId) && Boolean(row.destinationPath);
-    const destinationHtml = explicitGpoMapping
-      ? `<div class="import-target-select"><strong>${esc(row.destinationLabel || row.label || row.indicator || currentTargetId)}</strong><small class="muted">Mapping GPO explicite${row.confidenceText ? ` · confiance ${esc(row.confidenceText)}` : ""}</small></div>`
+    const explicitFixedMapping = explicitGpoMapping || explicitZGemedMapping;
+    const mappingSourceLabel = explicitGpoMapping ? "GPO" : "Z GEMED";
+    const destinationHtml = explicitFixedMapping
+      ? `<div class="import-target-select"><strong>${esc(row.destinationLabel || row.label || row.indicator || currentTargetId)}</strong><small class="muted">Mapping ${esc(mappingSourceLabel)} explicite${row.confidenceText ? ` · confiance ${esc(row.confidenceText)}` : ""}</small></div>`
       : `<div class="import-target-select"><select onchange="setImportPreviewTarget('${row.id}', this.value)">${selectHtml}</select><small class="muted">${esc(targetHint)}${row.confidenceText ? ` · confiance ${esc(row.confidenceText)}` : ""}</small></div>`;
     return `<tr class="import-${esc(row.tone)}"><td><input type="checkbox" ${row.selected ? "checked" : ""} onchange="toggleImportPreviewRow('${row.id}',this.checked)" ${selectable ? "" : "disabled"}></td><td>${esc(row.period || "à confirmer")}</td><td>${esc(typeLabel(row))}</td><td>${esc(categoryLabel(row))}${roleHint ? `<br><small class="muted">${esc(roleHint)}</small>` : ""}</td><td>${esc(row.population || "")}</td><td>${esc(row.banner || "")}</td><td>${esc(row.costCenter || "")}</td><td>${esc(row.directness || "")}</td><td>${esc(row.label || row.indicator)}</td><td>${esc(formatImportActualDisplay(row))}</td><td>${esc(formatImportNumber(row.budget))}</td><td>${esc(formatImportNumber(row.historical))}</td><td>${esc(deltaLabel(row.deltaBudget, row.deltaBudgetPercent))}</td><td>${esc(deltaLabel(row.deltaHistorical, row.deltaHistoricalPercent))}</td><td>${esc(row.unit || "")}</td><td>${esc(row.aggregationType || "")}</td><td>${esc(row.employeeCount ?? "")}</td><td>${esc(row.privacyRule || "")}</td><td>${esc(row.sourceColumns || "")}</td><td>${esc(row.privacyLevel || "")}</td><td>${esc(row.sourceSheet || row.sourcePage || "")}</td><td>${esc(row.sourceCell || row.pageSource || row.sourceRef || "")}</td><td>${destinationHtml}</td><td>${esc(row.currentValue === "" || row.currentValue === null || row.currentValue === undefined ? "" : perfFmt(row.currentValue))}</td><td>${esc(row.confidenceText || "")}</td><td><strong>${esc(plannedActionLabel(row))}</strong><br><small>${esc(statusText)}</small>${row.status === "Conflit" || row.status === "Différente" ? `<select onchange="setImportPreviewAction('${row.id}',this.value)"><option value="keep" ${row.action === "keep" ? "selected" : ""}>Conserver DEOS</option><option value="use" ${row.action === "use" ? "selected" : ""}>Remplacer</option><option value="ignore" ${row.action === "ignore" ? "selected" : ""}>Ne pas importer</option></select>` : `<select onchange="setImportPreviewAction('${row.id}',this.value)"><option value="use" ${row.action === "use" ? "selected" : ""}>Utiliser source</option><option value="ignore" ${row.action === "ignore" ? "selected" : ""}>Ne pas importer</option></select>`}</td></tr>`;
   }).join("");
@@ -13857,7 +13869,7 @@ function cgtabDestinationPath(metricKey = "") {
 }
 
 function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skippedMetrics = []) {
-  // V5.30Q5 — CGTAB = analytique MENSUEL.
+  // V5.30Q5A — CGTAB = analytique MENSUEL.
   // IMPORTANT : ne jamais écrire les heures mensuelles CGTAB dans les KPI cumulés GPO.
   // Toutes les valeurs CGTAB restent donc dans un espace complémentaire mensuel dédié.
   const monthlyLabelByMetricKey = {
@@ -14964,6 +14976,7 @@ function extractZGemedIndicatorsFromSheet(rows, defaultPeriod, sourceFormat, sou
       unit: definition ? zGemedInferUnit(definition, rows, headerIndex, i) : "",
       scope: mapping?.targetType === "existing" ? "principal" : "complementary",
       confidence: mapping?.confidence || "faible",
+      sourceConfidenceScore: mapping ? 96 : 40,
       confidenceScore: mapping ? 96 : 40,
       sourceSheet,
       sourceCell: sourceCells,
