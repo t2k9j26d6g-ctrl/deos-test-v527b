@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q3A";
+const DEOS_VERSION = "V5.30Q3B";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -13773,7 +13773,7 @@ function cgtabDestinationPath(metricKey = "") {
 }
 
 function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skippedMetrics = []) {
-  // V5.30Q3A — CGTAB = analytique MENSUEL.
+  // V5.30Q3B — CGTAB = analytique MENSUEL.
   // IMPORTANT : ne jamais écrire les heures mensuelles CGTAB dans les KPI cumulés GPO.
   // Toutes les valeurs CGTAB restent donc dans un espace complémentaire mensuel dédié.
   const monthlyLabelByMetricKey = {
@@ -13905,17 +13905,17 @@ function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skipped
   [
     makeDerivedMonthlyRow({
       metricKey: "hours.night",
-      label: "Heures de nuit cumul",
+      label: "Heures de nuit du mois",
       sourceMetricKeys: ["premium_hours.night_10_25", "premium_hours.night_28", "premium_hours.night_30", "premium_hours.night_60"]
     }),
     makeDerivedMonthlyRow({
       metricKey: "hours.overtime",
-      label: "Heures supplémentaires cumul",
+      label: "Heures supplémentaires du mois",
       sourceMetricKeys: ["premium_hours.overtime_25", "premium_hours.overtime_50"]
     }),
     makeDerivedMonthlyRow({
       metricKey: "hours.sundays",
-      label: "Dimanches / fériés cumul",
+      label: "Dimanches / fériés du mois",
       sourceMetricKeys: ["premium_hours.sunday_100", "premium_hours.sunday_200", "premium_hours.public_holiday_worked"]
     })
   ].filter(Boolean).forEach(row => rows.push(row));
