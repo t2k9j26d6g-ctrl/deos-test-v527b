@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q5C";
+const DEOS_VERSION = "V5.30Q5D";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -9909,7 +9909,7 @@ function zGemedResolvedMapping(label = "", periodType = "monthly") {
   const definition = zGemedMetricDefinition(label);
   if (!definition) return null;
 
-  // V5.30Q5C — mapping Z GEMED explicite.
+  // V5.30Q5D — mapping Z GEMED explicite.
   // Chaque définition connue est considérée comme fiable et conserve
   // strictement la distinction Mensuel / Cumul.
   if (definition.targetType === "existing" && periodType === "monthly") {
@@ -10009,7 +10009,7 @@ function perfStatus(metric) {
   return "green";
 }
 
-// V5.30Q5C — statut spécifique productivité : plus haut = mieux.
+// V5.30Q5D — statut spécifique productivité : plus haut = mieux.
 // Une donnée absente ne doit jamais ressortir "Maîtrisé".
 function perfProductivityStatus(metric) {
   if (!metric || !perfHas(metric.actual) || !perfHas(metric.budget)) return "";
@@ -10178,12 +10178,29 @@ function performanceMatchesMetricDef(row = {}, metricDef = {}) {
   const aliases = [metricDef.label, ...(metricDef.aliases || [])].map(normalizePerformanceLabel).filter(Boolean);
   if (metricDef.targetPath && rowPath && (rowPath === metricDef.targetPath || `${rowPath}.actual` === metricDef.targetPath)) return true;
   if (metricDef.metricKey && rowMetricKey && rowMetricKey === String(metricDef.metricKey).toLowerCase()) return true;
-  // V5.30Q5C : "Activité principale / Colis" doit correspondre uniquement
+  // V5.30Q5D : "Activité principale / Colis" doit correspondre uniquement
   // à COLIS TOTAUX PREPARES, jamais à colis hétérogènes/homogènes/contrôlés.
   if (String(metricDef.metricKey || "").toLowerCase() === "activity.colis_total"
       && rowMetricKey
       && rowMetricKey !== "activity.colis_totaux_prepares"
       && rowMetricKey !== "activity.colis_total") return false;
+
+  // V5.30Q5D : les coûts unitaires Z GEMED ont des libellés très proches.
+  // Si un metricKey explicite est déjà présent, on interdit tout fallback
+  // par sous-chaîne vers un autre coût unitaire (ex. "COUT COLIS TOTAL FIXES"
+  // ne doit jamais alimenter "Coût colis total").
+  const unitCostKeys = new Set([
+    "economy.cout_fixe_par_colis",
+    "economy.cout_variable_par_colis",
+    "quality.cout_demarque_par_colis",
+    "economy.cout_variable_exploitation_par_colis",
+    "economy.cout_transport_par_colis",
+    "economy.cout_exploitation_par_colis",
+    "economy.cout_total_par_colis"
+  ]);
+  const defMetricKey = String(metricDef.metricKey || "").toLowerCase();
+  if (unitCostKeys.has(defMetricKey) && rowMetricKey && rowMetricKey !== defMetricKey) return false;
+
   // V5.28P : les alias très courts (ex. « AT ») ne doivent jamais matcher
   // par simple sous-chaîne (« préparation » contient les lettres « at »).
   return aliases.some(alias => {
@@ -10388,7 +10405,7 @@ function performanceSummaryBuildRows(period) {
     const rawValue = perfHas(preferred.value) ? Number(preferred.value) : "";
     const rawBudget = perfHas(preferred.budget) ? Number(preferred.budget) : "";
     const rawHistorical = perfHas(preferred.historical) ? Number(preferred.historical) : "";
-    // V5.30Q5C : Z GEMED stocke les charges avec un signe comptable négatif.
+    // V5.30Q5D : Z GEMED stocke les charges avec un signe comptable négatif.
     // Pour le pilotage, les coûts unitaires sont affichés en valeur positive,
     // sans modifier la donnée source enregistrée.
     const value = Number.isFinite(rawValue) ? (unitCostMetric ? Math.abs(rawValue) : rawValue) : "";
@@ -11470,7 +11487,7 @@ function buildPerformanceSynthesis(p) {
   return `Points positifs\n${positives}\n\nPoints de vigilance\n${vigilance}\n\nIndicateurs éloignés du budget\n${vigilance}\n\nActions prioritaires\n${reportActions(state.actions.filter(a => (a.linkedPerformance || []).includes(p.id)))}\n\nDécisions attendues\n${reportDecisions(state.decisions.filter(d => (d.linkedPerformance || []).includes(p.id)))}`;
 }
 
-// V5.30Q5C — rendu compact de la Synthèse DE sans augmenter la hauteur.
+// V5.30Q5D — rendu compact de la Synthèse DE sans augmenter la hauteur.
 function renderPerformanceSynthesisCard(p, viewP) {
   const raw = String(p.synthesis || buildPerformanceSynthesis(viewP) || "").trim();
 
@@ -13908,7 +13925,7 @@ function cgtabDestinationPath(metricKey = "") {
 }
 
 function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skippedMetrics = []) {
-  // V5.30Q5C — CGTAB = analytique MENSUEL.
+  // V5.30Q5D — CGTAB = analytique MENSUEL.
   // IMPORTANT : ne jamais écrire les heures mensuelles CGTAB dans les KPI cumulés GPO.
   // Toutes les valeurs CGTAB restent donc dans un espace complémentaire mensuel dédié.
   const monthlyLabelByMetricKey = {
@@ -14967,7 +14984,7 @@ function extractZGemedIndicatorsFromSheet(rows, defaultPeriod, sourceFormat, sou
       headerCount += 1;
       if (/cumul/i.test(row.join(" "))) periodType = "cumulative";
       if (/mensuel|mois/i.test(row.join(" "))) periodType = "monthly";
-      // V5.30Q5C : les blocs Ratios / coût par colis n'ont pas de code "Numero".
+      // V5.30Q5D : les blocs Ratios / coût par colis n'ont pas de code "Numero".
       // Leur mini-entête contient seulement REEL / BUDGET / HISTO.
       const headerText = normalizeText(row.join(" "));
       acceptsLabelWithoutCode = !headerText.includes("numero")
