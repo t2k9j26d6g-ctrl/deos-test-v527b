@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q5A";
+const DEOS_VERSION = "V5.30Q5B";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -9746,7 +9746,7 @@ const performanceSummaryMetricDefinitions = [
   { metricKey: "productivity.preparation", label: "Productivité Préparation", family: "pilotage_direction", unit: "colis/h", targetPath: "productivity.Préparation.actual", metricPath: "productivity.Préparation", aliases: ["préparation"] },
   { metricKey: "hours.indirect", label: "Heures indirectes", family: "pilotage_direction", unit: "h", targetPath: "hours.indirect.actual", metricPath: "hours.indirect", aliases: ["heures indirectes"] },
   { metricKey: "absenteeism.total", label: "Absentéisme", family: "pilotage_direction", unit: "%", targetPath: "absenteeism.total.actual", metricPath: "absenteeism.total", aliases: ["absentéisme total"] },
-  { metricKey: "economy.cout_total_par_colis", label: "Coût total par colis", family: "pilotage_direction", unit: "€/colis", targetPath: "complementary.zgemed.economy_cout_total_par_colis", metricPath: "", aliases: ["cout total par colis", "coût total par colis"] },
+  { metricKey: "economy.cout_total_par_colis", label: "Coût total par colis", family: "pilotage_direction", unit: "€/colis", targetPath: "complementary.zgemed.economy.cout_total_par_colis", metricPath: "", aliases: ["cout total par colis", "coût total par colis"] },
   { metricKey: "ipo.variable", label: "IPO variable", family: "activite", unit: IPO_UNIT, targetPath: "ipo.variable.actual", metricPath: "ipo.variable", aliases: ["ipo variable"] },
   { metricKey: "activity.colis_total", label: "Colis", family: "activite", unit: "colis", targetPath: "activity.actual", metricPath: "activity", aliases: ["colis"] },
   { metricKey: "activity.uo_reception", label: "Palettes réceptionnées", family: "activite", unit: "UO", targetPath: "complementary.ga.activity_uo_reception", metricPath: "", aliases: ["uo reception", "palettes réceptionnées"] },
@@ -9908,7 +9908,7 @@ function zGemedResolvedMapping(label = "", periodType = "monthly") {
   const definition = zGemedMetricDefinition(label);
   if (!definition) return null;
 
-  // V5.30Q5A — mapping Z GEMED explicite.
+  // V5.30Q5B — mapping Z GEMED explicite.
   // Chaque définition connue est considérée comme fiable et conserve
   // strictement la distinction Mensuel / Cumul.
   if (definition.targetType === "existing" && periodType === "monthly") {
@@ -10008,7 +10008,7 @@ function perfStatus(metric) {
   return "green";
 }
 
-// V5.30Q5A — statut spécifique productivité : plus haut = mieux.
+// V5.30Q5B — statut spécifique productivité : plus haut = mieux.
 // Une donnée absente ne doit jamais ressortir "Maîtrisé".
 function perfProductivityStatus(metric) {
   if (!metric || !perfHas(metric.actual) || !perfHas(metric.budget)) return "";
@@ -10177,6 +10177,12 @@ function performanceMatchesMetricDef(row = {}, metricDef = {}) {
   const aliases = [metricDef.label, ...(metricDef.aliases || [])].map(normalizePerformanceLabel).filter(Boolean);
   if (metricDef.targetPath && rowPath && (rowPath === metricDef.targetPath || `${rowPath}.actual` === metricDef.targetPath)) return true;
   if (metricDef.metricKey && rowMetricKey && rowMetricKey === String(metricDef.metricKey).toLowerCase()) return true;
+  // V5.30Q5B : "Activité principale / Colis" doit correspondre uniquement
+  // à COLIS TOTAUX PREPARES, jamais à colis hétérogènes/homogènes/contrôlés.
+  if (String(metricDef.metricKey || "").toLowerCase() === "activity.colis_total"
+      && rowMetricKey
+      && rowMetricKey !== "activity.colis_totaux_prepares"
+      && rowMetricKey !== "activity.colis_total") return false;
   // V5.28P : les alias très courts (ex. « AT ») ne doivent jamais matcher
   // par simple sous-chaîne (« préparation » contient les lettres « at »).
   return aliases.some(alias => {
@@ -11426,12 +11432,33 @@ function buildPerformanceSynthesis(p) {
     ["Activité", p.activity], ["IPO total", p.ipo.total], ["IPO variable", p.ipo.variable], ["Heures totales", p.hours.total], ["Absentéisme", p.absenteeism.total], ["Hauteur palette", { historical: p.palletHeight.historical, budget: p.palletHeight.budget, actual: p.palletHeight.actual }]
   ];
   const gaps = metrics.map(([label, m]) => ({ label, pct: perfGap(m.actual, m.budget).pct, comment: m.comment || m.causes || "" })).filter(x => x.pct !== "");
-  const positives = gaps.filter(x => x.pct >= 0).slice(0, 3).map(x => `- ${x.label} : ${perfFmt(x.pct, "%")}`).join("\n") || "À compléter";
-  const vigilance = gaps.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct)).slice(0, 3).map(x => `- ${x.label} : ${perfFmt(x.pct, "%")} ${x.comment}`).join("\n") || "À compléter";
+  const direction = {
+    "Activité": "higher",
+    "IPO total": "higher",
+    "IPO variable": "higher",
+    "Heures totales": "lower",
+    "Absentéisme": "lower",
+    "Hauteur palette": "higher"
+  };
+  const scored = gaps.map(x => ({
+    ...x,
+    favorable: (direction[x.label] || "higher") === "lower" ? x.pct <= 0 : x.pct >= 0
+  }));
+  const positives = scored
+    .filter(x => x.favorable)
+    .slice(0, 3)
+    .map(x => `- ${x.label} : ${perfFmt(x.pct, "%")}`)
+    .join("\n") || "À compléter";
+  const vigilance = scored
+    .filter(x => !x.favorable)
+    .sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct))
+    .slice(0, 3)
+    .map(x => `- ${x.label} : ${perfFmt(x.pct, "%")} ${x.comment}`)
+    .join("\n") || "À compléter";
   return `Points positifs\n${positives}\n\nPoints de vigilance\n${vigilance}\n\nIndicateurs éloignés du budget\n${vigilance}\n\nActions prioritaires\n${reportActions(state.actions.filter(a => (a.linkedPerformance || []).includes(p.id)))}\n\nDécisions attendues\n${reportDecisions(state.decisions.filter(d => (d.linkedPerformance || []).includes(p.id)))}`;
 }
 
-// V5.30Q5A — rendu compact de la Synthèse DE sans augmenter la hauteur.
+// V5.30Q5B — rendu compact de la Synthèse DE sans augmenter la hauteur.
 function renderPerformanceSynthesisCard(p, viewP) {
   const raw = String(p.synthesis || buildPerformanceSynthesis(viewP) || "").trim();
 
@@ -13869,7 +13896,7 @@ function cgtabDestinationPath(metricKey = "") {
 }
 
 function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skippedMetrics = []) {
-  // V5.30Q5A — CGTAB = analytique MENSUEL.
+  // V5.30Q5B — CGTAB = analytique MENSUEL.
   // IMPORTANT : ne jamais écrire les heures mensuelles CGTAB dans les KPI cumulés GPO.
   // Toutes les valeurs CGTAB restent donc dans un espace complémentaire mensuel dédié.
   const monthlyLabelByMetricKey = {
@@ -14879,7 +14906,12 @@ function zGemedHeaderMap(row = []) {
 
 function zGemedIsHeaderRow(row = []) {
   const text = normalizeText(row.join(" "));
-  return text.includes("numero") && text.includes("budget") && (text.includes("reel") || text.includes("realise"));
+  const standardHeader = text.includes("numero") && text.includes("budget") && (text.includes("reel") || text.includes("realise"));
+  const ratioHeader = !text.includes("numero")
+    && text.includes("budget")
+    && text.includes("histo")
+    && (text.includes("reel") || text.includes("realise"));
+  return standardHeader || ratioHeader;
 }
 
 function zGemedCellRef(row, index) {
@@ -14923,7 +14955,13 @@ function extractZGemedIndicatorsFromSheet(rows, defaultPeriod, sourceFormat, sou
       headerCount += 1;
       if (/cumul/i.test(row.join(" "))) periodType = "cumulative";
       if (/mensuel|mois/i.test(row.join(" "))) periodType = "monthly";
-      acceptsLabelWithoutCode = false;
+      // V5.30Q5B : les blocs Ratios / coût par colis n'ont pas de code "Numero".
+      // Leur mini-entête contient seulement REEL / BUDGET / HISTO.
+      const headerText = normalizeText(row.join(" "));
+      acceptsLabelWithoutCode = !headerText.includes("numero")
+        && headerText.includes("budget")
+        && headerText.includes("histo")
+        && (headerText.includes("reel") || headerText.includes("realise"));
       continue;
     }
     if (!headerMap) continue;
