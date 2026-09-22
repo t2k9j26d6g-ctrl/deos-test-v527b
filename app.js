@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q5E";
+const DEOS_VERSION = "V5.30Q5F";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -9909,7 +9909,7 @@ function zGemedResolvedMapping(label = "", periodType = "monthly") {
   const definition = zGemedMetricDefinition(label);
   if (!definition) return null;
 
-  // V5.30Q5E — mapping Z GEMED explicite.
+  // V5.30Q5F — mapping Z GEMED explicite.
   // Chaque définition connue est considérée comme fiable et conserve
   // strictement la distinction Mensuel / Cumul.
   if (definition.targetType === "existing" && periodType === "monthly") {
@@ -10009,7 +10009,7 @@ function perfStatus(metric) {
   return "green";
 }
 
-// V5.30Q5E — statut spécifique productivité : plus haut = mieux.
+// V5.30Q5F — statut spécifique productivité : plus haut = mieux.
 // Une donnée absente ne doit jamais ressortir "Maîtrisé".
 function perfProductivityStatus(metric) {
   if (!metric || !perfHas(metric.actual) || !perfHas(metric.budget)) return "";
@@ -10178,14 +10178,14 @@ function performanceMatchesMetricDef(row = {}, metricDef = {}) {
   const aliases = [metricDef.label, ...(metricDef.aliases || [])].map(normalizePerformanceLabel).filter(Boolean);
   if (metricDef.targetPath && rowPath && (rowPath === metricDef.targetPath || `${rowPath}.actual` === metricDef.targetPath)) return true;
   if (metricDef.metricKey && rowMetricKey && rowMetricKey === String(metricDef.metricKey).toLowerCase()) return true;
-  // V5.30Q5E : "Activité principale / Colis" doit correspondre uniquement
+  // V5.30Q5F : "Activité principale / Colis" doit correspondre uniquement
   // à COLIS TOTAUX PREPARES, jamais à colis hétérogènes/homogènes/contrôlés.
   if (String(metricDef.metricKey || "").toLowerCase() === "activity.colis_total"
       && rowMetricKey
       && rowMetricKey !== "activity.colis_totaux_prepares"
       && rowMetricKey !== "activity.colis_total") return false;
 
-  // V5.30Q5E : les coûts unitaires Z GEMED ont des libellés très proches.
+  // V5.30Q5F : les coûts unitaires Z GEMED ont des libellés très proches.
   // Si un metricKey explicite est déjà présent, on interdit tout fallback
   // par sous-chaîne vers un autre coût unitaire (ex. "COUT COLIS TOTAL FIXES"
   // ne doit jamais alimenter "Coût colis total").
@@ -10405,7 +10405,7 @@ function performanceSummaryBuildRows(period) {
     const rawValue = perfHas(preferred.value) ? Number(preferred.value) : "";
     const rawBudget = perfHas(preferred.budget) ? Number(preferred.budget) : "";
     const rawHistorical = perfHas(preferred.historical) ? Number(preferred.historical) : "";
-    // V5.30Q5E : Z GEMED stocke les charges avec un signe comptable négatif.
+    // V5.30Q5F : Z GEMED stocke les charges avec un signe comptable négatif.
     // Pour le pilotage, les coûts unitaires sont affichés en valeur positive,
     // sans modifier la donnée source enregistrée.
     const value = Number.isFinite(rawValue) ? (unitCostMetric ? Math.abs(rawValue) : rawValue) : "";
@@ -10414,21 +10414,32 @@ function performanceSummaryBuildRows(period) {
     const gap = (Number.isFinite(value) && Number.isFinite(budget)) ? value - budget : "";
     const trend = (Number.isFinite(value) && Number.isFinite(historical)) ? value - historical : "";
 
-    // V5.30Q5E — coûts unitaires : plus bas = mieux.
-    // <= budget : Maîtrisé ; jusqu'à +3 % : À suivre ; au-delà : Critique.
-    let unitCostStatusLabel = status.label;
-    let unitCostStatusTone = status.tone;
-    if (unitCostMetric && Number.isFinite(value) && Number.isFinite(budget) && budget > 0) {
-      const pctVsBudget = ((value - budget) / budget) * 100;
-      if (pctVsBudget <= 0) {
-        unitCostStatusLabel = "Maîtrisé";
-        unitCostStatusTone = "ok";
-      } else if (pctVsBudget <= 3) {
-        unitCostStatusLabel = "À suivre";
-        unitCostStatusTone = "warning";
+    // V5.30Q5F — statuts Direction homogènes, basés sur l'écart relatif au budget.
+    // higher = plus haut = mieux ; lower = plus bas = mieux.
+    const directionSense = {
+      "ipo.total": "higher",
+      "activity.colis_total": "higher",
+      "productivity.preparation": "higher",
+      "hours.indirect": "lower",
+      "absenteeism.total": "lower",
+      "economy.cout_total_par_colis": "lower",
+      "economy.cout_exploitation_par_colis": "lower"
+    };
+    let directionStatusLabel = status.label;
+    let directionStatusTone = status.tone;
+    const metricSense = directionSense[def.metricKey] || "";
+    if (metricSense && Number.isFinite(value) && Number.isFinite(budget) && budget !== 0) {
+      const pctVsBudget = ((value - budget) / Math.abs(budget)) * 100;
+      const favorableGap = metricSense === "higher" ? pctVsBudget : -pctVsBudget;
+      if (favorableGap >= 0) {
+        directionStatusLabel = "Maîtrisé";
+        directionStatusTone = "ok";
+      } else if (favorableGap >= -3) {
+        directionStatusLabel = "À suivre";
+        directionStatusTone = "warning";
       } else {
-        unitCostStatusLabel = "Critique";
-        unitCostStatusTone = "critical";
+        directionStatusLabel = "Critique";
+        directionStatusTone = "critical";
       }
     }
 
@@ -10446,11 +10457,15 @@ function performanceSummaryBuildRows(period) {
       sourceLabel: preferred.sourceLabel,
       confidence: preferred.confidence,
       alternatives: preferred.alternatives,
-      warnings: unitCostMetric
-        ? ensureArray(status.badges).filter(flag => flag !== "Valeur suspecte" && flag !== "Seuil à définir")
-        : status.badges,
-      statusLabel: unitCostMetric ? unitCostStatusLabel : status.label,
-      statusTone: unitCostMetric ? unitCostStatusTone : status.tone
+      warnings: ensureArray(status.badges).filter(flag => ![
+        "Valeur suspecte",
+        "Seuil à définir",
+        "Sources différentes",
+        "Source secondaire",
+        "Unité à vérifier"
+      ].includes(flag)),
+      statusLabel: metricSense ? directionStatusLabel : status.label,
+      statusTone: metricSense ? directionStatusTone : status.tone
     };
   });
 }
@@ -10854,7 +10869,7 @@ function performanceDirectionCards(period) {
         <div>Écart : ${esc(performanceSummaryFormatDelta(row.gap, row.unit, row.metricKey))}</div>
         <div>Tendance : ${esc(performanceSummaryFormatDelta(row.trend, row.unit, row.metricKey))}</div>
       </div>
-      <div class="performance-summary-direction-badges">${performanceWarningsBadgesV519(row)}</div>
+      ${ensureArray(row.warnings).length ? `<div class="performance-summary-direction-badges">${performanceWarningsBadgesV519(row)}</div>` : ""}
       <button class="secondary" onclick="openPerformanceSummaryDetail('${esc(row.metricKey)}')">Voir le détail</button>
     </article>
   `;
@@ -11512,7 +11527,7 @@ function buildPerformanceSynthesis(p) {
   return `Points positifs\n${positives}\n\nPoints de vigilance\n${vigilance}\n\nIndicateurs éloignés du budget\n${vigilance}\n\nActions prioritaires\n${reportActions(state.actions.filter(a => (a.linkedPerformance || []).includes(p.id)))}\n\nDécisions attendues\n${reportDecisions(state.decisions.filter(d => (d.linkedPerformance || []).includes(p.id)))}`;
 }
 
-// V5.30Q5E — rendu compact de la Synthèse DE sans augmenter la hauteur.
+// V5.30Q5F — rendu compact de la Synthèse DE sans augmenter la hauteur.
 function renderPerformanceSynthesisCard(p, viewP) {
   const raw = String(p.synthesis || buildPerformanceSynthesis(viewP) || "").trim();
 
@@ -13950,7 +13965,7 @@ function cgtabDestinationPath(metricKey = "") {
 }
 
 function buildCgtabAggregateRows(period, employeeRows, sheet, headerMap, skippedMetrics = []) {
-  // V5.30Q5E — CGTAB = analytique MENSUEL.
+  // V5.30Q5F — CGTAB = analytique MENSUEL.
   // IMPORTANT : ne jamais écrire les heures mensuelles CGTAB dans les KPI cumulés GPO.
   // Toutes les valeurs CGTAB restent donc dans un espace complémentaire mensuel dédié.
   const monthlyLabelByMetricKey = {
@@ -15009,7 +15024,7 @@ function extractZGemedIndicatorsFromSheet(rows, defaultPeriod, sourceFormat, sou
       headerCount += 1;
       if (/cumul/i.test(row.join(" "))) periodType = "cumulative";
       if (/mensuel|mois/i.test(row.join(" "))) periodType = "monthly";
-      // V5.30Q5E : les blocs Ratios / coût par colis n'ont pas de code "Numero".
+      // V5.30Q5F : les blocs Ratios / coût par colis n'ont pas de code "Numero".
       // Leur mini-entête contient seulement REEL / BUDGET / HISTO.
       const headerText = normalizeText(row.join(" "));
       acceptsLabelWithoutCode = !headerText.includes("numero")
