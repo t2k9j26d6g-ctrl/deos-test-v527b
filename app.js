@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q5J";
+const DEOS_VERSION = "V5.30Q5K";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -15573,7 +15573,7 @@ function reportPerformanceExecutiveSynthesis(source, directionRows = []) {
     messageParts.push(`${masteredProd.map(x => x.name).join(", ")} ${masteredProd.length > 1 ? "sont au-dessus" : "est au-dessus"} du budget`);
   }
   if (prepBelow) {
-    messageParts.push(`la Préparation reste sous le budget à ${perfFmt(prep.actual)} colis/h contre ${perfFmt(prep.budget)}`);
+    messageParts.push(`La Préparation reste sous le budget à ${perfFmt(prep.actual)} colis/h contre ${perfFmt(prep.budget)}`);
   }
   if (criticalRows.length) {
     messageParts.push(`${criticalRows.map(r => r.label).join(", ")} ${criticalRows.length > 1 ? "constituent les principaux points critiques" : "constitue le principal point critique"}`);
@@ -15680,7 +15680,7 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     },
     {
       title: "8. Absentéisme, sécurité et présentéisme",
-      body: `Absentéisme total : ${fmtRow(rowByKey("absenteeism.total"))}\nMaladie : ${perfFmt(source.absenteeism?.indicators?.["Maladie"]?.actual || source.absenteeism?.illness?.actual)}\nAccidents du travail : ${perfFmt(source.absenteeism?.indicators?.["Accidents du travail"]?.actual || source.absenteeism?.accidents?.actual)}\nFormation : ${perfFmt(source.absenteeism?.indicators?.["Formation"]?.actual)}\nAutres absences : ${perfFmt(source.absenteeism?.indicators?.["Autres absences"]?.actual)}\n\nÀ préparer : analyse des causes AT, secteurs concernés, récurrence, actions de prévention, impact opérationnel de l'absentéisme et évolution vs mois précédent / historique.`
+      body: `Absentéisme total : ${fmtRow(rowByKey("absenteeism.total"))}\nMaladie : ${perfHas(source.absenteeism?.indicators?.["Maladie"]?.actual) ? perfFmt(source.absenteeism.indicators["Maladie"].actual) + " %" : (perfHas(source.absenteeism?.illness?.actual) ? perfFmt(source.absenteeism.illness.actual) + " %" : "À compléter")}\nAccidents du travail : ${perfHas(source.absenteeism?.indicators?.["Accidents du travail"]?.actual) ? perfFmt(source.absenteeism.indicators["Accidents du travail"].actual) + " %" : (perfHas(source.absenteeism?.accidents?.actual) ? perfFmt(source.absenteeism.accidents.actual) + " %" : "À compléter")}\nFormation : ${perfHas(source.absenteeism?.indicators?.["Formation"]?.actual) ? perfFmt(source.absenteeism.indicators["Formation"].actual) + " %" : "À compléter"}\nAutres absences : ${perfHas(source.absenteeism?.indicators?.["Autres absences"]?.actual) ? perfFmt(source.absenteeism.indicators["Autres absences"].actual) + " %" : "À compléter"}\n\nÀ préparer : analyse des causes AT, secteurs concernés, récurrence, actions de prévention, impact opérationnel de l'absentéisme et évolution vs mois précédent / historique.`
     },
     {
       title: "9. Économie, qualité et coûts unitaires",
@@ -15688,7 +15688,27 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     },
     {
       title: "10. Historique, tendance et projection",
-      body: `Tendance vs historique :\n${directionRows.map(r => `- ${r.label} : ${performanceSummaryFormatDelta(r.trend, r.unit, r.metricKey)}`).join("\n") || "À compléter"}\n\nÀ compléter avant revue :\n- tendance 3 mois / 12 mois ;\n- meilleur et plus faible mois ;\n- cumul YTD vs budget / historique ;\n- projection fin d'année ;\n- principaux risques M+1 ;\n- hypothèses de volume, effectif, absentéisme, ETT et opérations commerciales.`
+      body: `LECTURE DE TENDANCE — KPI DIRECTION
+${directionRows.map(r => `- ${r.label} : ${performanceSummaryFormatValue(r.value, r.unit, r.metricKey)} | Historique ${performanceSummaryFormatValue(r.historical, r.unit, r.metricKey)} | Écart historique ${performanceSummaryFormatDelta(r.trend, r.unit, r.metricKey)} | Statut ${r.statusLabel || "À compléter"}`).join("\n") || "À compléter"}
+
+LECTURE OPÉRATIONNELLE COMPLÉMENTAIRE
+- Productivité Réception : ${perfHas(reception.actual) ? perfFmt(reception.actual) : "À compléter"} vs historique ${perfHas(reception.historical) ? perfFmt(reception.historical) : "À compléter"}
+- Productivité Manutention : ${perfHas(manut.actual) ? perfFmt(manut.actual) : "À compléter"} vs historique ${perfHas(manut.historical) ? perfFmt(manut.historical) : "À compléter"}
+- Productivité Chargement : ${perfHas(chargement.actual) ? perfFmt(chargement.actual) : "À compléter"} vs historique ${perfHas(chargement.historical) ? perfFmt(chargement.historical) : "À compléter"}
+- Heures totales : ${perfHas(source.hours?.total?.actual) ? perfFmt(source.hours.total.actual) : "À compléter"} vs historique ${perfHas(source.hours?.total?.historical) ? perfFmt(source.hours.total.historical) : "À compléter"}
+- Heures directes : ${perfHas(source.hours?.direct?.actual) ? perfFmt(source.hours.direct.actual) : "À compléter"} vs historique ${perfHas(source.hours?.direct?.historical) ? perfFmt(source.hours.direct.historical) : "À compléter"}
+
+RUPTURES / TENDANCES À COMMENTER
+- KPI qui se dégradent sur plusieurs périodes : À compléter
+- KPI qui se redressent : À compléter
+- meilleur / plus faible mois : À compléter
+- tendance 3 mois / 12 mois : À compléter
+
+PROJECTION
+- cumul YTD vs budget / historique : À compléter
+- projection fin d'année : À compléter
+- principaux risques M+1 : À compléter
+- hypothèses de volume, effectif, absentéisme, ETT et opérations commerciales : À compléter`
     },
     {
       title: "11. Priorités et plan d'actions",
@@ -15708,7 +15728,18 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     },
     {
       title: "15. Message de clôture de la revue",
-      body: `MESSAGE À FORMULER\n1. Ce qui est maîtrisé.\n2. Ce qui dérive et pourquoi.\n3. Les trois priorités opérationnelles.\n4. Les décisions / arbitrages attendus.\n5. La projection du mois suivant.\n\nProposition DEOS : ${source.synthesis || buildPerformanceSynthesis(source)}`
+      body: `MESSAGE DE CLÔTURE — PROPOSITION DEOS
+${reportPerformanceExecutiveSynthesis(source, directionRows)}
+
+FORMULATION À FINALISER AVANT LA REVUE
+1. Ce qui est maîtrisé.
+2. Ce qui dérive et les causes démontrées.
+3. Les trois priorités opérationnelles.
+4. Les décisions / arbitrages attendus.
+5. La projection du mois suivant.
+
+RÈGLE
+Le message de clôture doit rester court, factuel et directement relié aux décisions et actions de la revue.`
     }
   ];
 }
