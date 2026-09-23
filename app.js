@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q5I";
+const DEOS_VERSION = "V5.30Q5J";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -15523,7 +15523,27 @@ function reportBuildTitle(template, ctx) {
 
 
 function reportPerformanceExecutiveSynthesis(source, directionRows = []) {
-  const row = key => directionRows.find(r => r.metricKey === key) || null;
+  const directionKeys = [
+    "ipo.total",
+    "activity.colis_total",
+    "productivity.preparation",
+    "hours.indirect",
+    "absenteeism.total",
+    "economy.cout_total_par_colis",
+    "economy.cout_exploitation_par_colis"
+  ];
+
+  // V5.30Q5J : ne conserver que les 7 KPI Direction et supprimer tout doublon
+  // éventuel provenant des vues détaillées (ex. "Colis" en plus de "Activité principale").
+  const cleanRows = [];
+  const seen = new Set();
+  directionRows.forEach(r => {
+    if (!r || !directionKeys.includes(r.metricKey) || seen.has(r.metricKey)) return;
+    seen.add(r.metricKey);
+    cleanRows.push(r);
+  });
+
+  const row = key => cleanRows.find(r => r.metricKey === key) || null;
   const fmt = r => r ? performanceSummaryFormatValue(r.value, r.unit, r.metricKey) : "À compléter";
   const fmtBudget = r => r ? performanceSummaryFormatValue(r.budget, r.unit, r.metricKey) : "À compléter";
 
@@ -15535,20 +15555,18 @@ function reportPerformanceExecutiveSynthesis(source, directionRows = []) {
   const prep = prod["Préparation"] || {};
   const prepBelow = perfHas(prep.actual) && perfHas(prep.budget) && Number(prep.actual) < Number(prep.budget);
 
-  const criticalRows = directionRows.filter(r => r.statusLabel === "Critique");
-  const watchRows = directionRows.filter(r => r.statusLabel === "À suivre");
-  const masteredRows = directionRows.filter(r => r.statusLabel === "Maîtrisé");
+  const criticalRows = cleanRows.filter(r => r.statusLabel === "Critique");
+  const watchRows = cleanRows.filter(r => r.statusLabel === "À suivre");
+  const masteredRows = cleanRows.filter(r => r.statusLabel === "Maîtrisé");
 
-  const positives = [
+  const positiveLines = [
     ...masteredProd.map(x => `- ${x.name} : ${perfFmt(x.metric.actual)} vs budget ${perfFmt(x.metric.budget)}`),
     ...masteredRows.map(r => `- ${r.label} : ${fmt(r)} vs budget ${fmtBudget(r)}`)
   ];
-  const uniquePositives = [...new Set(positives)];
+  const positives = [...new Set(positiveLines)];
 
-  const risks = [
-    ...criticalRows.map(r => `- ${r.label} : ${fmt(r)} vs budget ${fmtBudget(r)} — Critique`),
-    ...watchRows.map(r => `- ${r.label} : ${fmt(r)} vs budget ${fmtBudget(r)} — À suivre`)
-  ];
+  const critical = criticalRows.map(r => `- ${r.label} : ${fmt(r)} vs budget ${fmtBudget(r)}`);
+  const watch = watchRows.map(r => `- ${r.label} : ${fmt(r)} vs budget ${fmtBudget(r)}`);
 
   const messageParts = [];
   if (masteredProd.length) {
@@ -15562,7 +15580,7 @@ function reportPerformanceExecutiveSynthesis(source, directionRows = []) {
   }
 
   const messageKey = messageParts.length
-    ? `La performance du mois est contrastée : ${messageParts.join(" ; ")}.`
+    ? `La performance du mois est contrastée. ${messageParts.join(". ")}.`
     : "La lecture du mois doit être finalisée à partir des écarts au budget, à l'historique et de leur tendance.";
 
   const priorities = [];
@@ -15575,10 +15593,13 @@ function reportPerformanceExecutiveSynthesis(source, directionRows = []) {
 ${messageKey}
 
 FAITS MAÎTRISÉS
-${uniquePositives.length ? uniquePositives.join("\n") : "À compléter"}
+${positives.length ? positives.join("\n") : "À compléter"}
 
-ÉCARTS MAJEURS
-${risks.length ? risks.join("\n") : "À compléter"}
+ÉCARTS CRITIQUES
+${critical.length ? critical.join("\n") : "Aucun écart critique identifié sur les KPI Direction."}
+
+POINTS À SUIVRE
+${watch.length ? watch.join("\n") : "Aucun point à suivre identifié sur les KPI Direction."}
 
 CAUSES / HYPOTHÈSES À CONFIRMER
 - Ne retenir comme cause que ce qui est démontré par les données.
@@ -15895,7 +15916,7 @@ function reportPreviewStep() {
           <button class="secondary report-section-toggle" title="Replier ou déplier" onclick="toggleReportSection('${esc(s.id)}')">Replier</button>
           <button class="secondary" title="Monter la section" onclick="moveReportSection(${i},-1)">↑</button>
           <button class="secondary" title="Descendre la section" onclick="moveReportSection(${i},1)">↓</button>
-          <button class="danger" title="Supprimer la section" onclick="deleteReportSection('${esc(s.id)}')">×</button>
+          <button class="secondary" title="Supprimer la section" onclick="deleteReportSection('${esc(s.id)}')">×</button>
         </div>
       </div>
       <textarea class="report-section-body" oninput="reportAutoSizeTextareas()" style="margin-top:10px;line-height:1.55;resize:none;min-height:110px;">${esc(s.body)}</textarea>
@@ -15916,7 +15937,7 @@ function reportPreviewStep() {
       <select id="rwStatus"><option ${reportWizard.status === "Brouillon" ? "selected" : ""}>Brouillon</option><option ${reportWizard.status === "Validé" ? "selected" : ""}>Validé</option></select>
     </div>
     ${sections}
-    <div class="row-actions" style="position:sticky;bottom:8px;background:rgba(255,255,255,.96);padding:10px;border:1px solid #e2e8f0;border-radius:12px;z-index:3">
+    <div class="row-actions" style="margin:16px 0 4px;padding:10px;border:1px solid #e2e8f0;border-radius:12px;background:#fff">
       <button class="secondary" onclick="addReportSection()">+ Section</button>
       <button class="secondary" onclick="copyReportText()">Copier</button>
       <button class="secondary" onclick="printReportText()">Imprimer</button>
