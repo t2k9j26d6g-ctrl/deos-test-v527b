@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q5H";
+const DEOS_VERSION = "V5.30Q5I";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -15521,6 +15521,77 @@ function reportBuildTitle(template, ctx) {
 }
 
 
+
+function reportPerformanceExecutiveSynthesis(source, directionRows = []) {
+  const row = key => directionRows.find(r => r.metricKey === key) || null;
+  const fmt = r => r ? performanceSummaryFormatValue(r.value, r.unit, r.metricKey) : "À compléter";
+  const fmtBudget = r => r ? performanceSummaryFormatValue(r.budget, r.unit, r.metricKey) : "À compléter";
+
+  const prod = source.productivity || {};
+  const masteredProd = ["Réception", "Manutention", "Chargement"]
+    .map(name => ({ name, metric: prod[name] || {} }))
+    .filter(x => perfHas(x.metric.actual) && perfHas(x.metric.budget) && Number(x.metric.actual) >= Number(x.metric.budget));
+
+  const prep = prod["Préparation"] || {};
+  const prepBelow = perfHas(prep.actual) && perfHas(prep.budget) && Number(prep.actual) < Number(prep.budget);
+
+  const criticalRows = directionRows.filter(r => r.statusLabel === "Critique");
+  const watchRows = directionRows.filter(r => r.statusLabel === "À suivre");
+  const masteredRows = directionRows.filter(r => r.statusLabel === "Maîtrisé");
+
+  const positives = [
+    ...masteredProd.map(x => `- ${x.name} : ${perfFmt(x.metric.actual)} vs budget ${perfFmt(x.metric.budget)}`),
+    ...masteredRows.map(r => `- ${r.label} : ${fmt(r)} vs budget ${fmtBudget(r)}`)
+  ];
+  const uniquePositives = [...new Set(positives)];
+
+  const risks = [
+    ...criticalRows.map(r => `- ${r.label} : ${fmt(r)} vs budget ${fmtBudget(r)} — Critique`),
+    ...watchRows.map(r => `- ${r.label} : ${fmt(r)} vs budget ${fmtBudget(r)} — À suivre`)
+  ];
+
+  const messageParts = [];
+  if (masteredProd.length) {
+    messageParts.push(`${masteredProd.map(x => x.name).join(", ")} ${masteredProd.length > 1 ? "sont au-dessus" : "est au-dessus"} du budget`);
+  }
+  if (prepBelow) {
+    messageParts.push(`la Préparation reste sous le budget à ${perfFmt(prep.actual)} colis/h contre ${perfFmt(prep.budget)}`);
+  }
+  if (criticalRows.length) {
+    messageParts.push(`${criticalRows.map(r => r.label).join(", ")} ${criticalRows.length > 1 ? "constituent les principaux points critiques" : "constitue le principal point critique"}`);
+  }
+
+  const messageKey = messageParts.length
+    ? `La performance du mois est contrastée : ${messageParts.join(" ; ")}.`
+    : "La lecture du mois doit être finalisée à partir des écarts au budget, à l'historique et de leur tendance.";
+
+  const priorities = [];
+  if (prepBelow) priorities.push("- Préparation : expliquer l'écart au budget, isoler les leviers actionnables et suivre le plan de redressement.");
+  if (row("hours.indirect")?.statusLabel && row("hours.indirect").statusLabel !== "Maîtrisé") priorities.push("- Heures indirectes : décomposer l'écart et identifier les gisements de réduction sans déplacer la charge.");
+  if (row("absenteeism.total")?.statusLabel === "Critique") priorities.push("- Absentéisme : analyser les causes, notamment maladie / AT, et consolider les actions de prévention.");
+  if (row("economy.cout_total_par_colis")?.statusLabel === "Critique" || row("economy.cout_exploitation_par_colis")?.statusLabel === "Critique") priorities.push("- Coûts unitaires : expliquer la dérive vs budget et relier les écarts aux postes opérationnels contributeurs.");
+
+  return `MESSAGE CLÉ
+${messageKey}
+
+FAITS MAÎTRISÉS
+${uniquePositives.length ? uniquePositives.join("\n") : "À compléter"}
+
+ÉCARTS MAJEURS
+${risks.length ? risks.join("\n") : "À compléter"}
+
+CAUSES / HYPOTHÈSES À CONFIRMER
+- Ne retenir comme cause que ce qui est démontré par les données.
+- Préparation : vérifier équipes / créneaux, mix CDI-ETT-CDD, multiclients, rattrapages de manquants, démarrage et second tour.
+- Absentéisme / coûts : identifier les postes réellement contributeurs avant d'arrêter une causalité.
+
+PRIORITÉS DE PILOTAGE
+${priorities.length ? priorities.join("\n") : "À compléter"}
+
+ARBITRAGES / DÉCISIONS ATTENDUS
+- À compléter avant la revue : décisions attendues du N+1 / N+2, besoins de ressources, arbitrages et sujets à escalader.`;
+}
+
 function reportPerformanceMonthlySections(source, ctx, actions, decisions, documents) {
   const periodKey = performancePeriodKey(source) || canonicalPerformancePeriod(sourceTypePeriod(source)) || "";
   const directionRows = periodKey ? performanceSummaryBuildRows(periodKey) : [];
@@ -15564,7 +15635,7 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     },
     {
       title: "2. Synthèse exécutive",
-      body: `MESSAGE CLÉ\n${source.synthesis || buildPerformanceSynthesis(source)}\n\nPOINTS MAÎTRISÉS\n${strengths}\n\nPOINTS DE VIGILANCE / CRITIQUES\n${watch}\n\nLecture Direction à compléter : quels écarts méritent une action immédiate ? quels écarts sont conjoncturels ? quels sujets nécessitent une décision ou un arbitrage ?`
+      body: reportPerformanceExecutiveSynthesis(source, directionRows)
     },
     {
       title: "3. Tableau de bord Direction",
@@ -15758,6 +15829,7 @@ function renderReportWizard() {
   document.getElementById("viewTitle").textContent = "Générer un compte rendu";
   const steps = ["Type", "Source", "Liens", "Aperçu", "Validation"].map((label, i) => `<span class="${reportWizard.step === i + 1 ? "active-step" : ""}">${i + 1}. ${label}</span>`).join("");
   appHtml(`<div class="card hero report-hero"><button class="secondary" onclick="cancelReportWizard()">Retour Documents</button><h2>Générer un compte rendu</h2><p class="muted">Assistant structuré basé uniquement sur les données enregistrées dans ${esc(identity.appName)}.</p><div class="report-steps">${steps}</div></div>${reportWizardBody()}`);
+  if (reportWizard.step === 4) requestAnimationFrame(reportAutoSizeTextareas);
 }
 
 function reportWizardBody() {
@@ -15778,11 +15850,88 @@ function reportPreviewText() {
   return `${reportWizard.title}\n\n${reportWizard.sections.map(s => `${s.title}\n${s.body}`).join("\n\n")}\n\n${identitySignature()}`;
 }
 
-function reportPreviewStep() {
-  const sections = reportWizard.sections.map((s, i) => `<div class="report-section" data-report-section="${esc(s.id)}"><div class="row"><input class="report-section-title" value="${esc(s.title)}"><div class="row-actions"><button class="secondary" title="Monter la section" onclick="moveReportSection(${i},-1)">Monter</button><button class="secondary" title="Descendre la section" onclick="moveReportSection(${i},1)">Descendre</button><button class="danger" onclick="deleteReportSection('${s.id}')">Supprimer</button></div></div><textarea class="report-section-body">${esc(s.body)}</textarea></div>`).join("");
-  return `<div class="card"><h2>Aperçu complet</h2><div class="form-grid"><input id="rwTitle" class="full" value="${esc(reportWizard.title)}"><input id="rwAuthor" value="${esc(reportWizard.author || identityName())}" placeholder="Auteur"><select id="rwStatus"><option ${reportWizard.status === "Brouillon" ? "selected" : ""}>Brouillon</option><option ${reportWizard.status === "Validé" ? "selected" : ""}>Validé</option></select></div>${sections}<div class="row-actions"><button class="secondary" onclick="addReportSection()">Ajouter une section</button><button class="secondary" onclick="copyReportText()">Copier le compte rendu</button><button class="secondary" onclick="printReportText()">Imprimer</button></div><div class="card report-transform"><h2>Transformer une ligne</h2><textarea id="rwLine" placeholder="Coller ou saisir une ligne du compte rendu"></textarea><div class="form-grid"><input id="rwLineOwner" placeholder="Responsable proposé"><input id="rwLineDue" type="date"><select id="rwLinePriority"><option value="green">Normal</option><option value="orange" selected>Important</option><option value="red">Critique</option></select></div><button class="secondary" onclick="createReportAction()">Créer une action ${esc(identity.appName)}</button><button class="secondary" onclick="createReportDecision()">Créer une décision ${esc(identity.appName)}</button></div><div class="row-actions"><button class="secondary" onclick="setReportStep(3)">Retour</button><button class="action" onclick="setReportStep(5)">Continuer</button></div></div>`;
+
+function reportAutoSizeTextareas() {
+  document.querySelectorAll(".report-section-body").forEach(area => {
+    if (area.dataset.collapsed === "1") return;
+    area.style.height = "auto";
+    area.style.overflowY = "hidden";
+    area.style.height = `${Math.max(area.scrollHeight + 4, 110)}px`;
+  });
 }
 
+function toggleReportSection(id) {
+  const section = document.querySelector(`[data-report-section="${id}"]`);
+  if (!section) return;
+  const body = section.querySelector(".report-section-body");
+  const toggle = section.querySelector(".report-section-toggle");
+  if (!body) return;
+  const collapsed = body.dataset.collapsed === "1";
+  if (collapsed) {
+    body.dataset.collapsed = "0";
+    body.style.display = "";
+    if (toggle) toggle.textContent = "Replier";
+    requestAnimationFrame(reportAutoSizeTextareas);
+  } else {
+    body.dataset.collapsed = "1";
+    body.style.display = "none";
+    if (toggle) toggle.textContent = "Déplier";
+  }
+}
+
+function reportPreviewStep() {
+  const isMonthlyRdp = reportWizard.template === "Revue de performance" && reportWizard.sourceType === "performance";
+  const sections = reportWizard.sections.map((s, i) => {
+    const sectionKind = /Synthèse exécutive/i.test(s.title) ? "Synthèse" :
+      /Décisions|arbitrages/i.test(s.title) ? "Décisions" :
+      /Priorités|plan d'actions/i.test(s.title) ? "Actions" :
+      /Fiabilité|points à valider/i.test(s.title) ? "À valider" :
+      /Tableau de bord|Productivités|Activité|Absentéisme|Économie|Historique/i.test(s.title) ? "Faits & analyse" : "";
+    return `<section class="report-section" data-report-section="${esc(s.id)}" style="border:1px solid #dbe3ef;border-radius:14px;padding:14px 16px;margin:12px 0;background:#fff;">
+      <div class="row" style="align-items:center;gap:10px;">
+        <input class="report-section-title" value="${esc(s.title)}" style="font-weight:800;font-size:15px;border:none;background:#f8fafc;">
+        ${sectionKind ? `<span class="badge" style="white-space:nowrap">${esc(sectionKind)}</span>` : ""}
+        <div class="row-actions" style="gap:6px;margin-left:auto;">
+          <button class="secondary report-section-toggle" title="Replier ou déplier" onclick="toggleReportSection('${esc(s.id)}')">Replier</button>
+          <button class="secondary" title="Monter la section" onclick="moveReportSection(${i},-1)">↑</button>
+          <button class="secondary" title="Descendre la section" onclick="moveReportSection(${i},1)">↓</button>
+          <button class="danger" title="Supprimer la section" onclick="deleteReportSection('${esc(s.id)}')">×</button>
+        </div>
+      </div>
+      <textarea class="report-section-body" oninput="reportAutoSizeTextareas()" style="margin-top:10px;line-height:1.55;resize:none;min-height:110px;">${esc(s.body)}</textarea>
+    </section>`;
+  }).join("");
+
+  return `<div class="card">
+    <div class="row" style="align-items:flex-start;justify-content:space-between;gap:16px;">
+      <div>
+        <h2 style="margin-bottom:4px">${isMonthlyRdp ? "Préparation de la revue de performance mensuelle" : "Aperçu complet"}</h2>
+        ${isMonthlyRdp ? `<p class="muted" style="margin:0">Dossier de travail : faits → analyse → priorités → décisions.</p>` : ""}
+      </div>
+      ${isMonthlyRdp ? `<span class="badge">RDP mensuelle</span>` : ""}
+    </div>
+    <div class="form-grid" style="margin-top:14px">
+      <input id="rwTitle" class="full" value="${esc(reportWizard.title)}">
+      <input id="rwAuthor" value="${esc(reportWizard.author || identityName())}" placeholder="Auteur">
+      <select id="rwStatus"><option ${reportWizard.status === "Brouillon" ? "selected" : ""}>Brouillon</option><option ${reportWizard.status === "Validé" ? "selected" : ""}>Validé</option></select>
+    </div>
+    ${sections}
+    <div class="row-actions" style="position:sticky;bottom:8px;background:rgba(255,255,255,.96);padding:10px;border:1px solid #e2e8f0;border-radius:12px;z-index:3">
+      <button class="secondary" onclick="addReportSection()">+ Section</button>
+      <button class="secondary" onclick="copyReportText()">Copier</button>
+      <button class="secondary" onclick="printReportText()">Imprimer</button>
+      <button class="action" onclick="setReportStep(5)">Continuer</button>
+    </div>
+    <div class="card report-transform" style="margin-top:14px">
+      <h2>Transformer un constat en action / décision</h2>
+      <textarea id="rwLine" placeholder="Coller ou saisir une ligne du compte rendu"></textarea>
+      <div class="form-grid"><input id="rwLineOwner" placeholder="Responsable proposé"><input id="rwLineDue" type="date"><select id="rwLinePriority"><option value="green">Normal</option><option value="orange" selected>Important</option><option value="red">Critique</option></select></div>
+      <button class="secondary" onclick="createReportAction()">Créer une action ${esc(identity.appName)}</button>
+      <button class="secondary" onclick="createReportDecision()">Créer une décision ${esc(identity.appName)}</button>
+    </div>
+    <div class="row-actions"><button class="secondary" onclick="setReportStep(3)">Retour aux liens</button></div>
+  </div>`;
+}
 function reportValidationStep() {
   return `<div class="card"><h2>Validation</h2><pre class="report-preview">${esc(reportPreviewText())}</pre><div class="row-actions"><button class="secondary" onclick="setReportStep(4)">Retour</button><button class="secondary" onclick="saveGeneratedReport('Brouillon')">Enregistrer comme brouillon</button><button class="action" onclick="saveGeneratedReport('Validé')">Valider le compte rendu</button><button class="secondary" onclick="copyReportText()">Copier le compte rendu</button><button class="secondary" onclick="printReportText()">Imprimer</button></div></div>`;
 }
