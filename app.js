@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q5F";
+const DEOS_VERSION = "V5.30Q5G";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -11622,6 +11622,11 @@ function startPerformanceRdp(id) {
   const p = byId("performance", id);
   if (!p) return;
   startReport("performance", id, "Revue de performance");
+  // V5.30Q5G : le bouton Performance ouvre directement le modèle mensuel RDP enrichi.
+  if (reportWizard) {
+    reportWizard.step = 4;
+    renderReportWizard();
+  }
 }
 
 const performanceImportSources = [
@@ -15511,7 +15516,109 @@ function reportBuildTitle(template, ctx) {
   if (template === "CODIR") return `Compte rendu CODIR - ${source.date || isoToday()}`;
   if (template === "Entretien Manager") return `Entretien - ${ctx.managers[0]?.name || source.name || "Manager"} - ${source.date || isoToday()}`;
   if (template === "Point Projet") return `Point projet - ${ctx.projects[0]?.name || source.name || "Projet"} - ${source.date || isoToday()}`;
+  if (template === "Revue de performance" && ctx.sourceType === "performance") return `Revue de performance mensuelle - ${perfPeriodLabel(source)} - Saint-Gilles`;
   return `${template} - ${reportSourceTitle(ctx.sourceType, ctx.sourceId)} - ${source.date || isoToday()}`;
+}
+
+
+function reportPerformanceMonthlySections(source, ctx, actions, decisions, documents) {
+  const periodKey = performancePeriodKey(source) || canonicalPerformancePeriod(sourceTypePeriod(source)) || "";
+  const directionRows = periodKey ? performanceSummaryBuildRows(periodKey) : [];
+  const rowByKey = key => directionRows.find(row => row.metricKey === key) || null;
+  const fmtRow = row => {
+    if (!row) return "Donnée non disponible";
+    return `${performanceSummaryFormatValue(row.value, row.unit, row.metricKey)} | Budget ${performanceSummaryFormatValue(row.budget, row.unit, row.metricKey)} | Historique ${performanceSummaryFormatValue(row.historical, row.unit, row.metricKey)} | Écart ${performanceSummaryFormatDelta(row.gap, row.unit, row.metricKey)} | Statut ${row.statusLabel || "À compléter"} | Source ${row.sourceLabel || performanceSourceLabel(row.source)}`;
+  };
+  const metricLine = (label, metric, unit = "") => {
+    if (!metric) return `- ${label} : À compléter`;
+    const actual = perfHas(metric.actual) ? `${perfFmt(metric.actual)}${unit ? " " + unit : ""}` : "À compléter";
+    const budget = perfHas(metric.budget) ? `${perfFmt(metric.budget)}${unit ? " " + unit : ""}` : "À compléter";
+    const historical = perfHas(metric.historical) ? `${perfFmt(metric.historical)}${unit ? " " + unit : ""}` : "À compléter";
+    return `- ${label} : Réel ${actual} | Budget ${budget} | Historique ${historical}`;
+  };
+  const prep = source.productivity?.["Préparation"] || {};
+  const reception = source.productivity?.["Réception"] || {};
+  const manut = source.productivity?.["Manutention"] || {};
+  const chargement = source.productivity?.["Chargement"] || {};
+  const transit = source.productivity?.["Transit"] || {};
+  const qualityTotal = source.quality?.indicators?.["Total Gains & Pertes"] || {};
+  const linkedDocs = documents || "À compléter";
+
+  const direction = [
+    ["IPO total", "ipo.total"],
+    ["Activité principale", "activity.colis_total"],
+    ["Productivité Préparation", "productivity.preparation"],
+    ["Heures indirectes", "hours.indirect"],
+    ["Absentéisme", "absenteeism.total"],
+    ["Coût colis total", "economy.cout_total_par_colis"],
+    ["Coût colis exploitation (Exploit)", "economy.cout_exploitation_par_colis"]
+  ].map(([label, key]) => `- ${label} : ${fmtRow(rowByKey(key))}`).join("\\n");
+
+  const strengths = directionRows.filter(r => r.statusLabel === "Maîtrisé").map(r => `- ${r.label} : ${performanceSummaryFormatValue(r.value, r.unit, r.metricKey)}`).join("\\n") || "À compléter";
+  const watch = directionRows.filter(r => ["À suivre", "Critique"].includes(r.statusLabel)).map(r => `- ${r.label} : ${r.statusLabel} | ${performanceSummaryFormatValue(r.value, r.unit, r.metricKey)} vs budget ${performanceSummaryFormatValue(r.budget, r.unit, r.metricKey)}`).join("\\n") || "À compléter";
+
+  return [
+    {
+      title: "1. Cadre de la revue",
+      body: `Site : Saint-Gilles\\nPériode analysée : ${perfPeriodLabel(source)}\\nPréparé par : ${identityName()}\\nDate de préparation : ${isoToday()}\\nObjet : préparer la revue mensuelle de performance, expliquer les écarts, objectiver les causes, arrêter les priorités et préparer les arbitrages.\\n\\nRègle de lecture : distinguer systématiquement les faits, les hypothèses explicatives et les causalités démontrées. Comparer le réalisé au budget, à l'historique et, lorsque disponible, au cumul / à la tendance.`
+    },
+    {
+      title: "2. Synthèse exécutive",
+      body: `MESSAGE CLÉ\\n${source.synthesis || buildPerformanceSynthesis(source)}\\n\\nPOINTS MAÎTRISÉS\\n${strengths}\\n\\nPOINTS DE VIGILANCE / CRITIQUES\\n${watch}\\n\\nLecture Direction à compléter : quels écarts méritent une action immédiate ? quels écarts sont conjoncturels ? quels sujets nécessitent une décision ou un arbitrage ?`
+    },
+    {
+      title: "3. Tableau de bord Direction",
+      body: direction
+    },
+    {
+      title: "4. Productivités par secteur et IPO",
+      body: `${metricLine("Préparation", prep, "colis/h")}\\n${metricLine("Réception", reception, "palettes/h")}\\n${metricLine("Manutention", manut, "palettes/h")}\\n${metricLine("Chargement", chargement, "palettes/h")}\\n${metricLine("Transit", transit, "palettes/h")}\\n\\nIPO total : ${fmtRow(rowByKey("ipo.total"))}\\nIPO variable : Réel ${perfFmt(source.ipo?.variable?.actual)} | Budget ${perfFmt(source.ipo?.variable?.budget)} | Historique ${perfFmt(source.ipo?.variable?.historical)}\\n\\nImpacts en heures par secteur :\\n- Préparation : ${perfFmt(prep.hoursBudgetGap)} h vs budget\\n- Réception : ${perfFmt(reception.hoursBudgetGap)} h vs budget\\n- Manutention : ${perfFmt(manut.hoursBudgetGap)} h vs budget\\n- Chargement : ${perfFmt(chargement.hoursBudgetGap)} h vs budget\\n\\nLecture attendue : identifier ce qui consomme des heures, ce qui compense favorablement, et les écarts réellement actionnables.`
+    },
+    {
+      title: "5. Activité, heures et capacité",
+      body: `${metricLine("Activité / colis", source.activity, "colis")}\\n${metricLine("Heures totales", source.hours?.total, "h")}\\n${metricLine("Heures directes", source.hours?.direct, "h")}\\n${metricLine("Heures indirectes", source.hours?.indirect, "h")}\\n\\nPoids des heures indirectes : À compléter / vérifier dans le tableau détaillé.\\nCapacité / charge : volume attendu M+1, risques de saturation, recours ETT, jours atypiques, opérations commerciales et contraintes transport : À compléter.\\n\\nLecture hebdomadaire / rupture de tendance : À compléter.`
+    },
+    {
+      title: "6. Préparation — performance main-d'œuvre",
+      body: `Productivité globale officielle : ${perfFmt(prep.actual)} colis/h\\nCDI : ${prep.cdiProductivity || "À compléter"} colis/h\\nETT : ${prep.ettProductivity || "À compléter"} colis/h\\nCDD : ${prep.cddProductivity || "À compléter"} colis/h\\nPart heures CDI : ${prep.cdiHoursShare || "À compléter"}\\nPart heures ETT : ${prep.ettHoursShare || "À compléter"}\\nPart heures CDD : ${prep.cddHoursShare || "À compléter"}\\n\\nÀ analyser chaque mois : médiane par population, part atteignant le standard, dispersion, ancienneté ETT, équipes / créneaux les plus contributifs et effets de mix.\\n\\nPoint méthodologique : conserver la référence officielle GPO pour la présentation globale et utiliser T-Bag pour les analyses de détail tant que les périmètres ne sont pas totalement réconciliés.`
+    },
+    {
+      title: "7. Leviers opérationnels Préparation",
+      body: `Écart matin / après-midi : À compléter\\nDémarrage de poste / second tour : À compléter\\nFlux multiclients : À compléter\\nColis / ligne et complexité : À compléter\\nManquants premier tour / rattrapage : À compléter\\nImplantation / distances / typologie articles : À compléter\\nRépartition CDI / ETT / CDD par équipe : À compléter\\n\\nLecture attendue : ne pas transformer une association en causalité. Chiffrer l'impact potentiel de chaque levier et identifier les tests opérationnels permettant de confirmer ou d'infirmer l'hypothèse.`
+    },
+    {
+      title: "8. Absentéisme, sécurité et présentéisme",
+      body: `Absentéisme total : ${fmtRow(rowByKey("absenteeism.total"))}\\nMaladie : ${perfFmt(source.absenteeism?.indicators?.["Maladie"]?.actual || source.absenteeism?.illness?.actual)}\\nAccidents du travail : ${perfFmt(source.absenteeism?.indicators?.["Accidents du travail"]?.actual || source.absenteeism?.accidents?.actual)}\\nFormation : ${perfFmt(source.absenteeism?.indicators?.["Formation"]?.actual)}\\nAutres absences : ${perfFmt(source.absenteeism?.indicators?.["Autres absences"]?.actual)}\\n\\nÀ préparer : analyse des causes AT, secteurs concernés, récurrence, actions de prévention, impact opérationnel de l'absentéisme et évolution vs mois précédent / historique.`
+    },
+    {
+      title: "9. Économie, qualité et coûts unitaires",
+      body: `Coût colis total : ${fmtRow(rowByKey("economy.cout_total_par_colis"))}\\nCoût colis exploitation (Exploit) : ${fmtRow(rowByKey("economy.cout_exploitation_par_colis"))}\\nGains & Pertes : Réel ${perfFmt(qualityTotal.actual)} | Budget ${perfFmt(qualityTotal.budget)} | Historique ${perfFmt(qualityTotal.historical)}\\nRésultat opérationnel / EBIT / démarque marchandises : voir tableau Économie & qualité DEOS.\\n\\nPareto à préparer : litiges, casse, non-livrés, périmés, contrôle stock, dons et autres postes significatifs.\\n\\nLecture attendue : chiffrer l'écart mensuel et cumul, identifier les 2 ou 3 postes expliquant l'essentiel de la dérive et rattacher chaque poste à un responsable / plan d'action.`
+    },
+    {
+      title: "10. Historique, tendance et projection",
+      body: `Tendance vs historique :\\n${directionRows.map(r => `- ${r.label} : ${performanceSummaryFormatDelta(r.trend, r.unit, r.metricKey)}`).join("\\n") || "À compléter"}\\n\\nÀ compléter avant revue :\\n- tendance 3 mois / 12 mois ;\\n- meilleur et plus faible mois ;\\n- cumul YTD vs budget / historique ;\\n- projection fin d'année ;\\n- principaux risques M+1 ;\\n- hypothèses de volume, effectif, absentéisme, ETT et opérations commerciales.`
+    },
+    {
+      title: "11. Priorités et plan d'actions",
+      body: `Plan d'actions DEOS lié à la période :\\n${actions}\\n\\nÀ structurer pour la revue :\\n- Priorité 1 : sujet / action immédiate / responsable / échéance / KPI attendu\\n- Priorité 2 : sujet / action immédiate / responsable / échéance / KPI attendu\\n- Priorité 3 : sujet / action immédiate / responsable / échéance / KPI attendu\\n- Priorité 4 : sujet / action immédiate / responsable / échéance / KPI attendu\\n- Priorité 5 : sujet / action immédiate / responsable / échéance / KPI attendu`
+    },
+    {
+      title: "12. Décisions et arbitrages attendus",
+      body: `Décisions déjà liées :\\n${decisions}\\n\\nÀ préparer :\\n- décisions à obtenir du N+1 / N+2 ;\\n- arbitrages de ressources ;\\n- demandes de support régional / national ;\\n- risques à accepter, réduire ou escalader ;\\n- sujets à ne pas laisser sans décision à l'issue de la revue.`
+    },
+    {
+      title: "13. Questions à anticiper en revue",
+      body: `- Qu'est-ce qui explique réellement l'écart de Préparation ?\\n- Quelle part est structurelle et quelle part est conjoncturelle ?\\n- Pourquoi l'IPO dérive-t-il et quels leviers sont immédiatement activables ?\\n- Quelle est la contribution des heures indirectes ?\\n- Quels gains des autres secteurs compensent la Préparation ?\\n- Quel est le coût financier des écarts ?\\n- Pourquoi les coûts colis sont-ils au-dessus / en dessous du budget ?\\n- Quels sont les trois risques du mois suivant ?\\n- Quelles actions ont un responsable, une échéance et un résultat mesurable ?\\n- Quelles décisions attends-tu de la revue ?`
+    },
+    {
+      title: "14. Fiabilité des données et points à valider",
+      body: `Sources de référence : GPO / Guide de performance, Z GEMED, T-Bag, CGTAB, GA / Suivi GA, Litiges / GC-GE selon disponibilité.\\n\\nPoints de contrôle avant présentation :\\n- réconcilier les périmètres lorsqu'une même notion diffère entre sources ;\\n- distinguer mensuel et cumul ;\\n- vérifier les unités ;\\n- documenter les valeurs atypiques ;\\n- ne pas additionner des impacts financiers calculés sur des périmètres qui se recouvrent ;\\n- signaler explicitement toute donnée manquante ou non fiabilisée.\\n\\nDocuments liés :\\n${linkedDocs}`
+    },
+    {
+      title: "15. Message de clôture de la revue",
+      body: `MESSAGE À FORMULER\\n1. Ce qui est maîtrisé.\\n2. Ce qui dérive et pourquoi.\\n3. Les trois priorités opérationnelles.\\n4. Les décisions / arbitrages attendus.\\n5. La projection du mois suivant.\\n\\nProposition DEOS : ${source.synthesis || buildPerformanceSynthesis(source)}`
+    }
+  ];
 }
 
 function reportBuildSections(template, ctx) {
@@ -15580,12 +15687,9 @@ function reportBuildSections(template, ctx) {
     { title: "Engagements, décisions et actions", body: `Engagements pris : À compléter\nDécisions :\n${decisions}\nActions :\n${actions}` },
     { title: "Suites", body: `Points restant à traiter : À compléter\nDocuments liés :\n${documents}` }
   ];
-  if (template === "Revue de performance") return [
-    { title: "Période et activité", body: `Période analysée : ${sourceTypePeriod(source)}\nActivité : ${source.activity ? `Colis réalisés ${perfFmt(source.activity.actual)} / budget ${perfFmt(source.activity.budget)}` : (source.summary || source.description || source.context || "À compléter")}` },
-    { title: "Indicateurs disponibles", body: source.activity ? `Performance / IPO : total ${perfFmt(source.ipo.total.actual)} / budget ${perfFmt(source.ipo.total.budget)}\nProductivité Préparation : ${perfFmt(source.productivity["Préparation"].actual)} / budget ${perfFmt(source.productivity["Préparation"].budget)}\nHeures directes : ${perfFmt(source.hours.direct.actual)}\nHeures indirectes : ${perfFmt(source.hours.indirect.actual)}\nAbsentéisme : ${perfFmt(source.absenteeism.total.actual)}\nQualité / Gains & Pertes : ${perfFmt(source.quality.indicators["Total Gains & Pertes"].actual)}\nHauteur palette : ${perfFmt(source.palletHeight.actual)}` : "Performance / IPO : À compléter\nProductivité : À compléter\nHeures directes : À compléter\nHeures indirectes : À compléter\nAbsentéisme : À compléter\nQualité : À compléter\nSécurité : À compléter" },
-    { title: "Analyse", body: source.activity ? `Faits marquants : ${source.activity.highlights || source.quality.highlights || "À compléter"}\nCauses des écarts : ${source.activity.causes || source.ipo.rootCauses || source.quality.causes || "À compléter"}\nPoints positifs et vigilance :\n${source.synthesis || buildPerformanceSynthesis(source)}` : `Faits marquants : ${source.facts || source.objectives || "À compléter"}\nCauses des écarts : À compléter\nPoints positifs : À compléter\nPoints de vigilance : ${source.risks || source.watchPoints || "À compléter"}` },
-    { title: "Décisions et plan d'action", body: `Décisions :\n${decisions}\nPlan d'action :\n${actions}\nProjection : À compléter` }
-  ];
+  if (template === "Revue de performance") {
+    return reportPerformanceMonthlySections(source, ctx, actions, decisions, documents);
+  }
   return [
     { title: "Informations", body: `Date : ${source.date || isoToday()}\nSource : ${reportEntityLabel(ctx.sourceType)} - ${reportSourceTitle(ctx.sourceType, ctx.sourceId)}` },
     { title: "Synthèse", body: source.summary || source.description || source.context || source.note || source.content || "À compléter" },
