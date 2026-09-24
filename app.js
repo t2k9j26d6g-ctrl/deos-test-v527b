@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q5P";
+const DEOS_VERSION = "V5.30Q5Q";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -15875,6 +15875,19 @@ function reportPreparationVolumeForImpact(source) {
   return { value: "", source: "" };
 }
 
+
+function reportPreferredMetricActual(metricKey, periodKey) {
+  const preferred = getPreferredPerformanceValue(metricKey, periodKey);
+  const value = preferred?.value;
+  return perfHas(value) && Number.isFinite(Number(value)) ? Number(value) : "";
+}
+
+function reportIndirectHoursShare(totalHours, indirectHours) {
+  const total = Number(totalHours), indirect = Number(indirectHours);
+  if (![total, indirect].every(Number.isFinite) || total <= 0 || indirect < 0) return "";
+  return indirect / total * 100;
+}
+
 function reportPerformanceMonthlySections(source, ctx, actions, decisions, documents) {
   const periodKey = performancePeriodKey(source) || canonicalPerformancePeriod(sourceTypePeriod(source)) || "";
   const directionRows = periodKey ? performanceSummaryBuildRows(periodKey) : [];
@@ -15902,14 +15915,16 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
   const tbagPopulationGapAnalysis = reportTBagPopulationGapAnalysis(source);
 
   const prepImpactVolume = reportPreparationVolumeForImpact(source);
-  const uoReception = reportMetricActual(reportComplementaryMetric(source, "activity.uo_reception"));
-  const uoManutention = reportMetricActual(reportComplementaryMetric(source, "activity.uo_manutention"));
-  const uoChargement = reportMetricActual(reportComplementaryMetric(source, "activity.uo_chargement"));
+  const uoReception = reportPreferredMetricActual("activity.uo_reception", periodKey);
+  const uoManutention = reportPreferredMetricActual("activity.uo_manutention", periodKey);
+  const uoChargement = reportPreferredMetricActual("activity.uo_chargement", periodKey);
 
   const impactPrepAuto = reportProductivityHoursImpact(prepImpactVolume.value, prep.actual, prep.budget);
   const impactReceptionAuto = reportProductivityHoursImpact(uoReception, reception.actual, reception.budget);
   const impactManutAuto = reportProductivityHoursImpact(uoManutention, manut.actual, manut.budget);
   const impactChargementAuto = reportProductivityHoursImpact(uoChargement, chargement.actual, chargement.budget);
+
+  const indirectHoursShareAuto = reportIndirectHoursShare(source.hours?.total?.actual, source.hours?.indirect?.actual);
 
   const linkedDocs = documents || "À compléter";
 
@@ -15941,11 +15956,11 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     },
     {
       title: "4. Productivités par secteur et IPO",
-      body: `${metricLine("Préparation", prep, "colis/h")}\n${metricLine("Réception", reception, "palettes/h")}\n${metricLine("Manutention", manut, "palettes/h")}\n${metricLine("Chargement", chargement, "palettes/h")}\n${metricLine("Transit", transit, "palettes/h")}\n\nIPO total : ${fmtRow(rowByKey("ipo.total"))}\nIPO variable : Réel ${perfFmt(source.ipo?.variable?.actual)} | Budget ${perfFmt(source.ipo?.variable?.budget)} | Historique ${perfFmt(source.ipo?.variable?.historical)}\n\nImpacts en heures par secteur :\n- Préparation : ${perfHas(prep.hoursBudgetGap) ? reportFmtSignedHours(prep.hoursBudgetGap) : reportFmtSignedHours(impactPrepAuto)} vs budget\n- Réception : ${perfHas(reception.hoursBudgetGap) ? reportFmtSignedHours(reception.hoursBudgetGap) : reportFmtSignedHours(impactReceptionAuto)} vs budget\n- Manutention : ${perfHas(manut.hoursBudgetGap) ? reportFmtSignedHours(manut.hoursBudgetGap) : reportFmtSignedHours(impactManutAuto)} vs budget\n- Chargement : ${perfHas(chargement.hoursBudgetGap) ? reportFmtSignedHours(chargement.hoursBudgetGap) : reportFmtSignedHours(impactChargementAuto)} vs budget\n\nMéthode automatique : volume réel du même périmètre ÷ productivité réelle − volume réel du même périmètre ÷ productivité budget. Positif = heures consommées au-delà du budget ; négatif = heures économisées.\n- Préparation : ${Number.isFinite(Number(prepImpactVolume.value)) && Number(prepImpactVolume.value) > 0 ? `volume spécifique Préparation utilisé : ${Number(prepImpactVolume.value).toLocaleString("fr-FR")} colis.` : "impact non calculé faute de volume Préparation fiable sur le même périmètre."}\n- Réception : ${Number.isFinite(Number(uoReception)) && Number(uoReception) > 0 ? "volume UO disponible." : "impact non calculé faute de volume UO fiable."}\n- Manutention : ${Number.isFinite(Number(uoManutention)) && Number(uoManutention) > 0 ? "volume UO disponible." : "impact non calculé faute de volume UO fiable."}\n- Chargement : ${Number.isFinite(Number(uoChargement)) && Number(uoChargement) > 0 ? "volume UO disponible." : "impact non calculé faute de volume UO fiable."}\n\nLecture attendue : identifier ce qui consomme des heures, ce qui compense favorablement, et les écarts réellement actionnables.`
+      body: `${metricLine("Préparation", prep, "colis/h")}\n${metricLine("Réception", reception, "palettes/h")}\n${metricLine("Manutention", manut, "palettes/h")}\n${metricLine("Chargement", chargement, "palettes/h")}\n${metricLine("Transit", transit, "palettes/h")}\n\nIPO total : ${fmtRow(rowByKey("ipo.total"))}\nIPO variable : Réel ${perfFmt(source.ipo?.variable?.actual)} | Budget ${perfFmt(source.ipo?.variable?.budget)} | Historique ${perfFmt(source.ipo?.variable?.historical)}\n\nImpacts en heures par secteur :\n- Préparation : ${perfHas(prep.hoursBudgetGap) ? reportFmtSignedHours(prep.hoursBudgetGap) : reportFmtSignedHours(impactPrepAuto)} vs budget\n- Réception : ${perfHas(reception.hoursBudgetGap) ? reportFmtSignedHours(reception.hoursBudgetGap) : reportFmtSignedHours(impactReceptionAuto)} vs budget\n- Manutention : ${perfHas(manut.hoursBudgetGap) ? reportFmtSignedHours(manut.hoursBudgetGap) : reportFmtSignedHours(impactManutAuto)} vs budget\n- Chargement : ${perfHas(chargement.hoursBudgetGap) ? reportFmtSignedHours(chargement.hoursBudgetGap) : reportFmtSignedHours(impactChargementAuto)} vs budget\n\nMéthode automatique : volume réel du même périmètre ÷ productivité réelle − volume réel du même périmètre ÷ productivité budget. Positif = heures consommées au-delà du budget ; négatif = heures économisées.\n- Préparation : ${Number.isFinite(Number(prepImpactVolume.value)) && Number(prepImpactVolume.value) > 0 ? `volume spécifique Préparation utilisé : ${Number(prepImpactVolume.value).toLocaleString("fr-FR")} colis.` : "impact non calculé faute de volume Préparation fiable sur le même périmètre."}\n- Réception : ${Number.isFinite(Number(uoReception)) && Number(uoReception) > 0 ? `volume UO utilisé : ${Number(uoReception).toLocaleString("fr-FR")} palettes.` : "impact non calculé faute de volume UO fiable."}\n- Manutention : ${Number.isFinite(Number(uoManutention)) && Number(uoManutention) > 0 ? `volume UO utilisé : ${Number(uoManutention).toLocaleString("fr-FR")} palettes.` : "impact non calculé faute de volume UO fiable."}\n- Chargement : ${Number.isFinite(Number(uoChargement)) && Number(uoChargement) > 0 ? `volume UO utilisé : ${Number(uoChargement).toLocaleString("fr-FR")} supports.` : "impact non calculé faute de volume UO fiable."}\n\nLecture attendue : identifier ce qui consomme des heures, ce qui compense favorablement, et les écarts réellement actionnables.`
     },
     {
       title: "5. Activité, heures et capacité",
-      body: `${metricLine("Activité / colis", source.activity, "colis")}\n${metricLine("Heures totales", source.hours?.total, "h")}\n${metricLine("Heures directes", source.hours?.direct, "h")}\n${metricLine("Heures indirectes", source.hours?.indirect, "h")}\n\nPoids des heures indirectes : À compléter / vérifier dans le tableau détaillé.\nCapacité / charge : volume attendu M+1, risques de saturation, recours ETT, jours atypiques, opérations commerciales et contraintes transport : À compléter.\n\nLecture hebdomadaire / rupture de tendance : À compléter.`
+      body: `${metricLine("Activité / colis", source.activity, "colis")}\n${metricLine("Heures totales", source.hours?.total, "h")}\n${metricLine("Heures directes", source.hours?.direct, "h")}\n${metricLine("Heures indirectes", source.hours?.indirect, "h")}\n\nPoids des heures indirectes : ${Number.isFinite(indirectHoursShareAuto) ? indirectHoursShareAuto.toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " %" : "À compléter / vérifier dans le tableau détaillé"}.\nCapacité / charge : volume attendu M+1, risques de saturation, recours ETT, jours atypiques, opérations commerciales et contraintes transport : À compléter.\n\nLecture hebdomadaire / rupture de tendance : À compléter.`
     },
     {
       title: "6. Préparation — performance main-d'œuvre",
