@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q5K";
+const DEOS_VERSION = "V5.30Q5L";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -15613,9 +15613,73 @@ ARBITRAGES / DÉCISIONS ATTENDUS
 - À compléter avant la revue : décisions attendues du N+1 / N+2, besoins de ressources, arbitrages et sujets à escalader.`;
 }
 
+
+function reportPerformanceDirectionRowsOnly(rows = []) {
+  const allowed = new Set([
+    "ipo.total",
+    "activity.colis_total",
+    "productivity.preparation",
+    "hours.indirect",
+    "absenteeism.total",
+    "economy.cout_total_par_colis",
+    "economy.cout_exploitation_par_colis"
+  ]);
+  const seen = new Set();
+  return rows.filter(r => {
+    if (!r || !allowed.has(r.metricKey) || seen.has(r.metricKey)) return false;
+    seen.add(r.metricKey);
+    return true;
+  });
+}
+
+function reportPerformanceClosingMessage(source, directionRows = [], decisions = "") {
+  const rows = reportPerformanceDirectionRowsOnly(directionRows);
+  const row = key => rows.find(r => r.metricKey === key) || null;
+  const prep = row("productivity.preparation");
+  const abs = row("absenteeism.total");
+  const cost = row("economy.cout_total_par_colis");
+  const exploit = row("economy.cout_exploitation_par_colis");
+  const ipo = row("ipo.total");
+
+  const positives = ["Réception", "Manutention", "Chargement"]
+    .map(name => ({ name, m: source.productivity?.[name] || {} }))
+    .filter(x => perfHas(x.m.actual) && perfHas(x.m.budget) && Number(x.m.actual) >= Number(x.m.budget))
+    .map(x => x.name);
+
+  const sentence1 = positives.length
+    ? `${positives.join(", ")} restent au-dessus du budget.`
+    : "Les points maîtrisés doivent être confirmés en séance.";
+
+  const drifts = [];
+  if (prep && prep.statusLabel !== "Maîtrisé") drifts.push(`Préparation ${performanceSummaryFormatValue(prep.value, prep.unit, prep.metricKey)} vs budget ${performanceSummaryFormatValue(prep.budget, prep.unit, prep.metricKey)}`);
+  if (ipo && ipo.statusLabel !== "Maîtrisé") drifts.push(`IPO ${performanceSummaryFormatValue(ipo.value, ipo.unit, ipo.metricKey)} vs budget ${performanceSummaryFormatValue(ipo.budget, ipo.unit, ipo.metricKey)}`);
+  if (abs?.statusLabel === "Critique") drifts.push(`absentéisme ${performanceSummaryFormatValue(abs.value, abs.unit, abs.metricKey)}`);
+  if (cost?.statusLabel === "Critique") drifts.push(`coût colis total ${performanceSummaryFormatValue(cost.value, cost.unit, cost.metricKey)}`);
+  if (exploit?.statusLabel === "Critique") drifts.push(`coût colis Exploit ${performanceSummaryFormatValue(exploit.value, exploit.unit, exploit.metricKey)}`);
+
+  const decisionLine = decisions && decisions !== "À compléter"
+    ? "Les décisions déjà liées sont reprises dans la section dédiée."
+    : "Les arbitrages attendus du N+1 / N+2 restent à formaliser avant la revue.";
+
+  return `BILAN
+${sentence1} ${drifts.length ? `Les principaux écarts à traiter sont : ${drifts.join(" ; ")}.` : "Aucun écart majeur n'est identifié sur les KPI Direction."}
+
+TROIS PRIORITÉS
+1. Restaurer la performance Préparation et objectiver les causes réellement contributives.
+2. Réduire les dérives d'absentéisme / heures et sécuriser les actions de prévention.
+3. Expliquer puis réduire l'écart des coûts unitaires par rapport au budget.
+
+DÉCISIONS / ARBITRAGES
+${decisionLine}
+
+PROJECTION M+1
+À compléter avant la revue : activité attendue, ressources / ETT, risques opérationnels et trajectoire des KPI critiques.`;
+}
+
 function reportPerformanceMonthlySections(source, ctx, actions, decisions, documents) {
   const periodKey = performancePeriodKey(source) || canonicalPerformancePeriod(sourceTypePeriod(source)) || "";
   const directionRows = periodKey ? performanceSummaryBuildRows(periodKey) : [];
+  const directionCoreRows = reportPerformanceDirectionRowsOnly(directionRows);
   const rowByKey = key => directionRows.find(row => row.metricKey === key) || null;
   const fmtRow = row => {
     if (!row) return "Donnée non disponible";
@@ -15680,7 +15744,7 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     },
     {
       title: "8. Absentéisme, sécurité et présentéisme",
-      body: `Absentéisme total : ${fmtRow(rowByKey("absenteeism.total"))}\nMaladie : ${perfHas(source.absenteeism?.indicators?.["Maladie"]?.actual) ? perfFmt(source.absenteeism.indicators["Maladie"].actual) + " %" : (perfHas(source.absenteeism?.illness?.actual) ? perfFmt(source.absenteeism.illness.actual) + " %" : "À compléter")}\nAccidents du travail : ${perfHas(source.absenteeism?.indicators?.["Accidents du travail"]?.actual) ? perfFmt(source.absenteeism.indicators["Accidents du travail"].actual) + " %" : (perfHas(source.absenteeism?.accidents?.actual) ? perfFmt(source.absenteeism.accidents.actual) + " %" : "À compléter")}\nFormation : ${perfHas(source.absenteeism?.indicators?.["Formation"]?.actual) ? perfFmt(source.absenteeism.indicators["Formation"].actual) + " %" : "À compléter"}\nAutres absences : ${perfHas(source.absenteeism?.indicators?.["Autres absences"]?.actual) ? perfFmt(source.absenteeism.indicators["Autres absences"].actual) + " %" : "À compléter"}\n\nÀ préparer : analyse des causes AT, secteurs concernés, récurrence, actions de prévention, impact opérationnel de l'absentéisme et évolution vs mois précédent / historique.`
+      body: `Absentéisme total : ${fmtRow(rowByKey("absenteeism.total"))}\nMaladie : ${perfHas(source.absenteeism?.details?.["Maladie"]?.actual) ? perfFmt(source.absenteeism.details["Maladie"].actual) + " %" : "À compléter"}\nAccidents du travail : ${perfHas(source.absenteeism?.details?.["Accidents du travail"]?.actual) ? perfFmt(source.absenteeism.details["Accidents du travail"].actual) + " %" : "À compléter"}\nFormation : ${perfHas(source.absenteeism?.details?.["Formation"]?.actual) ? perfFmt(source.absenteeism.details["Formation"].actual) + " %" : "À compléter"}\nAutres absences : ${perfHas(source.absenteeism?.details?.["Autres absences"]?.actual) ? perfFmt(source.absenteeism.details["Autres absences"].actual) + " %" : "À compléter"}\n\nÀ préparer : analyse des causes AT, secteurs concernés, récurrence, actions de prévention, impact opérationnel de l'absentéisme et évolution vs mois précédent / historique.`
     },
     {
       title: "9. Économie, qualité et coûts unitaires",
@@ -15689,7 +15753,7 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     {
       title: "10. Historique, tendance et projection",
       body: `LECTURE DE TENDANCE — KPI DIRECTION
-${directionRows.map(r => `- ${r.label} : ${performanceSummaryFormatValue(r.value, r.unit, r.metricKey)} | Historique ${performanceSummaryFormatValue(r.historical, r.unit, r.metricKey)} | Écart historique ${performanceSummaryFormatDelta(r.trend, r.unit, r.metricKey)} | Statut ${r.statusLabel || "À compléter"}`).join("\n") || "À compléter"}
+${directionCoreRows.map(r => `- ${r.label} : ${performanceSummaryFormatValue(r.value, r.unit, r.metricKey)} | Historique ${performanceSummaryFormatValue(r.historical, r.unit, r.metricKey)} | Écart historique ${performanceSummaryFormatDelta(r.trend, r.unit, r.metricKey)} | Statut ${r.statusLabel || "À compléter"}`).join("\n") || "À compléter"}
 
 LECTURE OPÉRATIONNELLE COMPLÉMENTAIRE
 - Productivité Réception : ${perfHas(reception.actual) ? perfFmt(reception.actual) : "À compléter"} vs historique ${perfHas(reception.historical) ? perfFmt(reception.historical) : "À compléter"}
@@ -15729,14 +15793,7 @@ PROJECTION
     {
       title: "15. Message de clôture de la revue",
       body: `MESSAGE DE CLÔTURE — PROPOSITION DEOS
-${reportPerformanceExecutiveSynthesis(source, directionRows)}
-
-FORMULATION À FINALISER AVANT LA REVUE
-1. Ce qui est maîtrisé.
-2. Ce qui dérive et les causes démontrées.
-3. Les trois priorités opérationnelles.
-4. Les décisions / arbitrages attendus.
-5. La projection du mois suivant.
+${reportPerformanceClosingMessage(source, directionRows, decisions)}
 
 RÈGLE
 Le message de clôture doit rester court, factuel et directement relié aux décisions et actions de la revue.`
