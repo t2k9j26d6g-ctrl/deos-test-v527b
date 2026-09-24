@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q5R";
+const DEOS_VERSION = "V5.30Q5S";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -15964,6 +15964,129 @@ function reportDataAvailabilityLabel(value, missingLabel = "Donnée source non d
   return perfHas(value) && Number.isFinite(Number(value)) ? value : missingLabel;
 }
 
+
+function reportMetricTriplet(metric, unit = "") {
+  if (!metric) return "Donnée source non disponible";
+  const actual = reportMetricActual(metric);
+  const budget = metric?.budget;
+  const historical = metric?.historical;
+  const hasAny = Number.isFinite(actual) || perfHas(budget) || perfHas(historical);
+  if (!hasAny) return "Donnée source non disponible";
+  const fmt = value => perfHas(value) && Number.isFinite(Number(value))
+    ? `${perfFmt(Number(value))}${unit ? " " + unit : ""}`
+    : "Donnée source non disponible";
+  return `Réel ${fmt(actual)} | Budget ${fmt(budget)} | Historique ${fmt(historical)}`;
+}
+
+function reportPreparationVolumeReconciliation(source) {
+  const tbagVolumeMetric = reportComplementaryMetric(source, "preparation.volume.total", "TOTAL", "TOTAL BANNIERE")
+    || reportComplementaryMetric(source, "preparation.volume.total");
+  const tbagVolume = reportMetricActual(tbagVolumeMetric);
+  const zGemedVolume = perfHas(source?.activity?.actual) ? Number(source.activity.actual) : "";
+  if (!Number.isFinite(tbagVolume) || !Number.isFinite(zGemedVolume) || zGemedVolume <= 0) {
+    return { available: false, text: "Rapprochement volumes Préparation : données insuffisantes." };
+  }
+  const difference = zGemedVolume - tbagVolume;
+  const pct = difference / zGemedVolume * 100;
+  return {
+    available: true,
+    text: `RAPPROCHEMENT DES VOLUMES
+- Volume T-Bag : ${tbagVolume.toLocaleString("fr-FR")} colis
+- Volume Z GEMED — colis totaux préparés : ${zGemedVolume.toLocaleString("fr-FR")} colis
+- Écart de périmètre : ${Math.abs(difference).toLocaleString("fr-FR")} colis (${Math.abs(pct).toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} % du volume Z GEMED)
+- Conséquence : l'impact heures Préparation calculé avec le volume T-Bag et la productivité officielle GPO reste indicatif tant que les périmètres ne sont pas totalement réconciliés.`
+  };
+}
+
+function reportPerformancePeriodSeries(metricKey, currentPeriod, limit = 12) {
+  const current = parsePerformancePeriod(currentPeriod || "");
+  if (!current) return [];
+  const currentStamp = current.year * 100 + current.month;
+  const periods = [];
+  const seen = new Set();
+
+  ensureArray(state.performance).forEach(record => {
+    const parsed = performanceRecordPeriod(record);
+    if (!parsed) return;
+    const stamp = parsed.year * 100 + parsed.month;
+    if (stamp > currentStamp || seen.has(parsed.key)) return;
+    seen.add(parsed.key);
+    periods.push(parsed);
+  });
+
+  if (!seen.has(current.key)) periods.push(current);
+  periods.sort((a, b) => (b.year * 100 + b.month) - (a.year * 100 + a.month));
+
+  return periods.slice(0, limit).map(period => {
+    const preferred = getPreferredPerformanceValue(metricKey, period.key);
+    const value = perfHas(preferred?.value) && Number.isFinite(Number(preferred.value))
+      ? Number(preferred.value) : "";
+    return { ...period, value };
+  }).filter(item => Number.isFinite(item.value));
+}
+
+function reportTrendDirection(metricKey) {
+  return new Set([
+    "hours.indirect",
+    "absenteeism.total",
+    "economy.cout_total_par_colis",
+    "economy.cout_exploitation_par_colis"
+  ]).has(metricKey) ? "lower" : "higher";
+}
+
+function reportThreeMonthMovement(metricKey, periodKey) {
+  const series = reportPerformancePeriodSeries(metricKey, periodKey, 3);
+  if (series.length < 3) return "";
+  const [m0, m1, m2] = series;
+  const d1 = m0.value - m1.value;
+  const d2 = m1.value - m2.value;
+  const sense = reportTrendDirection(metricKey);
+  const favorable = delta => sense === "higher" ? delta > 0 : delta < 0;
+  const unfavorable = delta => sense === "higher" ? delta < 0 : delta > 0;
+  if (favorable(d1) && favorable(d2)) return "redressement";
+  if (unfavorable(d1) && unfavorable(d2)) return "dégradation";
+  return "mixte";
+}
+
+function reportMultiPeriodTrendSummary(periodKey) {
+  const defs = [
+    ["IPO", "ipo.total"],
+    ["Activité", "activity.colis_total"],
+    ["Préparation", "productivity.preparation"],
+    ["Heures indirectes", "hours.indirect"],
+    ["Absentéisme", "absenteeism.total"],
+    ["Coût colis total", "economy.cout_total_par_colis"],
+    ["Coût colis Exploit", "economy.cout_exploitation_par_colis"]
+  ];
+
+  const degrading = [];
+  const improving = [];
+  defs.forEach(([label, key]) => {
+    const movement = reportThreeMonthMovement(key, periodKey);
+    if (movement === "dégradation") degrading.push(label);
+    if (movement === "redressement") improving.push(label);
+  });
+
+  const prepSeries = reportPerformancePeriodSeries("productivity.preparation", periodKey, 12);
+  let bestWorst = "Donnée historique multi-mois insuffisante";
+  if (prepSeries.length >= 2) {
+    const best = [...prepSeries].sort((a, b) => b.value - a.value)[0];
+    const worst = [...prepSeries].sort((a, b) => a.value - b.value)[0];
+    bestWorst = `Préparation — meilleur mois disponible : ${String(best.month).padStart(2, "0")}/${best.year} à ${best.value.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} colis/h ; plus faible : ${String(worst.month).padStart(2, "0")}/${worst.year} à ${worst.value.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} colis/h`;
+  }
+
+  const availablePeriods = new Set();
+  ensureArray(state.performance).forEach(record => {
+    const parsed = performanceRecordPeriod(record);
+    if (parsed) availablePeriods.add(parsed.key);
+  });
+
+  return `- KPI en dégradation continue sur 3 périodes : ${degrading.length ? degrading.join(", ") : "aucun identifié avec les données disponibles"}
+- KPI en redressement continu sur 3 périodes : ${improving.length ? improving.join(", ") : "aucun identifié avec les données disponibles"}
+- Meilleur / plus faible mois : ${bestWorst}
+- Profondeur historique disponible dans DEOS : ${availablePeriods.size} période(s).`;
+}
+
 function reportPerformanceMonthlySections(source, ctx, actions, decisions, documents) {
   const periodKey = performancePeriodKey(source) || canonicalPerformancePeriod(sourceTypePeriod(source)) || "";
   const directionRows = periodKey ? performanceSummaryBuildRows(periodKey) : [];
@@ -15974,10 +16097,12 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     return `${performanceSummaryFormatValue(row.value, row.unit, row.metricKey)} | Budget ${performanceSummaryFormatValue(row.budget, row.unit, row.metricKey)} | Historique ${performanceSummaryFormatValue(row.historical, row.unit, row.metricKey)} | Écart ${performanceSummaryFormatDelta(row.gap, row.unit, row.metricKey)} | Statut ${row.statusLabel || "À compléter"} | Source ${row.sourceLabel || performanceSourceLabel(row.source)}`;
   };
   const metricLine = (label, metric, unit = "") => {
-    if (!metric) return `- ${label} : À compléter`;
-    const actual = perfHas(metric.actual) ? `${perfFmt(metric.actual)}${unit ? " " + unit : ""}` : "À compléter";
-    const budget = perfHas(metric.budget) ? `${perfFmt(metric.budget)}${unit ? " " + unit : ""}` : "À compléter";
-    const historical = perfHas(metric.historical) ? `${perfFmt(metric.historical)}${unit ? " " + unit : ""}` : "À compléter";
+    if (!metric) return `- ${label} : Donnée source non disponible`;
+    const hasAny = [metric.actual, metric.budget, metric.historical].some(perfHas);
+    if (!hasAny) return `- ${label} : Donnée source non disponible`;
+    const actual = perfHas(metric.actual) ? `${perfFmt(metric.actual)}${unit ? " " + unit : ""}` : "Donnée source non disponible";
+    const budget = perfHas(metric.budget) ? `${perfFmt(metric.budget)}${unit ? " " + unit : ""}` : "Donnée source non disponible";
+    const historical = perfHas(metric.historical) ? `${perfFmt(metric.historical)}${unit ? " " + unit : ""}` : "Donnée source non disponible";
     return `- ${label} : Réel ${actual} | Budget ${budget} | Historique ${historical}`;
   };
   const prep = source.productivity?.["Préparation"] || {};
@@ -15993,6 +16118,11 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
   const tbagPrepAnalysis = reportTBagPreparationAnalysis(source);
   const tbagBannerAnalysis = reportTBagBannerAnalysis(source);
   const tbagPopulationGapAnalysis = reportTBagPopulationGapAnalysis(source);
+  const prepVolumeReconciliation = reportPreparationVolumeReconciliation(source);
+
+  const resultOpMetric = reportComplementaryMetric(source, "economy.resultat_operationnel");
+  const ebitMetric = reportComplementaryMetric(source, "economy.ebit");
+  const demarqueMetric = reportComplementaryMetric(source, "quality.demarque_marchandises");
 
   const prepImpactVolume = reportPreparationVolumeForImpact(source);
   const receptionUo = reportSectorUo(source, periodKey, "reception");
@@ -16008,6 +16138,13 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
   const impactChargementAuto = reportProductivityHoursImpact(uoChargement, chargement.actual, chargement.budget);
 
   const indirectHoursShareAuto = reportHoursShare(source.hours?.total?.actual, source.hours?.indirect?.actual);
+  const totalHoursGap = (perfHas(source.hours?.total?.actual) && perfHas(source.hours?.total?.budget))
+    ? Number(source.hours.total.actual) - Number(source.hours.total.budget) : "";
+  const directHoursGap = (perfHas(source.hours?.direct?.actual) && perfHas(source.hours?.direct?.budget))
+    ? Number(source.hours.direct.actual) - Number(source.hours.direct.budget) : "";
+  const indirectHoursGap = (perfHas(source.hours?.indirect?.actual) && perfHas(source.hours?.indirect?.budget))
+    ? Number(source.hours.indirect.actual) - Number(source.hours.indirect.budget) : "";
+  const multiPeriodTrendSummary = reportMultiPeriodTrendSummary(periodKey);
 
   const linkedDocs = documents || "À compléter";
 
@@ -16040,7 +16177,7 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     {
       title: "4. Productivités par secteur et IPO",
       body: `${metricLine("Préparation", prep, "colis/h")}\n${metricLine("Réception", reception, "palettes/h")}\n${metricLine("Manutention", manut, "palettes/h")}\n${metricLine("Chargement", chargement, "palettes/h")}\n${metricLine("Transit", transit, "palettes/h")}\n\nIPO total : ${fmtRow(rowByKey("ipo.total"))}\nIPO variable : Réel ${perfFmt(source.ipo?.variable?.actual)} | Budget ${perfFmt(source.ipo?.variable?.budget)} | Historique ${perfFmt(source.ipo?.variable?.historical)}\n\nImpacts en heures par secteur :
-- Préparation : ${perfHas(prep.hoursBudgetGap) ? reportFmtSignedHours(prep.hoursBudgetGap) : reportFmtSignedHours(impactPrepAuto)} vs budget
+- Préparation : ${perfHas(prep.hoursBudgetGap) ? reportFmtSignedHours(prep.hoursBudgetGap) : reportFmtSignedHours(impactPrepAuto)} vs budget${prepVolumeReconciliation.available ? " — indicatif, périmètres GPO / T-Bag à réconcilier" : ""}
 - Réception : ${perfHas(reception.hoursBudgetGap) ? reportFmtSignedHours(reception.hoursBudgetGap) : reportFmtSignedHours(impactReceptionAuto)} vs budget
 - Manutention : ${perfHas(manut.hoursBudgetGap) ? reportFmtSignedHours(manut.hoursBudgetGap) : reportFmtSignedHours(impactManutAuto)} vs budget
 - Chargement : ${perfHas(chargement.hoursBudgetGap) ? reportFmtSignedHours(chargement.hoursBudgetGap) : reportFmtSignedHours(impactChargementAuto)} vs budget
@@ -16059,11 +16196,11 @@ Lecture attendue : identifier ce qui consomme des heures, ce qui compense favora
     },
     {
       title: "5. Activité, heures et capacité",
-      body: `${metricLine("Activité / colis", source.activity, "colis")}\n${metricLine("Heures totales", source.hours?.total, "h")}\n${metricLine("Heures directes", source.hours?.direct, "h")}\n${metricLine("Heures indirectes", source.hours?.indirect, "h")}\n\nPoids des heures indirectes : ${reportFmtPercent1(indirectHoursShareAuto)}.\nCapacité / charge : volume attendu M+1, risques de saturation, recours ETT, jours atypiques, opérations commerciales et contraintes transport : À compléter.\n\nLecture hebdomadaire / rupture de tendance : À compléter.`
+      body: `${metricLine("Activité / colis", source.activity, "colis")}\n${metricLine("Heures totales", source.hours?.total, "h")}\n${metricLine("Heures directes", source.hours?.direct, "h")}\n${metricLine("Heures indirectes", source.hours?.indirect, "h")}\n\nPoids des heures indirectes : ${reportFmtPercent1(indirectHoursShareAuto)}.\n\nÉcarts heures vs budget :\n- Heures totales : ${reportFmtSignedHours(totalHoursGap)}\n- Heures directes : ${reportFmtSignedHours(directHoursGap)}\n- Heures indirectes : ${reportFmtSignedHours(indirectHoursGap)}\n\nCapacité / charge M+1 : À préparer (volume attendu, risques de saturation, recours ETT, jours atypiques, opérations commerciales, contraintes transport).\nLecture hebdomadaire / rupture de tendance : voir section 10 et compléter uniquement si un événement opérationnel doit être contextualisé.`
     },
     {
       title: "6. Préparation — performance main-d'œuvre",
-      body: `${tbagPrepAnalysis.text}\n\nCONFIDENTIALITÉ\nLes données utilisées dans cette section sont agrégées. Aucune donnée nominative T-Bag n'est reprise dans la RDP.`
+      body: `${tbagPrepAnalysis.text}\n\n${prepVolumeReconciliation.text}\n\nCONFIDENTIALITÉ\nLes données utilisées dans cette section sont agrégées. Aucune donnée nominative T-Bag n'est reprise dans la RDP.`
     },
     {
       title: "7. Leviers opérationnels Préparation",
@@ -16071,35 +16208,34 @@ Lecture attendue : identifier ce qui consomme des heures, ce qui compense favora
     },
     {
       title: "8. Absentéisme, sécurité et présentéisme",
-      body: `Absentéisme total : ${fmtRow(rowByKey("absenteeism.total"))}\nMaladie : ${perfHas(source.absenteeism?.details?.["Maladie"]?.actual) ? perfFmt(source.absenteeism.details["Maladie"].actual) + " %" : "À compléter"}\nAccidents du travail : ${perfHas(source.absenteeism?.details?.["Accidents du travail"]?.actual) ? perfFmt(source.absenteeism.details["Accidents du travail"].actual) + " %" : "À compléter"}\nFormation : ${perfHas(source.absenteeism?.details?.["Formation"]?.actual) ? perfFmt(source.absenteeism.details["Formation"].actual) + " %" : "À compléter"}\nAutres absences : ${perfHas(source.absenteeism?.details?.["Autres absences"]?.actual) ? perfFmt(source.absenteeism.details["Autres absences"].actual) + " %" : "À compléter"}\n\nÀ préparer : analyse des causes AT, secteurs concernés, récurrence, actions de prévention, impact opérationnel de l'absentéisme et évolution vs mois précédent / historique.`
+      body: `Absentéisme total : ${fmtRow(rowByKey("absenteeism.total"))}\nMaladie : ${perfHas(source.absenteeism?.details?.["Maladie"]?.actual) ? perfFmt(source.absenteeism.details["Maladie"].actual) + " %" : "Donnée source non disponible"}\nAccidents du travail : ${perfHas(source.absenteeism?.details?.["Accidents du travail"]?.actual) ? perfFmt(source.absenteeism.details["Accidents du travail"].actual) + " %" : "Donnée source non disponible"}\nFormation : ${perfHas(source.absenteeism?.details?.["Formation"]?.actual) ? perfFmt(source.absenteeism.details["Formation"].actual) + " %" : "Donnée source non disponible"}\nAutres absences : ${perfHas(source.absenteeism?.details?.["Autres absences"]?.actual) ? perfFmt(source.absenteeism.details["Autres absences"].actual) + " %" : "Donnée source non disponible"}\n\nÀ préparer : analyse des causes AT, secteurs concernés, récurrence, actions de prévention, impact opérationnel de l'absentéisme et évolution vs mois précédent / historique.`
     },
     {
       title: "9. Économie, qualité et coûts unitaires",
-      body: `Coût colis total : ${fmtRow(rowByKey("economy.cout_total_par_colis"))}\nCoût colis exploitation (Exploit) : ${fmtRow(rowByKey("economy.cout_exploitation_par_colis"))}\nGains & Pertes : Réel ${Number.isFinite(qualityTotalActual) ? perfFmt(qualityTotalActual) : "Donnée source non disponible"} | Budget ${Number.isFinite(qualityTotalBudget) ? perfFmt(qualityTotalBudget) : "Donnée source non disponible"} | Historique ${Number.isFinite(qualityTotalHistorical) ? perfFmt(qualityTotalHistorical) : "Donnée source non disponible"}\nRésultat opérationnel / EBIT / démarque marchandises : voir tableau Économie & qualité DEOS.\n\nPareto à préparer : litiges, casse, non-livrés, périmés, contrôle stock, dons et autres postes significatifs.\n\nLecture attendue : chiffrer l'écart mensuel et cumul, identifier les 2 ou 3 postes expliquant l'essentiel de la dérive et rattacher chaque poste à un responsable / plan d'action.`
+      body: `Coût colis total : ${fmtRow(rowByKey("economy.cout_total_par_colis"))}\nCoût colis exploitation (Exploit) : ${fmtRow(rowByKey("economy.cout_exploitation_par_colis"))}\nGains & Pertes : Réel ${Number.isFinite(qualityTotalActual) ? perfFmt(qualityTotalActual) : "Donnée source non disponible"} | Budget ${Number.isFinite(qualityTotalBudget) ? perfFmt(qualityTotalBudget) : "Donnée source non disponible"} | Historique ${Number.isFinite(qualityTotalHistorical) ? perfFmt(qualityTotalHistorical) : "Donnée source non disponible"}\nRésultat opérationnel : ${reportMetricTriplet(resultOpMetric, "k€")}\nEBIT : ${reportMetricTriplet(ebitMetric, "k€")}\nDémarque marchandises : ${reportMetricTriplet(demarqueMetric, "k€")}\n\nPareto à préparer : litiges, casse, non-livrés, périmés, contrôle stock, dons et autres postes significatifs.\n\nLecture attendue : chiffrer l'écart mensuel et cumul, identifier les 2 ou 3 postes expliquant l'essentiel de la dérive et rattacher chaque poste à un responsable / plan d'action.`
     },
     {
       title: "10. Historique, tendance et projection",
       body: `LECTURE DE TENDANCE — KPI DIRECTION
-${directionCoreRows.map(r => `- ${r.label} : ${performanceSummaryFormatValue(r.value, r.unit, r.metricKey)} | Historique ${performanceSummaryFormatValue(r.historical, r.unit, r.metricKey)} | Écart historique ${performanceSummaryFormatDelta(r.trend, r.unit, r.metricKey)} | Statut ${r.statusLabel || "À compléter"}`).join("\n") || "À compléter"}
+${directionCoreRows.map(r => `- ${r.label} : ${performanceSummaryFormatValue(r.value, r.unit, r.metricKey)} | Historique ${performanceSummaryFormatValue(r.historical, r.unit, r.metricKey)} | Écart historique ${performanceSummaryFormatDelta(r.trend, r.unit, r.metricKey)} | Statut ${r.statusLabel || "À compléter"}`).join("\n") || "Donnée source non disponible"}
 
 LECTURE OPÉRATIONNELLE COMPLÉMENTAIRE
-- Productivité Réception : ${perfHas(reception.actual) ? perfFmt(reception.actual) : "À compléter"} vs historique ${perfHas(reception.historical) ? perfFmt(reception.historical) : "À compléter"}
-- Productivité Manutention : ${perfHas(manut.actual) ? perfFmt(manut.actual) : "À compléter"} vs historique ${perfHas(manut.historical) ? perfFmt(manut.historical) : "À compléter"}
-- Productivité Chargement : ${perfHas(chargement.actual) ? perfFmt(chargement.actual) : "À compléter"} vs historique ${perfHas(chargement.historical) ? perfFmt(chargement.historical) : "À compléter"}
-- Heures totales : ${perfHas(source.hours?.total?.actual) ? perfFmt(source.hours.total.actual) : "À compléter"} vs historique ${perfHas(source.hours?.total?.historical) ? perfFmt(source.hours.total.historical) : "À compléter"}
-- Heures directes : ${perfHas(source.hours?.direct?.actual) ? perfFmt(source.hours.direct.actual) : "À compléter"} vs historique ${perfHas(source.hours?.direct?.historical) ? perfFmt(source.hours.direct.historical) : "À compléter"}
+- Productivité Réception : ${perfHas(reception.actual) ? perfFmt(reception.actual) : "Donnée source non disponible"} vs historique ${perfHas(reception.historical) ? perfFmt(reception.historical) : "Donnée source non disponible"}
+- Productivité Manutention : ${perfHas(manut.actual) ? perfFmt(manut.actual) : "Donnée source non disponible"} vs historique ${perfHas(manut.historical) ? perfFmt(manut.historical) : "Donnée source non disponible"}
+- Productivité Chargement : ${perfHas(chargement.actual) ? perfFmt(chargement.actual) : "Donnée source non disponible"} vs historique ${perfHas(chargement.historical) ? perfFmt(chargement.historical) : "Donnée source non disponible"}
+- Heures totales : ${perfHas(source.hours?.total?.actual) ? perfFmt(source.hours.total.actual) : "Donnée source non disponible"} vs historique ${perfHas(source.hours?.total?.historical) ? perfFmt(source.hours.total.historical) : "Donnée source non disponible"}
+- Heures directes : ${perfHas(source.hours?.direct?.actual) ? perfFmt(source.hours.direct.actual) : "Donnée source non disponible"} vs historique ${perfHas(source.hours?.direct?.historical) ? perfFmt(source.hours.direct.historical) : "Donnée source non disponible"}
 
-RUPTURES / TENDANCES À COMMENTER
-- KPI qui se dégradent sur plusieurs périodes : À compléter
-- KPI qui se redressent : À compléter
-- meilleur / plus faible mois : À compléter
-- tendance 3 mois / 12 mois : À compléter
+RUPTURES / TENDANCES MULTI-PÉRIODES
+${multiPeriodTrendSummary}
 
-PROJECTION
-- cumul YTD vs budget / historique : À compléter
-- projection fin d'année : À compléter
-- principaux risques M+1 : À compléter
-- hypothèses de volume, effectif, absentéisme, ETT et opérations commerciales : À compléter`
+PROJECTION — À PRÉPARER
+- cumul YTD vs budget / historique ;
+- projection fin d'année ;
+- principaux risques M+1 ;
+- hypothèses de volume, effectif, absentéisme, ETT et opérations commerciales.
+
+Ces éléments prospectifs ne sont pas inventés par DEOS : ils doivent être renseignés à partir du budget, du forecast et des hypothèses opérationnelles validées.`
     },
     {
       title: "11. Priorités et plan d'actions",
@@ -16115,7 +16251,7 @@ PROJECTION
     },
     {
       title: "14. Fiabilité des données et points à valider",
-      body: `Sources de référence : GPO / Guide de performance, Z GEMED, T-Bag, CGTAB, GA / Suivi GA, Litiges / GC-GE selon disponibilité.\n\nPoints de contrôle avant présentation :\n- réconcilier les périmètres lorsqu'une même notion diffère entre sources ;\n- distinguer mensuel et cumul ;\n- vérifier les unités ;\n- documenter les valeurs atypiques ;\n- ne pas additionner des impacts financiers calculés sur des périmètres qui se recouvrent ;\n- signaler explicitement toute donnée manquante ou non fiabilisée ;\n- ne jamais calculer un impact en heures avec un volume provenant d'un périmètre différent de la productivité analysée.\n- distinguer "Donnée source non disponible" (absence réelle de donnée) et "À compléter" (contenu managérial à préparer).\n\nDocuments liés :\n${linkedDocs}`
+      body: `Sources de référence : GPO / Guide de performance, Z GEMED, T-Bag, CGTAB, GA / Suivi GA, Litiges / GC-GE selon disponibilité.\n\nPoints de contrôle avant présentation :\n- réconcilier les périmètres lorsqu'une même notion diffère entre sources ;\n- distinguer mensuel et cumul ;\n- vérifier les unités ;\n- documenter les valeurs atypiques ;\n- ne pas additionner des impacts financiers calculés sur des périmètres qui se recouvrent ;\n- signaler explicitement toute donnée manquante ou non fiabilisée ;\n- ne jamais calculer un impact en heures avec un volume provenant d'un périmètre différent de la productivité analysée ;\n- réconcilier explicitement le volume Préparation T-Bag avec le volume Z GEMED / GPO avant de considérer l'impact heures Préparation comme définitif ;\n- distinguer "Donnée source non disponible" (absence réelle de donnée) et "À compléter" (contenu managérial à préparer).\n\nDocuments liés :\n${linkedDocs}`
     },
     {
       title: "15. Message de clôture de la revue",
