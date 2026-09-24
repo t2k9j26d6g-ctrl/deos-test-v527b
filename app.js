@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q5V";
+const DEOS_VERSION = "V5.30RDP-FINAL";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -15653,15 +15653,15 @@ function reportPerformanceClosingMessage(source, directionRows = [], decisions =
     .map(x => x.name);
 
   const sentence1 = positives.length
-    ? `${positives.join(", ")} restent au-dessus du budget.`
+    ? `Sur le cumul GPO, ${positives.join(", ")} restent au-dessus du budget.`
     : "Les points maîtrisés doivent être confirmés en séance.";
 
   const drifts = [];
-  if (prep && prep.statusLabel !== "Maîtrisé") drifts.push(`Préparation ${performanceSummaryFormatValue(prep.value, prep.unit, prep.metricKey)} vs budget ${performanceSummaryFormatValue(prep.budget, prep.unit, prep.metricKey)}`);
-  if (ipo && ipo.statusLabel !== "Maîtrisé") drifts.push(`IPO ${performanceSummaryFormatValue(ipo.value, ipo.unit, ipo.metricKey)} vs budget ${performanceSummaryFormatValue(ipo.budget, ipo.unit, ipo.metricKey)}`);
-  if (abs?.statusLabel === "Critique") drifts.push(`absentéisme ${performanceSummaryFormatValue(abs.value, abs.unit, abs.metricKey)}`);
-  if (cost?.statusLabel === "Critique") drifts.push(`coût colis total ${performanceSummaryFormatValue(cost.value, cost.unit, cost.metricKey)}`);
-  if (exploit?.statusLabel === "Critique") drifts.push(`coût colis Exploit ${performanceSummaryFormatValue(exploit.value, exploit.unit, exploit.metricKey)}`);
+  if (prep && prep.statusLabel !== "Maîtrisé") drifts.push(`Préparation ${performanceSummaryFormatValue(prep.value, prep.unit, prep.metricKey)} vs budget ${performanceSummaryFormatValue(prep.budget, prep.unit, prep.metricKey)} (cumul GPO)`);
+  if (ipo && ipo.statusLabel !== "Maîtrisé") drifts.push(`IPO ${performanceSummaryFormatValue(ipo.value, ipo.unit, ipo.metricKey)} vs budget ${performanceSummaryFormatValue(ipo.budget, ipo.unit, ipo.metricKey)} (cumul GPO)`);
+  if (abs?.statusLabel === "Critique") drifts.push(`absentéisme ${performanceSummaryFormatValue(abs.value, abs.unit, abs.metricKey)} (cumul GPO)`);
+  if (cost?.statusLabel === "Critique") drifts.push(`coût colis total ${performanceSummaryFormatValue(cost.value, cost.unit, cost.metricKey)} (mensuel Z GEMED)`);
+  if (exploit?.statusLabel === "Critique") drifts.push(`coût colis Exploit ${performanceSummaryFormatValue(exploit.value, exploit.unit, exploit.metricKey)} (mensuel Z GEMED)`);
 
   const decisionLine = decisions && decisions !== "À compléter"
     ? "Les décisions déjà liées sont reprises dans la section dédiée."
@@ -15681,7 +15681,6 @@ ${decisionLine}
 PROJECTION M+1
 À compléter avant la revue : activité attendue, ressources / ETT, risques opérationnels et trajectoire des KPI critiques.`;
 }
-
 
 function reportComplementaryMetric(perf, metricKey = "", population = "", banner = "") {
   const items = ensureArray(perf?.complementaryKpis);
@@ -16102,6 +16101,27 @@ function reportMultiPeriodTrendSummary(periodKey) {
     ["Coût colis Exploit", "economy.cout_exploitation_par_colis"]
   ];
 
+  const availablePeriods = new Set();
+  ensureArray(state.performance).forEach(record => {
+    const parsed = performanceRecordPeriod(record);
+    if (parsed) availablePeriods.add(parsed.key);
+  });
+
+  const prepSeries = reportPerformancePeriodSeries("productivity.preparation", periodKey, 12);
+  let bestWorst = "Non évaluable";
+  if (prepSeries.length >= 2) {
+    const best = [...prepSeries].sort((a, b) => b.value - a.value)[0];
+    const worst = [...prepSeries].sort((a, b) => a.value - b.value)[0];
+    bestWorst = `Préparation — meilleur mois disponible : ${String(best.month).padStart(2, "0")}/${best.year} à ${best.value.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} colis/h ; plus faible : ${String(worst.month).padStart(2, "0")}/${worst.year} à ${worst.value.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} colis/h`;
+  }
+
+  if (availablePeriods.size < 3) {
+    return `- Tendance 3 périodes : non évaluable (moins de 3 périodes Performance homogènes chargées).
+- Meilleur / plus faible mois : ${bestWorst}
+- Profondeur historique disponible dans DEOS : ${availablePeriods.size} période(s).
+- Action : charger au moins 3 périodes homogènes avant toute conclusion de tendance.`;
+  }
+
   const degrading = [];
   const improving = [];
   defs.forEach(([label, key]) => {
@@ -16110,26 +16130,11 @@ function reportMultiPeriodTrendSummary(periodKey) {
     if (movement === "redressement") improving.push(label);
   });
 
-  const prepSeries = reportPerformancePeriodSeries("productivity.preparation", periodKey, 12);
-  let bestWorst = "Donnée historique multi-mois insuffisante";
-  if (prepSeries.length >= 2) {
-    const best = [...prepSeries].sort((a, b) => b.value - a.value)[0];
-    const worst = [...prepSeries].sort((a, b) => a.value - b.value)[0];
-    bestWorst = `Préparation — meilleur mois disponible : ${String(best.month).padStart(2, "0")}/${best.year} à ${best.value.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} colis/h ; plus faible : ${String(worst.month).padStart(2, "0")}/${worst.year} à ${worst.value.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} colis/h`;
-  }
-
-  const availablePeriods = new Set();
-  ensureArray(state.performance).forEach(record => {
-    const parsed = performanceRecordPeriod(record);
-    if (parsed) availablePeriods.add(parsed.key);
-  });
-
-  return `- KPI en dégradation continue sur 3 périodes : ${degrading.length ? degrading.join(", ") : "aucun identifié avec les données disponibles"}
-- KPI en redressement continu sur 3 périodes : ${improving.length ? improving.join(", ") : "aucun identifié avec les données disponibles"}
+  return `- KPI en dégradation continue sur 3 périodes : ${degrading.length ? degrading.join(", ") : "aucun"}
+- KPI en redressement continu sur 3 périodes : ${improving.length ? improving.join(", ") : "aucun"}
 - Meilleur / plus faible mois : ${bestWorst}
-- Profondeur historique disponible dans DEOS : ${availablePeriods.size} période(s).${availablePeriods.size < 3 ? "\n- Conclusion : tendance 3 mois non évaluable avec moins de 3 périodes chargées." : ""}`;
+- Profondeur historique disponible dans DEOS : ${availablePeriods.size} période(s).`;
 }
-
 
 function reportScopeLabel(periodType = "") {
   if (periodType === "cumulative") return "Cumul à date (GPO)";
@@ -16272,7 +16277,7 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
   return [
     {
       title: "1. Cadre de la revue",
-      body: `Site : Saint-Gilles\nPériode analysée : ${perfPeriodLabel(source)}\nPréparé par : ${identityName()}\nDate de préparation : ${isoToday()}\nObjet : préparer la revue mensuelle de performance, expliquer les écarts, objectiver les causes, arrêter les priorités et préparer les arbitrages.\n\nRègle de lecture : distinguer systématiquement les faits, les hypothèses explicatives et les causalités démontrées. Comparer le réalisé au budget, à l'historique et, lorsque disponible, au cumul / à la tendance.`
+      body: `Site : Saint-Gilles\nPériode analysée : ${perfPeriodLabel(source)}\nPréparé par : ${identityName()}\nDate de préparation : ${isoToday()}\nObjet : préparer la revue mensuelle de performance, expliquer les écarts, objectiver les causes, arrêter les priorités et préparer les arbitrages.\nStatut du générateur : RDP FINAL CANDIDATE — contrôles de cohérence et de périmètre activés.\n\nRègle de lecture : distinguer systématiquement les faits, les hypothèses explicatives et les causalités démontrées. Comparer le réalisé au budget, à l'historique et, lorsque disponible, au cumul / à la tendance.`
     },
     {
       title: "2. Synthèse exécutive",
@@ -16319,10 +16324,10 @@ Règle : aucun impact horaire n'est calculé lorsque le volume et la productivit
     },
     {
       title: "9. Économie, qualité et coûts unitaires",
-      body: `Coût colis total : ${fmtRow(rowByKey("economy.cout_total_par_colis"))}\nCoût colis exploitation (Exploit) : ${fmtRow(rowByKey("economy.cout_exploitation_par_colis"))}\nGains & Pertes : Réel ${Number.isFinite(qualityTotalActual) ? perfFmt(qualityTotalActual) : "Donnée source non disponible"} | Budget ${Number.isFinite(qualityTotalBudget) ? perfFmt(qualityTotalBudget) : "Donnée source non disponible"} | Historique ${Number.isFinite(qualityTotalHistorical) ? perfFmt(qualityTotalHistorical) : "Donnée source non disponible"}\nRésultat opérationnel (Z GEMED mensuel) : ${reportMetricTriplet(resultOpMetric, "k€")}\nEBIT (Z GEMED mensuel) : ${reportMetricTriplet(ebitMetric, "k€")}\nDémarque marchandises (Z GEMED mensuel) : ${reportMetricTriplet(demarqueMetric, "k€")}\n\nPareto à préparer : litiges, casse, non-livrés, périmés, contrôle stock, dons et autres postes significatifs.\n\nLecture attendue : chiffrer l'écart mensuel et cumul, identifier les 2 ou 3 postes expliquant l'essentiel de la dérive et rattacher chaque poste à un responsable / plan d'action.`
+      body: `Coût colis total : ${fmtRow(rowByKey("economy.cout_total_par_colis"))}\nCoût colis exploitation (Exploit) : ${fmtRow(rowByKey("economy.cout_exploitation_par_colis"))}\nGains & Pertes : Réel ${Number.isFinite(qualityTotalActual) ? perfFmt(qualityTotalActual) : "Donnée source non disponible"} | Budget ${Number.isFinite(qualityTotalBudget) ? perfFmt(qualityTotalBudget) : "Donnée source non disponible"} | Historique ${Number.isFinite(qualityTotalHistorical) ? perfFmt(qualityTotalHistorical) : "Donnée source non disponible"}${(!Number.isFinite(qualityTotalActual) || !Number.isFinite(qualityTotalBudget)) ? " — comparaison non évaluable" : ""}\nRésultat opérationnel (Z GEMED mensuel) : ${reportMetricTriplet(resultOpMetric, "k€")}\nEBIT (Z GEMED mensuel) : ${reportMetricTriplet(ebitMetric, "k€")}\nDémarque marchandises (Z GEMED mensuel) : ${reportMetricTriplet(demarqueMetric, "k€")}\n\nPareto à préparer : litiges, casse, non-livrés, périmés, contrôle stock, dons et autres postes significatifs.\n\nLecture attendue : chiffrer l'écart mensuel et cumul, identifier les 2 ou 3 postes expliquant l'essentiel de la dérive et rattacher chaque poste à un responsable / plan d'action.`
     },
     {
-      title: "10. Historique, tendance et projection",
+      title: "10. Historique, profondeur de données et projection",
       body: `LECTURE VS HISTORIQUE — KPI DIRECTION (même périmètre que la source)
 ${directionCoreRows.map(r => `- ${r.label} : ${performanceSummaryFormatValue(r.value, r.unit, r.metricKey)} | Historique ${performanceSummaryFormatValue(r.historical, r.unit, r.metricKey)} | Écart historique ${performanceSummaryFormatDelta(r.trend, r.unit, r.metricKey)} | Statut ${r.statusLabel || "À compléter"}`).join("\n") || "Donnée source non disponible"}
 
@@ -16360,7 +16365,9 @@ Ces éléments prospectifs ne sont pas inventés par DEOS : ils doivent être re
       title: "14. Fiabilité des données et points à valider",
       body: `Sources de référence : GPO / Guide de performance, Z GEMED, T-Bag, CGTAB, GA / Suivi GA, Litiges / GC-GE selon disponibilité.\n\nPoints de contrôle avant présentation :\n- réconcilier les périmètres lorsqu'une même notion diffère entre sources ;\n- distinguer mensuel et cumul ;\n- vérifier les unités ;\n- documenter les valeurs atypiques ;\n- ne pas additionner des impacts financiers calculés sur des périmètres qui se recouvrent ;\n- signaler explicitement toute donnée manquante ou non fiabilisée ;\n- ne jamais calculer un impact en heures avec un volume provenant d'un périmètre différent de la productivité analysée ;\n- réconcilier explicitement le volume Préparation T-Bag avec le volume Z GEMED / GPO avant de considérer l'impact heures Préparation comme définitif ;\n- distinguer "Donnée source non disponible" (absence réelle de donnée) et "À compléter" (contenu managérial à préparer) ;
 - ne jamais comparer ou convertir en impact horaire une donnée mensuelle avec une productivité cumulée à date ;
-- considérer dans DEOS : GPO = cumul à date ; Z GEMED / T-Bag = mensuel, sauf métadonnée explicite contraire.\n\nDocuments liés :\n${linkedDocs}`
+- considérer dans DEOS : GPO = cumul à date ; Z GEMED / T-Bag = mensuel, sauf métadonnée explicite contraire ;
+- ne conclure à une tendance qu'avec au moins 3 périodes homogènes chargées ;
+- ne jamais transformer une absence de donnée en zéro ni une incompatibilité de périmètre en estimation.\n\nDocuments liés :\n${linkedDocs}`
     },
     {
       title: "15. Message de clôture de la revue",
