@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q5T";
+const DEOS_VERSION = "V5.30Q5U";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -10264,7 +10264,9 @@ function performanceMetricCandidates(metricDef, period, periodRecord, importRows
       sourceLabel: performanceSourceLabel(performanceSourceKey(row.source || row.sourceType || "Import")),
       confidence: row.confidence || "moyenne",
       sourceRef: row.sourceRef || row.sourceCell || "",
-      periodType: row.periodType || (performanceSourceKey(row.source || row.sourceType || "Import") === "GPO" ? "cumulative" : "monthly")
+      periodType: performanceSourceKey(row.source || row.sourceType || "Import") === "GPO"
+        ? "cumulative"
+        : (row.periodType || "monthly")
     });
   });
   const primary = performancePrimaryValueForMetric(periodRecord, metricDef);
@@ -15584,7 +15586,7 @@ function reportPerformanceExecutiveSynthesis(source, directionRows = []) {
   }
 
   const messageKey = messageParts.length
-    ? `La situation de performance arrêtée à la période est contrastée. ${messageParts.join(". ")}.`
+    ? `La situation de performance arrêtée à la période est contrastée ; les indicateurs GPO sont lus en cumul à date, tandis que Z GEMED et T-Bag sont mensuels. ${messageParts.join(". ")}.`
     : "La lecture du mois doit être finalisée à partir des écarts au budget, à l'historique et de leur tendance.";
 
   const priorities = [];
@@ -15992,23 +15994,42 @@ function reportPreparationVolumeReconciliation(source) {
     || reportComplementaryMetric(source, "preparation.volume.total");
   const tbagVolume = reportMetricActual(tbagVolumeMetric);
   const zGemedVolume = perfHas(source?.activity?.actual) ? Number(source.activity.actual) : "";
+
   if (!Number.isFinite(tbagVolume) || !Number.isFinite(zGemedVolume) || zGemedVolume <= 0) {
-    return { available: false, text: "Rapprochement volumes Préparation : données insuffisantes." };
+    return {
+      available: false,
+      comparable: false,
+      tbagVolume,
+      zGemedVolume,
+      difference: "",
+      pct: "",
+      text: "Rapprochement volumes Préparation : données insuffisantes."
+    };
   }
+
   const difference = zGemedVolume - tbagVolume;
   const pct = difference / zGemedVolume * 100;
+
+  // A non-trivial volume gap means the functional perimeters are not reconciled.
+  // 1% is deliberately conservative: DEOS must not manufacture a pseudo-precise hour impact.
+  const comparable = Math.abs(pct) <= 1;
+
   return {
     available: true,
+    comparable,
+    tbagVolume,
+    zGemedVolume,
+    difference,
+    pct,
     text: `RAPPROCHEMENT DES VOLUMES
 - Volume T-Bag : ${tbagVolume.toLocaleString("fr-FR")} colis
 - Volume Z GEMED — colis totaux préparés : ${zGemedVolume.toLocaleString("fr-FR")} colis
 - Écart de périmètre : ${Math.abs(difference).toLocaleString("fr-FR")} colis (${Math.abs(pct).toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} % du volume Z GEMED)
 - Périmètre T-Bag : Mensuel.
-- Périmètre productivité officielle GPO : ${reportScopeLabel(getPreferredPerformanceValue("productivity.preparation", performancePeriodKey(source) || canonicalPerformancePeriod(sourceTypePeriod(source)) || "").periodType)}.
-- Conséquence : aucun impact heures Préparation ne doit être considéré comme comparable tant que les périmètres temporels et fonctionnels ne sont pas identiques.`
+- Périmètre productivité officielle GPO : Cumul à date (GPO).
+- Conclusion : ${comparable ? "périmètres fonctionnels suffisamment proches pour une lecture indicative." : "périmètres non réconciliés ; aucun impact heures Préparation ne doit être calculé."}`
   };
 }
-
 function reportPerformancePeriodSeries(metricKey, currentPeriod, limit = 12) {
   const current = parsePerformancePeriod(currentPeriod || "");
   if (!current) return [];
@@ -16100,7 +16121,7 @@ function reportMultiPeriodTrendSummary(periodKey) {
 
 
 function reportScopeLabel(periodType = "") {
-  if (periodType === "cumulative") return "Cumul à date";
+  if (periodType === "cumulative") return "Cumul à date (GPO)";
   if (periodType === "monthly") return "Mensuel";
   return "Périmètre non qualifié";
 }
@@ -16132,6 +16153,25 @@ function reportImpactValue(volumeInfo, productivityInfo) {
   if (!reportImpactScopeCompatible(volumeInfo, productivityInfo)) return "";
   return reportProductivityHoursImpact(volumeInfo.value, productivityInfo.value, productivityInfo.budget);
 }
+
+function reportPreparationImpactCompatible(volumeInfo, productivityInfo, reconciliation) {
+  return reportImpactScopeCompatible(volumeInfo, productivityInfo)
+    && Boolean(reconciliation?.available)
+    && Boolean(reconciliation?.comparable);
+}
+
+function reportPreparationImpactScopeText(volumeInfo, productivityInfo, reconciliation) {
+  if (!reportImpactScopeCompatible(volumeInfo, productivityInfo)) {
+    return reportImpactScopeText(volumeInfo, productivityInfo);
+  }
+  if (!reconciliation?.available) return "périmètre fonctionnel Préparation non réconcilié";
+  if (!reconciliation?.comparable) {
+    const pct = Number(reconciliation.pct);
+    return `périmètre fonctionnel non réconcilié (${Number.isFinite(pct) ? Math.abs(pct).toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " %" : "écart significatif"})`;
+  }
+  return "compatible";
+}
+
 
 function reportPerformanceMonthlySections(source, ctx, actions, decisions, documents) {
   const periodKey = performancePeriodKey(source) || canonicalPerformancePeriod(sourceTypePeriod(source)) || "";
@@ -16183,7 +16223,9 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
   const manutentionPreferred = getPreferredPerformanceValue("productivity.manutention", periodKey);
   const chargementPreferred = getPreferredPerformanceValue("productivity.chargement", periodKey);
 
-  const impactPrepAuto = reportImpactValue(prepImpactVolume, prepPreferred);
+  const impactPrepAuto = reportPreparationImpactCompatible(prepImpactVolume, prepPreferred, prepVolumeReconciliation)
+    ? reportImpactValue(prepImpactVolume, prepPreferred)
+    : "";
   const impactReceptionAuto = reportImpactValue(receptionUo, receptionPreferred);
   const impactManutAuto = reportImpactValue(manutentionUo, manutentionPreferred);
   const impactChargementAuto = reportImpactValue(chargementUo, chargementPreferred);
@@ -16231,8 +16273,8 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     },
     {
       title: "4. Productivités par secteur et IPO",
-      body: `${metricLine("Préparation", prep, "colis/h")}\n${metricLine("Réception", reception, "palettes/h")}\n${metricLine("Manutention", manut, "palettes/h")}\n${metricLine("Chargement", chargement, "palettes/h")}\n${metricLine("Transit", transit, "palettes/h")}\n\nRéférence productivités officielles GPO : ${reportScopeLabel(prepPreferred.periodType)}.\n\nIPO total : ${fmtRow(rowByKey("ipo.total"))}\nIPO variable : Réel ${perfFmt(source.ipo?.variable?.actual)} | Budget ${perfFmt(source.ipo?.variable?.budget)} | Historique ${perfFmt(source.ipo?.variable?.historical)}\n\nImpacts en heures par secteur :
-- Préparation : ${reportImpactScopeCompatible(prepImpactVolume, prepPreferred) ? reportFmtSignedHours(impactPrepAuto) + " vs budget" : "Non calculable — " + reportImpactScopeText(prepImpactVolume, prepPreferred)}
+      body: `${metricLine("Préparation", prep, "colis/h")}\n${metricLine("Réception", reception, "palettes/h")}\n${metricLine("Manutention", manut, "palettes/h")}\n${metricLine("Chargement", chargement, "palettes/h")}\n${metricLine("Transit", transit, "palettes/h")}\n\nRéférence productivités officielles GPO : ${reportScopeLabel(prepPreferred.periodType)}. Les volumes Z GEMED / T-Bag restent mensuels.\n\nIPO total : ${fmtRow(rowByKey("ipo.total"))}\nIPO variable : Réel ${perfFmt(source.ipo?.variable?.actual)} | Budget ${perfFmt(source.ipo?.variable?.budget)} | Historique ${perfFmt(source.ipo?.variable?.historical)}\n\nImpacts en heures par secteur :
+- Préparation : ${reportPreparationImpactCompatible(prepImpactVolume, prepPreferred, prepVolumeReconciliation) ? reportFmtSignedHours(impactPrepAuto) + " vs budget" : "Non calculable — " + reportPreparationImpactScopeText(prepImpactVolume, prepPreferred, prepVolumeReconciliation)}
 - Réception : ${reportImpactScopeCompatible(receptionUo, receptionPreferred) ? reportFmtSignedHours(impactReceptionAuto) + " vs budget" : "Non calculable — " + reportImpactScopeText(receptionUo, receptionPreferred)}
 - Manutention : ${reportImpactScopeCompatible(manutentionUo, manutentionPreferred) ? reportFmtSignedHours(impactManutAuto) + " vs budget" : "Non calculable — " + reportImpactScopeText(manutentionUo, manutentionPreferred)}
 - Chargement : ${reportImpactScopeCompatible(chargementUo, chargementPreferred) ? reportFmtSignedHours(impactChargementAuto) + " vs budget" : "Non calculable — " + reportImpactScopeText(chargementUo, chargementPreferred)}
@@ -16247,7 +16289,7 @@ Règle : aucun impact horaire n'est calculé lorsque le volume et la productivit
     },
     {
       title: "5. Activité, heures et capacité",
-      body: `${metricLine("Activité / colis", source.activity, "colis")}\n${metricLine("Heures totales", source.hours?.total, "h")}\n${metricLine("Heures directes", source.hours?.direct, "h")}\n${metricLine("Heures indirectes", source.hours?.indirect, "h")}\n\nPérimètre heures GPO : ${reportScopeLabel(hoursTotalPreferred.periodType)}.\nPoids des heures indirectes : ${reportFmtPercent1(indirectHoursShareAuto)}.\n\nÉcarts heures vs budget — ${reportScopeLabel(hoursTotalPreferred.periodType)} :
+      body: `${metricLine("Activité / colis", source.activity, "colis")}\n${metricLine("Heures totales", source.hours?.total, "h")}\n${metricLine("Heures directes", source.hours?.direct, "h")}\n${metricLine("Heures indirectes", source.hours?.indirect, "h")}\n\nPérimètre heures GPO : ${reportScopeLabel(hoursTotalPreferred.periodType)}. Ces heures ne doivent pas être lues comme les seules heures du mois.\nPoids des heures indirectes : ${reportFmtPercent1(indirectHoursShareAuto)}.\n\nÉcarts heures vs budget — ${reportScopeLabel(hoursTotalPreferred.periodType)} :
 - Heures totales : ${reportFmtSignedHours(totalHoursGap)}
 - Heures directes : ${reportFmtSignedHours(directHoursGap)}
 - Heures indirectes : ${reportFmtSignedHours(indirectHoursGap)}\n\nCapacité / charge M+1 : À préparer (volume attendu, risques de saturation, recours ETT, jours atypiques, opérations commerciales, contraintes transport).\nLecture hebdomadaire / rupture de tendance : voir section 10 et compléter uniquement si un événement opérationnel doit être contextualisé.`
@@ -16306,7 +16348,8 @@ Ces éléments prospectifs ne sont pas inventés par DEOS : ils doivent être re
     {
       title: "14. Fiabilité des données et points à valider",
       body: `Sources de référence : GPO / Guide de performance, Z GEMED, T-Bag, CGTAB, GA / Suivi GA, Litiges / GC-GE selon disponibilité.\n\nPoints de contrôle avant présentation :\n- réconcilier les périmètres lorsqu'une même notion diffère entre sources ;\n- distinguer mensuel et cumul ;\n- vérifier les unités ;\n- documenter les valeurs atypiques ;\n- ne pas additionner des impacts financiers calculés sur des périmètres qui se recouvrent ;\n- signaler explicitement toute donnée manquante ou non fiabilisée ;\n- ne jamais calculer un impact en heures avec un volume provenant d'un périmètre différent de la productivité analysée ;\n- réconcilier explicitement le volume Préparation T-Bag avec le volume Z GEMED / GPO avant de considérer l'impact heures Préparation comme définitif ;\n- distinguer "Donnée source non disponible" (absence réelle de donnée) et "À compléter" (contenu managérial à préparer) ;
-- ne jamais comparer ou convertir en impact horaire une donnée mensuelle avec une productivité cumulée à date.\n\nDocuments liés :\n${linkedDocs}`
+- ne jamais comparer ou convertir en impact horaire une donnée mensuelle avec une productivité cumulée à date ;
+- considérer dans DEOS : GPO = cumul à date ; Z GEMED / T-Bag = mensuel, sauf métadonnée explicite contraire.\n\nDocuments liés :\n${linkedDocs}`
     },
     {
       title: "15. Message de clôture de la revue",
