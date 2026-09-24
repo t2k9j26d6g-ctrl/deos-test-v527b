@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q5Q";
+const DEOS_VERSION = "V5.30Q5R";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -15771,7 +15771,7 @@ RAPPROCHEMENT DES SOURCES
 - La valeur GPO reste la référence de présentation globale.
 - T-Bag est utilisé pour analyser la composition CDI / ETT / CDD et le mix d'heures.
 
-À COMPLÉTER / AUTOMATISER ULTÉRIEUREMENT
+ANALYSES NÉCESSITANT UNE SOURCE PLUS DÉTAILLÉE
 - médiane par population ;
 - part atteignant le standard de 125 colis/h ;
 - dispersion ;
@@ -15888,6 +15888,82 @@ function reportIndirectHoursShare(totalHours, indirectHours) {
   return indirect / total * 100;
 }
 
+
+function reportFirstFinite(values = []) {
+  for (const value of values) {
+    if (value === "" || value === null || value === undefined) continue;
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return "";
+}
+
+function reportComplementaryActualByKeys(source, keys = []) {
+  for (const key of keys) {
+    const metric = reportComplementaryMetric(source, key);
+    const value = reportMetricActual(metric);
+    if (Number.isFinite(value)) return value;
+  }
+  return "";
+}
+
+function reportSectorUo(source, periodKey, sector) {
+  const defs = {
+    reception: {
+      summaryKey: "activity.uo_reception",
+      complementaryKeys: ["activity.palettes_receptionnees", "activity.uo_reception"],
+      unit: "palettes"
+    },
+    manutention: {
+      summaryKey: "activity.uo_manutention",
+      complementaryKeys: ["activity.palettes_manutentionnees", "activity.uo_manutention"],
+      unit: "palettes"
+    },
+    chargement: {
+      summaryKey: "activity.uo_chargement",
+      complementaryKeys: ["activity.supports_charges", "activity.uo_chargement"],
+      unit: "supports"
+    }
+  };
+  const def = defs[sector];
+  if (!def) return { value: "", unit: "" };
+
+  // 1. KPI complementary carrying the real Z GEMED metric key.
+  const direct = reportComplementaryActualByKeys(source, def.complementaryKeys);
+  if (Number.isFinite(direct) && direct > 0) return { value: direct, unit: def.unit };
+
+  // 2. Native DEOS preferred-value resolver.
+  const preferred = getPreferredPerformanceValue(def.summaryKey, periodKey);
+  const preferredValue = preferred?.value;
+  if (perfHas(preferredValue) && Number.isFinite(Number(preferredValue)) && Number(preferredValue) > 0) {
+    return { value: Number(preferredValue), unit: def.unit };
+  }
+
+  // 3. Performance summary rows already resolve aliases/source hierarchy.
+  const row = performanceSummaryBuildRows(periodKey).find(r => r.metricKey === def.summaryKey);
+  if (row && perfHas(row.value) && Number.isFinite(Number(row.value)) && Number(row.value) > 0) {
+    return { value: Number(row.value), unit: def.unit };
+  }
+
+  return { value: "", unit: def.unit };
+}
+
+function reportHoursShare(total, part) {
+  const t = Number(total), p = Number(part);
+  if (![t, p].every(Number.isFinite) || t <= 0 || p < 0) return "";
+  return p / t * 100;
+}
+
+function reportFmtPercent1(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "À compléter";
+  return `${n.toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`;
+}
+
+function reportDataAvailabilityLabel(value, missingLabel = "Donnée source non disponible") {
+  return perfHas(value) && Number.isFinite(Number(value)) ? value : missingLabel;
+}
+
 function reportPerformanceMonthlySections(source, ctx, actions, decisions, documents) {
   const periodKey = performancePeriodKey(source) || canonicalPerformancePeriod(sourceTypePeriod(source)) || "";
   const directionRows = periodKey ? performanceSummaryBuildRows(periodKey) : [];
@@ -15910,21 +15986,28 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
   const chargement = source.productivity?.["Chargement"] || {};
   const transit = source.productivity?.["Transit"] || {};
   const qualityTotal = source.quality?.indicators?.["Total Gains & Pertes"] || {};
+  const qualityTotalComplementary = reportComplementaryMetric(source, "quality.total_gains_pertes");
+  const qualityTotalActual = reportFirstFinite([qualityTotal.actual, reportMetricActual(qualityTotalComplementary)]);
+  const qualityTotalBudget = reportFirstFinite([qualityTotal.budget, qualityTotalComplementary?.budget]);
+  const qualityTotalHistorical = reportFirstFinite([qualityTotal.historical, qualityTotalComplementary?.historical]);
   const tbagPrepAnalysis = reportTBagPreparationAnalysis(source);
   const tbagBannerAnalysis = reportTBagBannerAnalysis(source);
   const tbagPopulationGapAnalysis = reportTBagPopulationGapAnalysis(source);
 
   const prepImpactVolume = reportPreparationVolumeForImpact(source);
-  const uoReception = reportPreferredMetricActual("activity.uo_reception", periodKey);
-  const uoManutention = reportPreferredMetricActual("activity.uo_manutention", periodKey);
-  const uoChargement = reportPreferredMetricActual("activity.uo_chargement", periodKey);
+  const receptionUo = reportSectorUo(source, periodKey, "reception");
+  const manutentionUo = reportSectorUo(source, periodKey, "manutention");
+  const chargementUo = reportSectorUo(source, periodKey, "chargement");
+  const uoReception = receptionUo.value;
+  const uoManutention = manutentionUo.value;
+  const uoChargement = chargementUo.value;
 
   const impactPrepAuto = reportProductivityHoursImpact(prepImpactVolume.value, prep.actual, prep.budget);
   const impactReceptionAuto = reportProductivityHoursImpact(uoReception, reception.actual, reception.budget);
   const impactManutAuto = reportProductivityHoursImpact(uoManutention, manut.actual, manut.budget);
   const impactChargementAuto = reportProductivityHoursImpact(uoChargement, chargement.actual, chargement.budget);
 
-  const indirectHoursShareAuto = reportIndirectHoursShare(source.hours?.total?.actual, source.hours?.indirect?.actual);
+  const indirectHoursShareAuto = reportHoursShare(source.hours?.total?.actual, source.hours?.indirect?.actual);
 
   const linkedDocs = documents || "À compléter";
 
@@ -15956,11 +16039,27 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     },
     {
       title: "4. Productivités par secteur et IPO",
-      body: `${metricLine("Préparation", prep, "colis/h")}\n${metricLine("Réception", reception, "palettes/h")}\n${metricLine("Manutention", manut, "palettes/h")}\n${metricLine("Chargement", chargement, "palettes/h")}\n${metricLine("Transit", transit, "palettes/h")}\n\nIPO total : ${fmtRow(rowByKey("ipo.total"))}\nIPO variable : Réel ${perfFmt(source.ipo?.variable?.actual)} | Budget ${perfFmt(source.ipo?.variable?.budget)} | Historique ${perfFmt(source.ipo?.variable?.historical)}\n\nImpacts en heures par secteur :\n- Préparation : ${perfHas(prep.hoursBudgetGap) ? reportFmtSignedHours(prep.hoursBudgetGap) : reportFmtSignedHours(impactPrepAuto)} vs budget\n- Réception : ${perfHas(reception.hoursBudgetGap) ? reportFmtSignedHours(reception.hoursBudgetGap) : reportFmtSignedHours(impactReceptionAuto)} vs budget\n- Manutention : ${perfHas(manut.hoursBudgetGap) ? reportFmtSignedHours(manut.hoursBudgetGap) : reportFmtSignedHours(impactManutAuto)} vs budget\n- Chargement : ${perfHas(chargement.hoursBudgetGap) ? reportFmtSignedHours(chargement.hoursBudgetGap) : reportFmtSignedHours(impactChargementAuto)} vs budget\n\nMéthode automatique : volume réel du même périmètre ÷ productivité réelle − volume réel du même périmètre ÷ productivité budget. Positif = heures consommées au-delà du budget ; négatif = heures économisées.\n- Préparation : ${Number.isFinite(Number(prepImpactVolume.value)) && Number(prepImpactVolume.value) > 0 ? `volume spécifique Préparation utilisé : ${Number(prepImpactVolume.value).toLocaleString("fr-FR")} colis.` : "impact non calculé faute de volume Préparation fiable sur le même périmètre."}\n- Réception : ${Number.isFinite(Number(uoReception)) && Number(uoReception) > 0 ? `volume UO utilisé : ${Number(uoReception).toLocaleString("fr-FR")} palettes.` : "impact non calculé faute de volume UO fiable."}\n- Manutention : ${Number.isFinite(Number(uoManutention)) && Number(uoManutention) > 0 ? `volume UO utilisé : ${Number(uoManutention).toLocaleString("fr-FR")} palettes.` : "impact non calculé faute de volume UO fiable."}\n- Chargement : ${Number.isFinite(Number(uoChargement)) && Number(uoChargement) > 0 ? `volume UO utilisé : ${Number(uoChargement).toLocaleString("fr-FR")} supports.` : "impact non calculé faute de volume UO fiable."}\n\nLecture attendue : identifier ce qui consomme des heures, ce qui compense favorablement, et les écarts réellement actionnables.`
+      body: `${metricLine("Préparation", prep, "colis/h")}\n${metricLine("Réception", reception, "palettes/h")}\n${metricLine("Manutention", manut, "palettes/h")}\n${metricLine("Chargement", chargement, "palettes/h")}\n${metricLine("Transit", transit, "palettes/h")}\n\nIPO total : ${fmtRow(rowByKey("ipo.total"))}\nIPO variable : Réel ${perfFmt(source.ipo?.variable?.actual)} | Budget ${perfFmt(source.ipo?.variable?.budget)} | Historique ${perfFmt(source.ipo?.variable?.historical)}\n\nImpacts en heures par secteur :
+- Préparation : ${perfHas(prep.hoursBudgetGap) ? reportFmtSignedHours(prep.hoursBudgetGap) : reportFmtSignedHours(impactPrepAuto)} vs budget
+- Réception : ${perfHas(reception.hoursBudgetGap) ? reportFmtSignedHours(reception.hoursBudgetGap) : reportFmtSignedHours(impactReceptionAuto)} vs budget
+- Manutention : ${perfHas(manut.hoursBudgetGap) ? reportFmtSignedHours(manut.hoursBudgetGap) : reportFmtSignedHours(impactManutAuto)} vs budget
+- Chargement : ${perfHas(chargement.hoursBudgetGap) ? reportFmtSignedHours(chargement.hoursBudgetGap) : reportFmtSignedHours(impactChargementAuto)} vs budget
+
+Volumes de calcul utilisés :
+- Préparation : ${Number.isFinite(Number(prepImpactVolume.value)) && Number(prepImpactVolume.value) > 0 ? Number(prepImpactVolume.value).toLocaleString("fr-FR") + " colis" : "Donnée source non disponible"}
+- Réception : ${Number.isFinite(Number(uoReception)) && Number(uoReception) > 0 ? Number(uoReception).toLocaleString("fr-FR") + " palettes" : "Donnée source non disponible"}
+- Manutention : ${Number.isFinite(Number(uoManutention)) && Number(uoManutention) > 0 ? Number(uoManutention).toLocaleString("fr-FR") + " palettes" : "Donnée source non disponible"}
+- Chargement : ${Number.isFinite(Number(uoChargement)) && Number(uoChargement) > 0 ? Number(uoChargement).toLocaleString("fr-FR") + " supports" : "Donnée source non disponible"}
+
+Méthode : volume réel du même périmètre ÷ productivité réelle − volume réel du même périmètre ÷ productivité budget.
+Positif = heures consommées au-delà du budget ; négatif = heures économisées.
+Aucun impact n'est calculé si le volume et la productivité ne sont pas sur le même périmètre.
+
+Lecture attendue : identifier ce qui consomme des heures, ce qui compense favorablement, et les écarts réellement actionnables.`
     },
     {
       title: "5. Activité, heures et capacité",
-      body: `${metricLine("Activité / colis", source.activity, "colis")}\n${metricLine("Heures totales", source.hours?.total, "h")}\n${metricLine("Heures directes", source.hours?.direct, "h")}\n${metricLine("Heures indirectes", source.hours?.indirect, "h")}\n\nPoids des heures indirectes : ${Number.isFinite(indirectHoursShareAuto) ? indirectHoursShareAuto.toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " %" : "À compléter / vérifier dans le tableau détaillé"}.\nCapacité / charge : volume attendu M+1, risques de saturation, recours ETT, jours atypiques, opérations commerciales et contraintes transport : À compléter.\n\nLecture hebdomadaire / rupture de tendance : À compléter.`
+      body: `${metricLine("Activité / colis", source.activity, "colis")}\n${metricLine("Heures totales", source.hours?.total, "h")}\n${metricLine("Heures directes", source.hours?.direct, "h")}\n${metricLine("Heures indirectes", source.hours?.indirect, "h")}\n\nPoids des heures indirectes : ${reportFmtPercent1(indirectHoursShareAuto)}.\nCapacité / charge : volume attendu M+1, risques de saturation, recours ETT, jours atypiques, opérations commerciales et contraintes transport : À compléter.\n\nLecture hebdomadaire / rupture de tendance : À compléter.`
     },
     {
       title: "6. Préparation — performance main-d'œuvre",
@@ -15968,7 +16067,7 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     },
     {
       title: "7. Leviers opérationnels Préparation",
-      body: `ANALYSES AUTOMATIQUES DISPONIBLES\n${tbagBannerAnalysis.text}\n\n${tbagPopulationGapAnalysis}\n\nDONNÉES ENCORE NON DISPONIBLES DANS LES SOURCES IMPORTÉES\n- Écart matin / après-midi : À compléter\n- Démarrage de poste / second tour : À compléter\n- Qualification explicite mono / multiclient : À compléter\n- Colis / ligne et complexité : À compléter\n- Manquants premier tour / rattrapage : À compléter\n- Implantation / distances / typologie articles : À compléter\n- Répartition CDI / ETT / CDD par équipe : À compléter\n\nRÈGLE D'ANALYSE\nNe pas transformer une association en causalité. Une répartition par bannière ou un écart entre populations constitue un constat descriptif, pas une preuve de causalité.`
+      body: `ANALYSES AUTOMATIQUES DISPONIBLES\n${tbagBannerAnalysis.text}\n\n${tbagPopulationGapAnalysis}\n\nDONNÉES ENCORE NON DISPONIBLES DANS LES SOURCES IMPORTÉES\n- Écart matin / après-midi : Donnée source non disponible\n- Démarrage de poste / second tour : Donnée source non disponible\n- Qualification explicite mono / multiclient : Donnée source non disponible\n- Colis / ligne et complexité : Donnée source non disponible\n- Manquants premier tour / rattrapage : Donnée source non disponible\n- Implantation / distances / typologie articles : Donnée source non disponible\n- Répartition CDI / ETT / CDD par équipe : Donnée source non disponible\n\nRÈGLE D'ANALYSE\nNe pas transformer une association en causalité. Une répartition par bannière ou un écart entre populations constitue un constat descriptif, pas une preuve de causalité.`
     },
     {
       title: "8. Absentéisme, sécurité et présentéisme",
@@ -15976,7 +16075,7 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     },
     {
       title: "9. Économie, qualité et coûts unitaires",
-      body: `Coût colis total : ${fmtRow(rowByKey("economy.cout_total_par_colis"))}\nCoût colis exploitation (Exploit) : ${fmtRow(rowByKey("economy.cout_exploitation_par_colis"))}\nGains & Pertes : Réel ${perfFmt(qualityTotal.actual)} | Budget ${perfFmt(qualityTotal.budget)} | Historique ${perfFmt(qualityTotal.historical)}\nRésultat opérationnel / EBIT / démarque marchandises : voir tableau Économie & qualité DEOS.\n\nPareto à préparer : litiges, casse, non-livrés, périmés, contrôle stock, dons et autres postes significatifs.\n\nLecture attendue : chiffrer l'écart mensuel et cumul, identifier les 2 ou 3 postes expliquant l'essentiel de la dérive et rattacher chaque poste à un responsable / plan d'action.`
+      body: `Coût colis total : ${fmtRow(rowByKey("economy.cout_total_par_colis"))}\nCoût colis exploitation (Exploit) : ${fmtRow(rowByKey("economy.cout_exploitation_par_colis"))}\nGains & Pertes : Réel ${Number.isFinite(qualityTotalActual) ? perfFmt(qualityTotalActual) : "Donnée source non disponible"} | Budget ${Number.isFinite(qualityTotalBudget) ? perfFmt(qualityTotalBudget) : "Donnée source non disponible"} | Historique ${Number.isFinite(qualityTotalHistorical) ? perfFmt(qualityTotalHistorical) : "Donnée source non disponible"}\nRésultat opérationnel / EBIT / démarque marchandises : voir tableau Économie & qualité DEOS.\n\nPareto à préparer : litiges, casse, non-livrés, périmés, contrôle stock, dons et autres postes significatifs.\n\nLecture attendue : chiffrer l'écart mensuel et cumul, identifier les 2 ou 3 postes expliquant l'essentiel de la dérive et rattacher chaque poste à un responsable / plan d'action.`
     },
     {
       title: "10. Historique, tendance et projection",
@@ -16016,7 +16115,7 @@ PROJECTION
     },
     {
       title: "14. Fiabilité des données et points à valider",
-      body: `Sources de référence : GPO / Guide de performance, Z GEMED, T-Bag, CGTAB, GA / Suivi GA, Litiges / GC-GE selon disponibilité.\n\nPoints de contrôle avant présentation :\n- réconcilier les périmètres lorsqu'une même notion diffère entre sources ;\n- distinguer mensuel et cumul ;\n- vérifier les unités ;\n- documenter les valeurs atypiques ;\n- ne pas additionner des impacts financiers calculés sur des périmètres qui se recouvrent ;\n- signaler explicitement toute donnée manquante ou non fiabilisée ;\n- ne jamais calculer un impact en heures avec un volume provenant d'un périmètre différent de la productivité analysée.\n\nDocuments liés :\n${linkedDocs}`
+      body: `Sources de référence : GPO / Guide de performance, Z GEMED, T-Bag, CGTAB, GA / Suivi GA, Litiges / GC-GE selon disponibilité.\n\nPoints de contrôle avant présentation :\n- réconcilier les périmètres lorsqu'une même notion diffère entre sources ;\n- distinguer mensuel et cumul ;\n- vérifier les unités ;\n- documenter les valeurs atypiques ;\n- ne pas additionner des impacts financiers calculés sur des périmètres qui se recouvrent ;\n- signaler explicitement toute donnée manquante ou non fiabilisée ;\n- ne jamais calculer un impact en heures avec un volume provenant d'un périmètre différent de la productivité analysée.\n- distinguer "Donnée source non disponible" (absence réelle de donnée) et "À compléter" (contenu managérial à préparer).\n\nDocuments liés :\n${linkedDocs}`
     },
     {
       title: "15. Message de clôture de la revue",
