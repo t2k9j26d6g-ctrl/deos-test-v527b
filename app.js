@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q5O";
+const DEOS_VERSION = "V5.30Q5P";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -15789,6 +15789,7 @@ function reportProductivityHoursImpact(volume, actualProductivity, budgetProduct
 }
 
 function reportFmtSignedHours(value) {
+  if (value === "" || value === null || value === undefined) return "À compléter";
   const n = Number(value);
   if (!Number.isFinite(n)) return "À compléter";
   const rounded = Math.round(n);
@@ -15854,6 +15855,26 @@ ${lines.join("\n")}
 Lecture : ces écarts sont descriptifs. Ils ne prouvent pas que le statut contractuel est la cause de l'écart de performance.`;
 }
 
+
+function reportPreparationVolumeForImpact(source) {
+  const candidates = [
+    reportComplementaryMetric(source, "preparation.volume.total", "TOTAL", "TOTAL BANNIERE"),
+    reportComplementaryMetric(source, "preparation.volume.total"),
+    reportComplementaryMetric(source, "activity.preparation"),
+    reportComplementaryMetric(source, "preparation.colis")
+  ];
+
+  for (const metric of candidates) {
+    const value = reportMetricActual(metric);
+    if (Number.isFinite(value) && value > 0) {
+      return { value, source: "Préparation / T-Bag" };
+    }
+  }
+
+  // Important: never use site-wide activity as a fallback for GPO preparation productivity.
+  return { value: "", source: "" };
+}
+
 function reportPerformanceMonthlySections(source, ctx, actions, decisions, documents) {
   const periodKey = performancePeriodKey(source) || canonicalPerformancePeriod(sourceTypePeriod(source)) || "";
   const directionRows = periodKey ? performanceSummaryBuildRows(periodKey) : [];
@@ -15880,10 +15901,12 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
   const tbagBannerAnalysis = reportTBagBannerAnalysis(source);
   const tbagPopulationGapAnalysis = reportTBagPopulationGapAnalysis(source);
 
+  const prepImpactVolume = reportPreparationVolumeForImpact(source);
   const uoReception = reportMetricActual(reportComplementaryMetric(source, "activity.uo_reception"));
   const uoManutention = reportMetricActual(reportComplementaryMetric(source, "activity.uo_manutention"));
   const uoChargement = reportMetricActual(reportComplementaryMetric(source, "activity.uo_chargement"));
-  const impactPrepAuto = reportProductivityHoursImpact(source.activity?.actual, prep.actual, prep.budget);
+
+  const impactPrepAuto = reportProductivityHoursImpact(prepImpactVolume.value, prep.actual, prep.budget);
   const impactReceptionAuto = reportProductivityHoursImpact(uoReception, reception.actual, reception.budget);
   const impactManutAuto = reportProductivityHoursImpact(uoManutention, manut.actual, manut.budget);
   const impactChargementAuto = reportProductivityHoursImpact(uoChargement, chargement.actual, chargement.budget);
@@ -15918,7 +15941,7 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     },
     {
       title: "4. Productivités par secteur et IPO",
-      body: `${metricLine("Préparation", prep, "colis/h")}\n${metricLine("Réception", reception, "palettes/h")}\n${metricLine("Manutention", manut, "palettes/h")}\n${metricLine("Chargement", chargement, "palettes/h")}\n${metricLine("Transit", transit, "palettes/h")}\n\nIPO total : ${fmtRow(rowByKey("ipo.total"))}\nIPO variable : Réel ${perfFmt(source.ipo?.variable?.actual)} | Budget ${perfFmt(source.ipo?.variable?.budget)} | Historique ${perfFmt(source.ipo?.variable?.historical)}\n\nImpacts en heures par secteur :\n- Préparation : ${perfHas(prep.hoursBudgetGap) ? reportFmtSignedHours(prep.hoursBudgetGap) : reportFmtSignedHours(impactPrepAuto)} vs budget\n- Réception : ${perfHas(reception.hoursBudgetGap) ? reportFmtSignedHours(reception.hoursBudgetGap) : reportFmtSignedHours(impactReceptionAuto)} vs budget\n- Manutention : ${perfHas(manut.hoursBudgetGap) ? reportFmtSignedHours(manut.hoursBudgetGap) : reportFmtSignedHours(impactManutAuto)} vs budget\n- Chargement : ${perfHas(chargement.hoursBudgetGap) ? reportFmtSignedHours(chargement.hoursBudgetGap) : reportFmtSignedHours(impactChargementAuto)} vs budget\n\nMéthode automatique : volume réel ÷ productivité réelle − volume réel ÷ productivité budget. Positif = heures consommées au-delà du budget ; négatif = heures économisées.\n\nLecture attendue : identifier ce qui consomme des heures, ce qui compense favorablement, et les écarts réellement actionnables.`
+      body: `${metricLine("Préparation", prep, "colis/h")}\n${metricLine("Réception", reception, "palettes/h")}\n${metricLine("Manutention", manut, "palettes/h")}\n${metricLine("Chargement", chargement, "palettes/h")}\n${metricLine("Transit", transit, "palettes/h")}\n\nIPO total : ${fmtRow(rowByKey("ipo.total"))}\nIPO variable : Réel ${perfFmt(source.ipo?.variable?.actual)} | Budget ${perfFmt(source.ipo?.variable?.budget)} | Historique ${perfFmt(source.ipo?.variable?.historical)}\n\nImpacts en heures par secteur :\n- Préparation : ${perfHas(prep.hoursBudgetGap) ? reportFmtSignedHours(prep.hoursBudgetGap) : reportFmtSignedHours(impactPrepAuto)} vs budget\n- Réception : ${perfHas(reception.hoursBudgetGap) ? reportFmtSignedHours(reception.hoursBudgetGap) : reportFmtSignedHours(impactReceptionAuto)} vs budget\n- Manutention : ${perfHas(manut.hoursBudgetGap) ? reportFmtSignedHours(manut.hoursBudgetGap) : reportFmtSignedHours(impactManutAuto)} vs budget\n- Chargement : ${perfHas(chargement.hoursBudgetGap) ? reportFmtSignedHours(chargement.hoursBudgetGap) : reportFmtSignedHours(impactChargementAuto)} vs budget\n\nMéthode automatique : volume réel du même périmètre ÷ productivité réelle − volume réel du même périmètre ÷ productivité budget. Positif = heures consommées au-delà du budget ; négatif = heures économisées.\n- Préparation : ${Number.isFinite(Number(prepImpactVolume.value)) && Number(prepImpactVolume.value) > 0 ? `volume spécifique Préparation utilisé : ${Number(prepImpactVolume.value).toLocaleString("fr-FR")} colis.` : "impact non calculé faute de volume Préparation fiable sur le même périmètre."}\n- Réception : ${Number.isFinite(Number(uoReception)) && Number(uoReception) > 0 ? "volume UO disponible." : "impact non calculé faute de volume UO fiable."}\n- Manutention : ${Number.isFinite(Number(uoManutention)) && Number(uoManutention) > 0 ? "volume UO disponible." : "impact non calculé faute de volume UO fiable."}\n- Chargement : ${Number.isFinite(Number(uoChargement)) && Number(uoChargement) > 0 ? "volume UO disponible." : "impact non calculé faute de volume UO fiable."}\n\nLecture attendue : identifier ce qui consomme des heures, ce qui compense favorablement, et les écarts réellement actionnables.`
     },
     {
       title: "5. Activité, heures et capacité",
@@ -15978,7 +16001,7 @@ PROJECTION
     },
     {
       title: "14. Fiabilité des données et points à valider",
-      body: `Sources de référence : GPO / Guide de performance, Z GEMED, T-Bag, CGTAB, GA / Suivi GA, Litiges / GC-GE selon disponibilité.\n\nPoints de contrôle avant présentation :\n- réconcilier les périmètres lorsqu'une même notion diffère entre sources ;\n- distinguer mensuel et cumul ;\n- vérifier les unités ;\n- documenter les valeurs atypiques ;\n- ne pas additionner des impacts financiers calculés sur des périmètres qui se recouvrent ;\n- signaler explicitement toute donnée manquante ou non fiabilisée.\n\nDocuments liés :\n${linkedDocs}`
+      body: `Sources de référence : GPO / Guide de performance, Z GEMED, T-Bag, CGTAB, GA / Suivi GA, Litiges / GC-GE selon disponibilité.\n\nPoints de contrôle avant présentation :\n- réconcilier les périmètres lorsqu'une même notion diffère entre sources ;\n- distinguer mensuel et cumul ;\n- vérifier les unités ;\n- documenter les valeurs atypiques ;\n- ne pas additionner des impacts financiers calculés sur des périmètres qui se recouvrent ;\n- signaler explicitement toute donnée manquante ou non fiabilisée ;\n- ne jamais calculer un impact en heures avec un volume provenant d'un périmètre différent de la productivité analysée.\n\nDocuments liés :\n${linkedDocs}`
     },
     {
       title: "15. Message de clôture de la revue",
