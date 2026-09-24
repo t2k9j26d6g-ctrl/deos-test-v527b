@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q5L";
+const DEOS_VERSION = "V5.30Q5M";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -15676,6 +15676,94 @@ PROJECTION M+1
 À compléter avant la revue : activité attendue, ressources / ETT, risques opérationnels et trajectoire des KPI critiques.`;
 }
 
+
+function reportComplementaryMetric(perf, metricKey = "", population = "", banner = "") {
+  const items = ensureArray(perf?.complementaryKpis);
+  const wantedMetric = String(metricKey || "").trim().toLowerCase();
+  const wantedPopulation = String(population || "").trim().toUpperCase();
+  const wantedBanner = String(banner || "").trim().toUpperCase();
+  const candidates = items.filter(item => {
+    if (String(item.metricKey || "").trim().toLowerCase() !== wantedMetric) return false;
+    if (wantedPopulation && String(item.population || "").trim().toUpperCase() !== wantedPopulation) return false;
+    if (wantedBanner && String(item.banner || "").trim().toUpperCase() !== wantedBanner) return false;
+    return true;
+  });
+  return candidates.find(item => String(item.periodType || "monthly") === "monthly") || candidates[0] || null;
+}
+
+function reportMetricActual(metric) {
+  if (!metric) return "";
+  const value = metric.actual ?? metric.value;
+  return perfHas(value) ? Number(value) : "";
+}
+
+function reportPercentShare(value, total) {
+  const v = Number(value), t = Number(total);
+  if (!Number.isFinite(v) || !Number.isFinite(t) || t === 0) return "À compléter";
+  return `${(v / t * 100).toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`;
+}
+
+function reportTBagPreparationAnalysis(source) {
+  const pop = code => ({
+    volume: reportComplementaryMetric(source, `preparation.volume.${code.toLowerCase()}`, code, "TOTAL BANNIERE"),
+    hours: reportComplementaryMetric(source, `preparation.hours.${code.toLowerCase()}`, code, "TOTAL BANNIERE"),
+    productivity: reportComplementaryMetric(source, `preparation.productivity.${code.toLowerCase()}`, code, "TOTAL BANNIERE")
+  });
+
+  const cdi = pop("CDI");
+  const cdd = pop("CDD");
+  const ett = pop("ETT");
+  const totalProd = reportComplementaryMetric(source, "preparation.productivity.total", "TOTAL", "TOTAL BANNIERE");
+  const totalVol = reportComplementaryMetric(source, "preparation.volume.total", "TOTAL", "TOTAL BANNIERE");
+  const totalHours = reportComplementaryMetric(source, "preparation.hours.total", "TOTAL", "TOTAL BANNIERE");
+
+  const cdiHours = reportMetricActual(cdi.hours);
+  const cddHours = reportMetricActual(cdd.hours);
+  const ettHours = reportMetricActual(ett.hours);
+  const computedHours = [cdiHours, cddHours, ettHours].filter(Number.isFinite).reduce((a, b) => a + b, 0);
+  const importedTotalHours = reportMetricActual(totalHours);
+  const referenceHours = Number.isFinite(importedTotalHours) ? importedTotalHours : computedHours;
+
+  const officialPrep = source.productivity?.["Préparation"]?.actual;
+  const tbagTotal = reportMetricActual(totalProd);
+  const reconciliation = perfHas(officialPrep) && Number.isFinite(tbagTotal)
+    ? Number(tbagTotal) - Number(officialPrep)
+    : "";
+
+  const fmt = (metric, unit = "") => {
+    const v = reportMetricActual(metric);
+    return Number.isFinite(v) ? `${perfFmt(v)}${unit ? " " + unit : ""}` : "À compléter";
+  };
+
+  const reconciliationText = Number.isFinite(reconciliation)
+    ? `${reconciliation >= 0 ? "+" : ""}${reconciliation.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} colis/h`
+    : "À compléter";
+
+  return {
+    text: `RÉFÉRENCE OFFICIELLE GPO
+- Productivité Préparation : ${perfHas(officialPrep) ? perfFmt(officialPrep) + " colis/h" : "À compléter"}
+
+ANALYSE T-BAG — AGRÉGÉE
+- CDI : productivité ${fmt(cdi.productivity, "colis/h")} | volume ${fmt(cdi.volume, "colis")} | heures ${fmt(cdi.hours, "h")} | part des heures ${reportPercentShare(cdiHours, referenceHours)}
+- ETT : productivité ${fmt(ett.productivity, "colis/h")} | volume ${fmt(ett.volume, "colis")} | heures ${fmt(ett.hours, "h")} | part des heures ${reportPercentShare(ettHours, referenceHours)}
+- CDD : productivité ${fmt(cdd.productivity, "colis/h")} | volume ${fmt(cdd.volume, "colis")} | heures ${fmt(cdd.hours, "h")} | part des heures ${reportPercentShare(cddHours, referenceHours)}
+- Total T-Bag : productivité ${fmt(totalProd, "colis/h")} | volume ${fmt(totalVol, "colis")} | heures ${fmt(totalHours, "h")}
+
+RAPPROCHEMENT DES SOURCES
+- Écart T-Bag vs référence officielle GPO : ${reconciliationText}
+- La valeur GPO reste la référence de présentation globale.
+- T-Bag est utilisé pour analyser la composition CDI / ETT / CDD et le mix d'heures.
+
+À COMPLÉTER / AUTOMATISER ULTÉRIEUREMENT
+- médiane par population ;
+- part atteignant le standard de 125 colis/h ;
+- dispersion ;
+- ancienneté ETT ;
+- équipes / créneaux les plus contributeurs.`,
+    available: [cdi.productivity, ett.productivity, cdd.productivity, totalProd].some(Boolean)
+  };
+}
+
 function reportPerformanceMonthlySections(source, ctx, actions, decisions, documents) {
   const periodKey = performancePeriodKey(source) || canonicalPerformancePeriod(sourceTypePeriod(source)) || "";
   const directionRows = periodKey ? performanceSummaryBuildRows(periodKey) : [];
@@ -15698,6 +15786,7 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
   const chargement = source.productivity?.["Chargement"] || {};
   const transit = source.productivity?.["Transit"] || {};
   const qualityTotal = source.quality?.indicators?.["Total Gains & Pertes"] || {};
+  const tbagPrepAnalysis = reportTBagPreparationAnalysis(source);
   const linkedDocs = documents || "À compléter";
 
   const direction = [
@@ -15736,11 +15825,11 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     },
     {
       title: "6. Préparation — performance main-d'œuvre",
-      body: `Productivité globale officielle : ${perfFmt(prep.actual)} colis/h\nCDI : ${prep.cdiProductivity || "À compléter"} colis/h\nETT : ${prep.ettProductivity || "À compléter"} colis/h\nCDD : ${prep.cddProductivity || "À compléter"} colis/h\nPart heures CDI : ${prep.cdiHoursShare || "À compléter"}\nPart heures ETT : ${prep.ettHoursShare || "À compléter"}\nPart heures CDD : ${prep.cddHoursShare || "À compléter"}\n\nÀ analyser chaque mois : médiane par population, part atteignant le standard, dispersion, ancienneté ETT, équipes / créneaux les plus contributifs et effets de mix.\n\nPoint méthodologique : conserver la référence officielle GPO pour la présentation globale et utiliser T-Bag pour les analyses de détail tant que les périmètres ne sont pas totalement réconciliés.`
+      body: `${tbagPrepAnalysis.text}\n\nCONFIDENTIALITÉ\nLes données utilisées dans cette section sont agrégées. Aucune donnée nominative T-Bag n'est reprise dans la RDP.`
     },
     {
       title: "7. Leviers opérationnels Préparation",
-      body: `Écart matin / après-midi : À compléter\nDémarrage de poste / second tour : À compléter\nFlux multiclients : À compléter\nColis / ligne et complexité : À compléter\nManquants premier tour / rattrapage : À compléter\nImplantation / distances / typologie articles : À compléter\nRépartition CDI / ETT / CDD par équipe : À compléter\n\nLecture attendue : ne pas transformer une association en causalité. Chiffrer l'impact potentiel de chaque levier et identifier les tests opérationnels permettant de confirmer ou d'infirmer l'hypothèse.`
+      body: `DONNÉES ENCORE À AUTOMATISER DANS DEOS\n- Écart matin / après-midi : À compléter\n- Démarrage de poste / second tour : À compléter\n- Flux multiclients : À compléter\n- Colis / ligne et complexité : À compléter\n- Manquants premier tour / rattrapage : À compléter\n- Implantation / distances / typologie articles : À compléter\n- Répartition CDI / ETT / CDD par équipe : À compléter\n\nDÉJÀ DISPONIBLE\n${tbagPrepAnalysis.available ? "- Le mix CDI / ETT / CDD agrégé est désormais alimenté automatiquement en section 6 depuis T-Bag." : "- T-Bag agrégé non disponible pour la période."}\n\nRÈGLE D'ANALYSE\nNe pas transformer une association en causalité. Chiffrer l'impact potentiel de chaque levier et identifier les tests opérationnels permettant de confirmer ou d'infirmer l'hypothèse.`
     },
     {
       title: "8. Absentéisme, sécurité et présentéisme",
