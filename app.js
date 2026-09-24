@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q5M";
+const DEOS_VERSION = "V5.30Q5N";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -15735,6 +15735,23 @@ function reportTBagPreparationAnalysis(source) {
     return Number.isFinite(v) ? `${perfFmt(v)}${unit ? " " + unit : ""}` : "À compléter";
   };
 
+  const populationProductivity = population => {
+    const imported = reportMetricActual(population.productivity);
+    if (Number.isFinite(imported)) return imported;
+    const volume = reportMetricActual(population.volume);
+    const hours = reportMetricActual(population.hours);
+    if (Number.isFinite(volume) && Number.isFinite(hours) && hours > 0) return volume / hours;
+    return "";
+  };
+
+  const cdiProductivity = populationProductivity(cdi);
+  const ettProductivity = populationProductivity(ett);
+  const cddProductivity = populationProductivity(cdd);
+
+  const fmtProductivity = value => Number.isFinite(value)
+    ? `${value.toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} colis/h`
+    : "À compléter";
+
   const reconciliationText = Number.isFinite(reconciliation)
     ? `${reconciliation >= 0 ? "+" : ""}${reconciliation.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} colis/h`
     : "À compléter";
@@ -15744,9 +15761,9 @@ function reportTBagPreparationAnalysis(source) {
 - Productivité Préparation : ${perfHas(officialPrep) ? perfFmt(officialPrep) + " colis/h" : "À compléter"}
 
 ANALYSE T-BAG — AGRÉGÉE
-- CDI : productivité ${fmt(cdi.productivity, "colis/h")} | volume ${fmt(cdi.volume, "colis")} | heures ${fmt(cdi.hours, "h")} | part des heures ${reportPercentShare(cdiHours, referenceHours)}
-- ETT : productivité ${fmt(ett.productivity, "colis/h")} | volume ${fmt(ett.volume, "colis")} | heures ${fmt(ett.hours, "h")} | part des heures ${reportPercentShare(ettHours, referenceHours)}
-- CDD : productivité ${fmt(cdd.productivity, "colis/h")} | volume ${fmt(cdd.volume, "colis")} | heures ${fmt(cdd.hours, "h")} | part des heures ${reportPercentShare(cddHours, referenceHours)}
+- CDI : productivité ${fmtProductivity(cdiProductivity)} | volume ${fmt(cdi.volume, "colis")} | heures ${fmt(cdi.hours, "h")} | part des heures ${reportPercentShare(cdiHours, referenceHours)}
+- ETT : productivité ${fmtProductivity(ettProductivity)} | volume ${fmt(ett.volume, "colis")} | heures ${fmt(ett.hours, "h")} | part des heures ${reportPercentShare(ettHours, referenceHours)}
+- CDD : productivité ${fmtProductivity(cddProductivity)} | volume ${fmt(cdd.volume, "colis")} | heures ${fmt(cdd.hours, "h")} | part des heures ${reportPercentShare(cddHours, referenceHours)}
 - Total T-Bag : productivité ${fmt(totalProd, "colis/h")} | volume ${fmt(totalVol, "colis")} | heures ${fmt(totalHours, "h")}
 
 RAPPROCHEMENT DES SOURCES
@@ -15760,7 +15777,7 @@ RAPPROCHEMENT DES SOURCES
 - dispersion ;
 - ancienneté ETT ;
 - équipes / créneaux les plus contributeurs.`,
-    available: [cdi.productivity, ett.productivity, cdd.productivity, totalProd].some(Boolean)
+    available: [cdiProductivity, ettProductivity, cddProductivity, tbagTotal].some(Number.isFinite)
   };
 }
 
