@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q5U";
+const DEOS_VERSION = "V5.30Q5V";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -15730,12 +15730,6 @@ function reportTBagPreparationAnalysis(source) {
   const importedTotalHours = reportMetricActual(totalHours);
   const referenceHours = Number.isFinite(importedTotalHours) ? importedTotalHours : computedHours;
 
-  const officialPrep = source.productivity?.["Préparation"]?.actual;
-  const tbagTotal = reportMetricActual(totalProd);
-  const reconciliation = perfHas(officialPrep) && Number.isFinite(tbagTotal)
-    ? Number(tbagTotal) - Number(officialPrep)
-    : "";
-
   const fmt = (metric, unit = "") => {
     const v = reportMetricActual(metric);
     return Number.isFinite(v) ? `${perfFmt(v)}${unit ? " " + unit : ""}` : "À compléter";
@@ -15758,24 +15752,42 @@ function reportTBagPreparationAnalysis(source) {
     ? `${value.toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} colis/h`
     : "À compléter";
 
-  const reconciliationText = Number.isFinite(reconciliation)
-    ? `${reconciliation >= 0 ? "+" : ""}${reconciliation.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} colis/h`
-    : "À compléter";
+  const officialPrep = source.productivity?.["Préparation"]?.actual;
+  const periodKey = performancePeriodKey(source) || canonicalPerformancePeriod(sourceTypePeriod(source)) || "";
+  const gpoPreferred = periodKey ? getPreferredPerformanceValue("productivity.preparation", periodKey) : null;
+  const gpoPeriodType = gpoPreferred?.periodType || "cumulative";
+  const tbagPeriodType = totalProd?.periodType || totalVol?.periodType || totalHours?.periodType || "monthly";
+
+  const tbagImported = reportMetricActual(totalProd);
+  const tbagVolume = reportMetricActual(totalVol);
+  const tbagHours = Number.isFinite(importedTotalHours) ? importedTotalHours : computedHours;
+  const tbagDerived = Number.isFinite(tbagVolume) && Number.isFinite(tbagHours) && tbagHours > 0
+    ? tbagVolume / tbagHours
+    : "";
+  const tbagTotal = Number.isFinite(tbagImported) ? tbagImported : tbagDerived;
+
+  const comparableScopes = Boolean(gpoPeriodType && tbagPeriodType && gpoPeriodType === tbagPeriodType);
+  const reconciliationText = comparableScopes && perfHas(officialPrep) && Number.isFinite(tbagTotal)
+    ? `- Écart T-Bag vs référence officielle GPO : ${(tbagTotal - Number(officialPrep) >= 0 ? "+" : "")}${(tbagTotal - Number(officialPrep)).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} colis/h`
+    : `- Comparaison T-Bag / GPO non calculée : T-Bag ${reportScopeLabel(tbagPeriodType)} vs GPO ${reportScopeLabel(gpoPeriodType)}.`;
 
   return {
     text: `RÉFÉRENCE OFFICIELLE GPO
 - Productivité Préparation : ${perfHas(officialPrep) ? perfFmt(officialPrep) + " colis/h" : "À compléter"}
+- Périmètre : ${reportScopeLabel(gpoPeriodType)}
 
 ANALYSE T-BAG — AGRÉGÉE
+- Périmètre : ${reportScopeLabel(tbagPeriodType)}
 - CDI : productivité ${fmtProductivity(cdiProductivity)} | volume ${fmt(cdi.volume, "colis")} | heures ${fmt(cdi.hours, "h")} | part des heures ${reportPercentShare(cdiHours, referenceHours)}
 - ETT : productivité ${fmtProductivity(ettProductivity)} | volume ${fmt(ett.volume, "colis")} | heures ${fmt(ett.hours, "h")} | part des heures ${reportPercentShare(ettHours, referenceHours)}
 - CDD : productivité ${fmtProductivity(cddProductivity)} | volume ${fmt(cdd.volume, "colis")} | heures ${fmt(cdd.hours, "h")} | part des heures ${reportPercentShare(cddHours, referenceHours)}
-- Total T-Bag : productivité ${fmt(totalProd, "colis/h")} | volume ${fmt(totalVol, "colis")} | heures ${fmt(totalHours, "h")}
+- Total T-Bag : productivité ${Number.isFinite(tbagTotal) ? tbagTotal.toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + " colis/h" : "À compléter"} | volume ${Number.isFinite(tbagVolume) ? perfFmt(tbagVolume) + " colis" : "À compléter"} | heures ${Number.isFinite(tbagHours) ? perfFmt(tbagHours) + " h" : "À compléter"}
 
 RAPPROCHEMENT DES SOURCES
-- Écart T-Bag vs référence officielle GPO : ${reconciliationText}
+${reconciliationText}
 - La valeur GPO reste la référence de présentation globale.
 - T-Bag est utilisé pour analyser la composition CDI / ETT / CDD et le mix d'heures.
+- Aucun écart de productivité T-Bag / GPO n'est interprété lorsque les périmètres temporels diffèrent.
 
 ANALYSES NÉCESSITANT UNE SOURCE PLUS DÉTAILLÉE
 - médiane par population ;
@@ -15786,7 +15798,6 @@ ANALYSES NÉCESSITANT UNE SOURCE PLUS DÉTAILLÉE
     available: [cdiProductivity, ettProductivity, cddProductivity, tbagTotal].some(Number.isFinite)
   };
 }
-
 
 function reportProductivityHoursImpact(volume, actualProductivity, budgetProductivity) {
   const v = Number(volume), a = Number(actualProductivity), b = Number(budgetProductivity);
@@ -16116,7 +16127,7 @@ function reportMultiPeriodTrendSummary(periodKey) {
   return `- KPI en dégradation continue sur 3 périodes : ${degrading.length ? degrading.join(", ") : "aucun identifié avec les données disponibles"}
 - KPI en redressement continu sur 3 périodes : ${improving.length ? improving.join(", ") : "aucun identifié avec les données disponibles"}
 - Meilleur / plus faible mois : ${bestWorst}
-- Profondeur historique disponible dans DEOS : ${availablePeriods.size} période(s).`;
+- Profondeur historique disponible dans DEOS : ${availablePeriods.size} période(s).${availablePeriods.size < 3 ? "\n- Conclusion : tendance 3 mois non évaluable avec moins de 3 périodes chargées." : ""}`;
 }
 
 
@@ -16308,11 +16319,11 @@ Règle : aucun impact horaire n'est calculé lorsque le volume et la productivit
     },
     {
       title: "9. Économie, qualité et coûts unitaires",
-      body: `Coût colis total : ${fmtRow(rowByKey("economy.cout_total_par_colis"))}\nCoût colis exploitation (Exploit) : ${fmtRow(rowByKey("economy.cout_exploitation_par_colis"))}\nGains & Pertes : Réel ${Number.isFinite(qualityTotalActual) ? perfFmt(qualityTotalActual) : "Donnée source non disponible"} | Budget ${Number.isFinite(qualityTotalBudget) ? perfFmt(qualityTotalBudget) : "Donnée source non disponible"} | Historique ${Number.isFinite(qualityTotalHistorical) ? perfFmt(qualityTotalHistorical) : "Donnée source non disponible"}\nRésultat opérationnel : ${reportMetricTriplet(resultOpMetric, "k€")}\nEBIT : ${reportMetricTriplet(ebitMetric, "k€")}\nDémarque marchandises : ${reportMetricTriplet(demarqueMetric, "k€")}\n\nPareto à préparer : litiges, casse, non-livrés, périmés, contrôle stock, dons et autres postes significatifs.\n\nLecture attendue : chiffrer l'écart mensuel et cumul, identifier les 2 ou 3 postes expliquant l'essentiel de la dérive et rattacher chaque poste à un responsable / plan d'action.`
+      body: `Coût colis total : ${fmtRow(rowByKey("economy.cout_total_par_colis"))}\nCoût colis exploitation (Exploit) : ${fmtRow(rowByKey("economy.cout_exploitation_par_colis"))}\nGains & Pertes : Réel ${Number.isFinite(qualityTotalActual) ? perfFmt(qualityTotalActual) : "Donnée source non disponible"} | Budget ${Number.isFinite(qualityTotalBudget) ? perfFmt(qualityTotalBudget) : "Donnée source non disponible"} | Historique ${Number.isFinite(qualityTotalHistorical) ? perfFmt(qualityTotalHistorical) : "Donnée source non disponible"}\nRésultat opérationnel (Z GEMED mensuel) : ${reportMetricTriplet(resultOpMetric, "k€")}\nEBIT (Z GEMED mensuel) : ${reportMetricTriplet(ebitMetric, "k€")}\nDémarque marchandises (Z GEMED mensuel) : ${reportMetricTriplet(demarqueMetric, "k€")}\n\nPareto à préparer : litiges, casse, non-livrés, périmés, contrôle stock, dons et autres postes significatifs.\n\nLecture attendue : chiffrer l'écart mensuel et cumul, identifier les 2 ou 3 postes expliquant l'essentiel de la dérive et rattacher chaque poste à un responsable / plan d'action.`
     },
     {
       title: "10. Historique, tendance et projection",
-      body: `LECTURE DE TENDANCE — KPI DIRECTION (périmètre indiqué par source)
+      body: `LECTURE VS HISTORIQUE — KPI DIRECTION (même périmètre que la source)
 ${directionCoreRows.map(r => `- ${r.label} : ${performanceSummaryFormatValue(r.value, r.unit, r.metricKey)} | Historique ${performanceSummaryFormatValue(r.historical, r.unit, r.metricKey)} | Écart historique ${performanceSummaryFormatDelta(r.trend, r.unit, r.metricKey)} | Statut ${r.statusLabel || "À compléter"}`).join("\n") || "Donnée source non disponible"}
 
 LECTURE OPÉRATIONNELLE COMPLÉMENTAIRE
