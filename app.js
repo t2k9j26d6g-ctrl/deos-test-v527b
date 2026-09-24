@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30Q5N";
+const DEOS_VERSION = "V5.30Q5O";
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
 function ensureDeosAsyncFeedbackUi() {
@@ -15781,6 +15781,79 @@ RAPPROCHEMENT DES SOURCES
   };
 }
 
+
+function reportProductivityHoursImpact(volume, actualProductivity, budgetProductivity) {
+  const v = Number(volume), a = Number(actualProductivity), b = Number(budgetProductivity);
+  if (![v, a, b].every(Number.isFinite) || v <= 0 || a <= 0 || b <= 0) return "";
+  return (v / a) - (v / b);
+}
+
+function reportFmtSignedHours(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "À compléter";
+  const rounded = Math.round(n);
+  const sign = rounded > 0 ? "+" : "";
+  return `${sign}${rounded.toLocaleString("fr-FR")} h`;
+}
+
+function reportTBagBannerAnalysis(source) {
+  const rows = ensureArray(source?.complementaryKpis)
+    .filter(item => String(item.metricKey || "").toLowerCase() === "preparation.banner.hours")
+    .map(item => ({ banner: String(item.banner || "").trim(), hours: reportMetricActual(item) }))
+    .filter(item => item.banner && Number.isFinite(item.hours) && item.hours >= 0)
+    .sort((a, b) => b.hours - a.hours);
+
+  const totalMetric = reportComplementaryMetric(source, "preparation.hours.total", "TOTAL", "TOTAL BANNIERE");
+  const importedTotal = reportMetricActual(totalMetric);
+  const sumBanners = rows.reduce((sum, item) => sum + item.hours, 0);
+  const reference = Number.isFinite(importedTotal) && importedTotal > 0 ? importedTotal : sumBanners;
+
+  if (!rows.length || !Number.isFinite(reference) || reference <= 0) {
+    return { available: false, text: "Répartition des heures par bannière T-Bag : À compléter" };
+  }
+
+  const detail = rows.slice(0, 8).map(item => {
+    const share = item.hours / reference * 100;
+    return `- ${item.banner} : ${item.hours.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} h | ${share.toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %`;
+  });
+  const top3 = rows.slice(0, 3).reduce((sum, item) => sum + item.hours, 0);
+  const top3Share = top3 / reference * 100;
+
+  return {
+    available: true,
+    text: `RÉPARTITION DES HEURES PAR BANNIÈRE — T-BAG
+${detail.join("\n")}
+- Concentration Top 3 bannières : ${top3Share.toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} %
+- Nombre de bannières avec heures : ${rows.length}
+
+Lecture : cette répartition décrit le mix de charge par bannière. Elle ne démontre pas, à elle seule, un effet causal du multiclient sur la productivité.`
+  };
+}
+
+function reportTBagPopulationGapAnalysis(source) {
+  const population = code => {
+    const volume = reportMetricActual(reportComplementaryMetric(source, `preparation.volume.${code.toLowerCase()}`, code, "TOTAL BANNIERE"));
+    const hours = reportMetricActual(reportComplementaryMetric(source, `preparation.hours.${code.toLowerCase()}`, code, "TOTAL BANNIERE"));
+    const imported = reportMetricActual(reportComplementaryMetric(source, `preparation.productivity.${code.toLowerCase()}`, code, "TOTAL BANNIERE"));
+    const productivity = Number.isFinite(imported) ? imported : (Number.isFinite(volume) && Number.isFinite(hours) && hours > 0 ? volume / hours : "");
+    return { code, productivity };
+  };
+
+  const cdi = population("CDI"), ett = population("ETT"), cdd = population("CDD");
+  const rows = [cdi, ett, cdd].filter(item => Number.isFinite(item.productivity));
+  if (rows.length < 2) return "Écarts de productivité par population : À compléter";
+
+  const fmt = n => n.toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const lines = [];
+  if (Number.isFinite(cdi.productivity) && Number.isFinite(ett.productivity)) lines.push(`- CDI vs ETT : ${cdi.productivity >= ett.productivity ? "+" : ""}${fmt(cdi.productivity - ett.productivity)} colis/h`);
+  if (Number.isFinite(cdi.productivity) && Number.isFinite(cdd.productivity)) lines.push(`- CDI vs CDD : ${cdi.productivity >= cdd.productivity ? "+" : ""}${fmt(cdi.productivity - cdd.productivity)} colis/h`);
+  if (Number.isFinite(ett.productivity) && Number.isFinite(cdd.productivity)) lines.push(`- ETT vs CDD : ${ett.productivity >= cdd.productivity ? "+" : ""}${fmt(ett.productivity - cdd.productivity)} colis/h`);
+
+  return `ÉCARTS OBSERVÉS ENTRE POPULATIONS
+${lines.join("\n")}
+Lecture : ces écarts sont descriptifs. Ils ne prouvent pas que le statut contractuel est la cause de l'écart de performance.`;
+}
+
 function reportPerformanceMonthlySections(source, ctx, actions, decisions, documents) {
   const periodKey = performancePeriodKey(source) || canonicalPerformancePeriod(sourceTypePeriod(source)) || "";
   const directionRows = periodKey ? performanceSummaryBuildRows(periodKey) : [];
@@ -15804,6 +15877,17 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
   const transit = source.productivity?.["Transit"] || {};
   const qualityTotal = source.quality?.indicators?.["Total Gains & Pertes"] || {};
   const tbagPrepAnalysis = reportTBagPreparationAnalysis(source);
+  const tbagBannerAnalysis = reportTBagBannerAnalysis(source);
+  const tbagPopulationGapAnalysis = reportTBagPopulationGapAnalysis(source);
+
+  const uoReception = reportMetricActual(reportComplementaryMetric(source, "activity.uo_reception"));
+  const uoManutention = reportMetricActual(reportComplementaryMetric(source, "activity.uo_manutention"));
+  const uoChargement = reportMetricActual(reportComplementaryMetric(source, "activity.uo_chargement"));
+  const impactPrepAuto = reportProductivityHoursImpact(source.activity?.actual, prep.actual, prep.budget);
+  const impactReceptionAuto = reportProductivityHoursImpact(uoReception, reception.actual, reception.budget);
+  const impactManutAuto = reportProductivityHoursImpact(uoManutention, manut.actual, manut.budget);
+  const impactChargementAuto = reportProductivityHoursImpact(uoChargement, chargement.actual, chargement.budget);
+
   const linkedDocs = documents || "À compléter";
 
   const direction = [
@@ -15834,7 +15918,7 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     },
     {
       title: "4. Productivités par secteur et IPO",
-      body: `${metricLine("Préparation", prep, "colis/h")}\n${metricLine("Réception", reception, "palettes/h")}\n${metricLine("Manutention", manut, "palettes/h")}\n${metricLine("Chargement", chargement, "palettes/h")}\n${metricLine("Transit", transit, "palettes/h")}\n\nIPO total : ${fmtRow(rowByKey("ipo.total"))}\nIPO variable : Réel ${perfFmt(source.ipo?.variable?.actual)} | Budget ${perfFmt(source.ipo?.variable?.budget)} | Historique ${perfFmt(source.ipo?.variable?.historical)}\n\nImpacts en heures par secteur :\n- Préparation : ${perfFmt(prep.hoursBudgetGap)} h vs budget\n- Réception : ${perfFmt(reception.hoursBudgetGap)} h vs budget\n- Manutention : ${perfFmt(manut.hoursBudgetGap)} h vs budget\n- Chargement : ${perfFmt(chargement.hoursBudgetGap)} h vs budget\n\nLecture attendue : identifier ce qui consomme des heures, ce qui compense favorablement, et les écarts réellement actionnables.`
+      body: `${metricLine("Préparation", prep, "colis/h")}\n${metricLine("Réception", reception, "palettes/h")}\n${metricLine("Manutention", manut, "palettes/h")}\n${metricLine("Chargement", chargement, "palettes/h")}\n${metricLine("Transit", transit, "palettes/h")}\n\nIPO total : ${fmtRow(rowByKey("ipo.total"))}\nIPO variable : Réel ${perfFmt(source.ipo?.variable?.actual)} | Budget ${perfFmt(source.ipo?.variable?.budget)} | Historique ${perfFmt(source.ipo?.variable?.historical)}\n\nImpacts en heures par secteur :\n- Préparation : ${perfHas(prep.hoursBudgetGap) ? reportFmtSignedHours(prep.hoursBudgetGap) : reportFmtSignedHours(impactPrepAuto)} vs budget\n- Réception : ${perfHas(reception.hoursBudgetGap) ? reportFmtSignedHours(reception.hoursBudgetGap) : reportFmtSignedHours(impactReceptionAuto)} vs budget\n- Manutention : ${perfHas(manut.hoursBudgetGap) ? reportFmtSignedHours(manut.hoursBudgetGap) : reportFmtSignedHours(impactManutAuto)} vs budget\n- Chargement : ${perfHas(chargement.hoursBudgetGap) ? reportFmtSignedHours(chargement.hoursBudgetGap) : reportFmtSignedHours(impactChargementAuto)} vs budget\n\nMéthode automatique : volume réel ÷ productivité réelle − volume réel ÷ productivité budget. Positif = heures consommées au-delà du budget ; négatif = heures économisées.\n\nLecture attendue : identifier ce qui consomme des heures, ce qui compense favorablement, et les écarts réellement actionnables.`
     },
     {
       title: "5. Activité, heures et capacité",
@@ -15846,7 +15930,7 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     },
     {
       title: "7. Leviers opérationnels Préparation",
-      body: `DONNÉES ENCORE À AUTOMATISER DANS DEOS\n- Écart matin / après-midi : À compléter\n- Démarrage de poste / second tour : À compléter\n- Flux multiclients : À compléter\n- Colis / ligne et complexité : À compléter\n- Manquants premier tour / rattrapage : À compléter\n- Implantation / distances / typologie articles : À compléter\n- Répartition CDI / ETT / CDD par équipe : À compléter\n\nDÉJÀ DISPONIBLE\n${tbagPrepAnalysis.available ? "- Le mix CDI / ETT / CDD agrégé est désormais alimenté automatiquement en section 6 depuis T-Bag." : "- T-Bag agrégé non disponible pour la période."}\n\nRÈGLE D'ANALYSE\nNe pas transformer une association en causalité. Chiffrer l'impact potentiel de chaque levier et identifier les tests opérationnels permettant de confirmer ou d'infirmer l'hypothèse.`
+      body: `ANALYSES AUTOMATIQUES DISPONIBLES\n${tbagBannerAnalysis.text}\n\n${tbagPopulationGapAnalysis}\n\nDONNÉES ENCORE NON DISPONIBLES DANS LES SOURCES IMPORTÉES\n- Écart matin / après-midi : À compléter\n- Démarrage de poste / second tour : À compléter\n- Qualification explicite mono / multiclient : À compléter\n- Colis / ligne et complexité : À compléter\n- Manquants premier tour / rattrapage : À compléter\n- Implantation / distances / typologie articles : À compléter\n- Répartition CDI / ETT / CDD par équipe : À compléter\n\nRÈGLE D'ANALYSE\nNe pas transformer une association en causalité. Une répartition par bannière ou un écart entre populations constitue un constat descriptif, pas une preuve de causalité.`
     },
     {
       title: "8. Absentéisme, sécurité et présentéisme",
