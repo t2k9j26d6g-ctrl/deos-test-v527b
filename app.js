@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30N4B-TEST";
+const DEOS_VERSION = "V5.30N4C-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -1044,7 +1044,7 @@ function schedulePrioritySyncWrite() {
 // -----------------------------------------------------------------------------
 // V5.30N1 — Pont multi-appareils Notes / Journal via Documents
 // -----------------------------------------------------------------------------
-const DEOS_JOURNAL_SYNC_DOC_ID = "deos-system-journal-sync-v1";
+const DEOS_JOURNAL_SYNC_DOC_ID = "deos-system-journal-sync-v2";
 const DEOS_JOURNAL_SYNC_SOURCE = "DEOS_JOURNAL_SYNC";
 let deosJournalSyncApplyingRemote = false;
 let deosJournalSyncTimer = null;
@@ -1058,9 +1058,17 @@ function isJournalSyncTransportDocument(item) {
 
 function journalSyncPayloadFromDocument(doc) {
   if (!isJournalSyncTransportDocument(doc)) return null;
-  const content = doc?.content;
+  let content = doc?.content;
+  // N4C — le transport Journal utilise volontairement une chaîne JSON.
+  // Certains chemins de persistance Documents normalisent le champ content comme texte.
+  // Le lecteur reste rétrocompatible avec l'ancien objet JSON V1.
+  if (typeof content === "string") {
+    const raw = content.trim();
+    if (!raw) return null;
+    try { content = JSON.parse(raw); } catch (_) { return null; }
+  }
   if (!content || typeof content !== "object" || Array.isArray(content) || !Array.isArray(content.journal)) return null;
-  return { schema: Number(content.schema || 1), updatedAt: String(content.updatedAt || doc.updatedAt || ""), journal: content.journal };
+  return { schema: Number(content.schema || 2), updatedAt: String(content.updatedAt || doc.updatedAt || ""), journal: content.journal };
 }
 
 function stageJournalSyncTransport() {
@@ -1077,7 +1085,7 @@ function stageJournalSyncTransport() {
     owner: identityName(), author: identityName(), version: "SYS1", date: localIsoDate(), updatedAt: nowIso, createdAt: existing?.createdAt || nowIso,
     summary: "Transport interne multi-appareils des Notes / Journal.", tags: ["DEOS_SYSTEM", "JOURNAL_SYNC"], documentType: "system_journal_sync",
     sourceType: DEOS_JOURNAL_SYNC_SOURCE, sourceId: DEOS_JOURNAL_SYNC_DOC_ID, hiddenSystem: true,
-    content: { schema: 1, updatedAt: nowIso, device: typeof detectLinksSyncDeviceLabel === "function" ? detectLinksSyncDeviceLabel() : "Navigateur", journal: payload }
+    content: JSON.stringify({ schema: 2, updatedAt: nowIso, device: typeof detectLinksSyncDeviceLabel === "function" ? detectLinksSyncDeviceLabel() : "Navigateur", journal: payload })
   });
   if (index >= 0) state.documents[index] = next; else state.documents.unshift(next);
   saveDocumentsLocalOnly();
@@ -1091,10 +1099,33 @@ function applyJournalSyncTransportFromDocuments(options = {}) {
   if (!payload) return false;
   const incoming = normalizeCollection("journal", payload.journal);
   const current = normalizeCollection("journal", state.journal || []);
-  if (JSON.stringify(current) === JSON.stringify(incoming)) return false;
+
+  // N4C — fusion non destructive par id.
+  // Une Note+ créée sur un appareil ne doit jamais faire disparaître une note
+  // qui n'existe pas encore dans le snapshot reçu d'un autre appareil.
+  const byKey = new Map();
+  const stamp = item => {
+    const raw = item?.updatedAt || item?.createdAt || item?.date || "";
+    const t = Date.parse(raw);
+    return Number.isFinite(t) ? t : 0;
+  };
+  current.forEach(item => {
+    const id = String(item?.id || "").trim();
+    if (id) byKey.set(id, item);
+  });
+  incoming.forEach(item => {
+    const id = String(item?.id || "").trim();
+    if (!id) return;
+    const local = byKey.get(id);
+    if (!local || stamp(item) >= stamp(local)) byKey.set(id, item);
+  });
+  const merged = [...byKey.values()].map(item => normalizeEntity("journal", item));
+  merged.sort((a, b) => stamp(b) - stamp(a));
+
+  if (JSON.stringify(current) === JSON.stringify(merged)) return false;
   deosJournalSyncApplyingRemote = true;
   try {
-    state.journal = incoming;
+    state.journal = merged;
     const repository = getEntityRepository("journal");
     if (repository) repository.save(state.journal); else deosDataService.save("journal", state.journal);
   } finally { deosJournalSyncApplyingRemote = false; }
@@ -23657,6 +23688,12 @@ function createSimpleEntitySyncController(config) {
     if (!canInspect()) return refresh({state:navigator.onLine===false?DEOS_LINKS_SYNC_STATUS.OFFLINE:DEOS_LINKS_SYNC_STATUS.ERROR,lastError:navigator.onLine===false?"Le navigateur est hors ligne.":`Connexion distante ${plural} indisponible.`});
     refresh({syncing:true,state:DEOS_LINKS_SYNC_STATUS.SYNCING,lastError:""});
     try {
+      // N4C — toute synchronisation Documents commence par matérialiser
+      // le snapshot Journal local courant. Cela couvre aussi les notes déjà
+      // présentes avant le chargement de cette version.
+      if (entity === "documents") {
+        stageJournalSyncTransport();
+      }
       let rows=await timeout(deosRemoteAdapter[listMethod](),`Lecture des ${plural} distants`);
       let remoteMap=new Map(rows.filter(r=>!r.deletedAt).map(r=>[String(r.clientId||""),r]));
       let localChanged=false;
