@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30N4C-TEST";
+const DEOS_VERSION = "V5.30N4D-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -21,7 +21,7 @@ function ensureDeosAsyncFeedbackUi() {
       @media (max-width:800px){#deosQuickNoteFab{top:88px;right:0;bottom:0;width:42px;border-radius:0;padding:0;flex-direction:column;gap:2px;box-shadow:-3px 0 12px rgba(15,23,42,.16)}#deosQuickNoteFab .deos-note-plus{font-size:18px}#deosQuickNoteFab .deos-note-label{font-size:12px;display:block!important;color:#fff!important;visibility:visible!important;opacity:1!important}}
       .deos-note-filters{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.deos-note-filter.active{font-weight:700;box-shadow:inset 0 0 0 2px currentColor}
       .deos-note-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.deos-note-card-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.deos-note-card-actions button{padding:6px 9px;font-size:12px}
-      .deos-note-status{display:flex;column-gap:8px;row-gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px}.deos-note-chip{display:inline-block;font-size:12px;border:1px solid rgba(148,163,184,.45);border-radius:999px;padding:2px 7px;line-height:1.35;white-space:nowrap}
+      .deos-note-status{display:flex;column-gap:10px;row-gap:6px;align-items:center;flex-wrap:wrap;margin-top:5px}.deos-note-chip{display:inline-flex;align-items:center;font-size:12px;border:1px solid rgba(148,163,184,.45);border-radius:999px;padding:3px 8px;line-height:1.35;white-space:nowrap}.deos-note-chip+.deos-note-chip{margin-left:2px}
       .cockpit-notes-top{margin-top:14px;margin-bottom:14px}.cockpit-notes-top>.row{align-items:center}.cockpit-notes-top h2{margin:0}.cockpit-note-row{padding:10px 0;border-bottom:1px solid rgba(148,163,184,.18)}.cockpit-note-row:last-child{border-bottom:0}.cockpit-note-main{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.cockpit-note-title{font-weight:700;cursor:pointer}.cockpit-note-title:hover{text-decoration:underline}.cockpit-note-preview{margin:4px 0 7px;line-height:1.4}.cockpit-note-actions{display:flex;gap:6px;flex-wrap:wrap}.cockpit-note-actions button{padding:5px 8px;font-size:12px}
       .deos-quick-note-panel{width:min(720px,calc(100vw - 28px))}.deos-quick-note-panel textarea{min-height:220px}.deos-note-context{padding:9px 11px;border-radius:10px;background:rgba(148,163,184,.12);margin:8px 0 12px}.deos-quick-note-detail{display:flex;flex-direction:column;gap:18px}.deos-quick-note-detail>.secondary{align-self:flex-start}.deos-quick-note-content{font-size:1.05rem;line-height:1.65;padding:18px 0;white-space:normal}.deos-quick-note-detail .row-actions{margin-top:4px}
     `;
@@ -1042,16 +1042,43 @@ function schedulePrioritySyncWrite() {
 }
 
 // -----------------------------------------------------------------------------
-// V5.30N1 — Pont multi-appareils Notes / Journal via Documents
+// V5.30N4D — Pont multi-appareils Notes / Journal via Documents, flux par appareil
 // -----------------------------------------------------------------------------
-const DEOS_JOURNAL_SYNC_DOC_ID = "deos-system-journal-sync-v2";
+// Chaque appareil publie son propre document système Journal. Cela évite qu'un
+// PC et un iPad entrent en conflit dès leur première synchro avec le même clientId.
+// Les flux sont ensuite fusionnés par identifiant de note, sans suppression implicite.
+const DEOS_JOURNAL_SYNC_DOC_PREFIX = "deos-system-journal-sync-v3-";
+const DEOS_JOURNAL_SYNC_LEGACY_IDS = new Set(["deos-system-journal-sync", "deos-system-journal-sync-v2"]);
 const DEOS_JOURNAL_SYNC_SOURCE = "DEOS_JOURNAL_SYNC";
+const DEOS_JOURNAL_SYNC_DEVICE_KEY = "deos_journal_sync_device_id";
 let deosJournalSyncApplyingRemote = false;
 let deosJournalSyncTimer = null;
 
+function journalSyncDeviceId() {
+  try {
+    let id = String(localStorage.getItem(DEOS_JOURNAL_SYNC_DEVICE_KEY) || "").trim();
+    if (!id) {
+      const seed = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      id = seed.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || `device-${Date.now()}`;
+      localStorage.setItem(DEOS_JOURNAL_SYNC_DEVICE_KEY, id);
+    }
+    return id;
+  } catch (_) {
+    return `device-${String((typeof detectLinksSyncDeviceLabel === "function" ? detectLinksSyncDeviceLabel() : "browser")).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+  }
+}
+
+function journalSyncOwnDocumentId() {
+  return `${DEOS_JOURNAL_SYNC_DOC_PREFIX}${journalSyncDeviceId()}`;
+}
+
 function isJournalSyncTransportDocument(item) {
   const doc = item && typeof item === "object" ? item : {};
-  return String(doc.id || "") === DEOS_JOURNAL_SYNC_DOC_ID
+  const id = String(doc.id || doc.clientId || "");
+  return id.startsWith(DEOS_JOURNAL_SYNC_DOC_PREFIX)
+    || DEOS_JOURNAL_SYNC_LEGACY_IDS.has(id)
     || String(doc.sourceType || "") === DEOS_JOURNAL_SYNC_SOURCE
     || String(doc.documentType || "") === "system_journal_sync";
 }
@@ -1059,16 +1086,19 @@ function isJournalSyncTransportDocument(item) {
 function journalSyncPayloadFromDocument(doc) {
   if (!isJournalSyncTransportDocument(doc)) return null;
   let content = doc?.content;
-  // N4C — le transport Journal utilise volontairement une chaîne JSON.
-  // Certains chemins de persistance Documents normalisent le champ content comme texte.
-  // Le lecteur reste rétrocompatible avec l'ancien objet JSON V1.
   if (typeof content === "string") {
     const raw = content.trim();
     if (!raw) return null;
     try { content = JSON.parse(raw); } catch (_) { return null; }
   }
   if (!content || typeof content !== "object" || Array.isArray(content) || !Array.isArray(content.journal)) return null;
-  return { schema: Number(content.schema || 2), updatedAt: String(content.updatedAt || doc.updatedAt || ""), journal: content.journal };
+  return {
+    schema: Number(content.schema || 3),
+    updatedAt: String(content.updatedAt || doc.updatedAt || ""),
+    deviceId: String(content.deviceId || ""),
+    device: String(content.device || ""),
+    journal: content.journal
+  };
 }
 
 function stageJournalSyncTransport() {
@@ -1076,59 +1106,91 @@ function stageJournalSyncTransport() {
   if (!Array.isArray(state.documents) || !Array.isArray(state.journal)) return false;
   const nowIso = new Date().toISOString();
   const payload = state.journal.map(item => normalizeEntity("journal", item));
-  const index = state.documents.findIndex(isJournalSyncTransportDocument);
+  const ownId = journalSyncOwnDocumentId();
+  const index = state.documents.findIndex(doc => String(doc?.id || doc?.clientId || "") === ownId);
   const existing = index >= 0 ? state.documents[index] : null;
   const existingPayload = journalSyncPayloadFromDocument(existing);
   if (existingPayload && JSON.stringify(existingPayload.journal) === JSON.stringify(payload)) return false;
   const next = normalizeEntity("documents", {
-    ...(existing || {}), id: DEOS_JOURNAL_SYNC_DOC_ID, title: "DEOS système — Notes / Journal", type: "Système", category: "Système", status: "Actif",
-    owner: identityName(), author: identityName(), version: "SYS1", date: localIsoDate(), updatedAt: nowIso, createdAt: existing?.createdAt || nowIso,
-    summary: "Transport interne multi-appareils des Notes / Journal.", tags: ["DEOS_SYSTEM", "JOURNAL_SYNC"], documentType: "system_journal_sync",
-    sourceType: DEOS_JOURNAL_SYNC_SOURCE, sourceId: DEOS_JOURNAL_SYNC_DOC_ID, hiddenSystem: true,
-    content: JSON.stringify({ schema: 2, updatedAt: nowIso, device: typeof detectLinksSyncDeviceLabel === "function" ? detectLinksSyncDeviceLabel() : "Navigateur", journal: payload })
+    ...(existing || {}),
+    id: ownId,
+    clientId: ownId,
+    title: `DEOS système — Notes / Journal — ${typeof detectLinksSyncDeviceLabel === "function" ? detectLinksSyncDeviceLabel() : "Navigateur"}`,
+    type: "Système",
+    category: "Système",
+    status: "Actif",
+    owner: identityName(),
+    author: identityName(),
+    version: "SYS3",
+    date: localIsoDate(),
+    updatedAt: nowIso,
+    createdAt: existing?.createdAt || nowIso,
+    summary: "Transport interne multi-appareils des Notes / Journal.",
+    tags: ["DEOS_SYSTEM", "JOURNAL_SYNC", "JOURNAL_SYNC_V3"],
+    documentType: "system_journal_sync",
+    sourceType: DEOS_JOURNAL_SYNC_SOURCE,
+    sourceId: ownId,
+    hiddenSystem: true,
+    content: JSON.stringify({
+      schema: 3,
+      updatedAt: nowIso,
+      deviceId: journalSyncDeviceId(),
+      device: typeof detectLinksSyncDeviceLabel === "function" ? detectLinksSyncDeviceLabel() : "Navigateur",
+      journal: payload
+    })
   });
   if (index >= 0) state.documents[index] = next; else state.documents.unshift(next);
   saveDocumentsLocalOnly();
   return true;
 }
 
+function journalItemStamp(item) {
+  const raw = item?.updatedAt || item?.createdAt || item?.date || "";
+  const t = Date.parse(raw);
+  return Number.isFinite(t) ? t : 0;
+}
+
 function applyJournalSyncTransportFromDocuments(options = {}) {
   if (!Array.isArray(state.documents)) return false;
-  const doc = state.documents.find(isJournalSyncTransportDocument);
-  const payload = journalSyncPayloadFromDocument(doc);
-  if (!payload) return false;
-  const incoming = normalizeCollection("journal", payload.journal);
-  const current = normalizeCollection("journal", state.journal || []);
+  const transportDocs = state.documents.filter(isJournalSyncTransportDocument);
+  if (!transportDocs.length) return false;
 
-  // N4C — fusion non destructive par id.
-  // Une Note+ créée sur un appareil ne doit jamais faire disparaître une note
-  // qui n'existe pas encore dans le snapshot reçu d'un autre appareil.
+  const current = normalizeCollection("journal", state.journal || []);
   const byKey = new Map();
-  const stamp = item => {
-    const raw = item?.updatedAt || item?.createdAt || item?.date || "";
-    const t = Date.parse(raw);
-    return Number.isFinite(t) ? t : 0;
-  };
   current.forEach(item => {
     const id = String(item?.id || "").trim();
     if (id) byKey.set(id, item);
   });
-  incoming.forEach(item => {
-    const id = String(item?.id || "").trim();
-    if (!id) return;
-    const local = byKey.get(id);
-    if (!local || stamp(item) >= stamp(local)) byKey.set(id, item);
-  });
-  const merged = [...byKey.values()].map(item => normalizeEntity("journal", item));
-  merged.sort((a, b) => stamp(b) - stamp(a));
 
+  transportDocs
+    .map(doc => ({ doc, payload: journalSyncPayloadFromDocument(doc) }))
+    .filter(x => x.payload)
+    .sort((a, b) => Date.parse(a.payload.updatedAt || 0) - Date.parse(b.payload.updatedAt || 0))
+    .forEach(({ payload }) => {
+      normalizeCollection("journal", payload.journal).forEach(item => {
+        const id = String(item?.id || "").trim();
+        if (!id) return;
+        const local = byKey.get(id);
+        if (!local || journalItemStamp(item) >= journalItemStamp(local)) byKey.set(id, item);
+      });
+    });
+
+  const merged = [...byKey.values()].map(item => normalizeEntity("journal", item));
+  merged.sort((a, b) => journalItemStamp(b) - journalItemStamp(a));
   if (JSON.stringify(current) === JSON.stringify(merged)) return false;
+
   deosJournalSyncApplyingRemote = true;
   try {
     state.journal = merged;
     const repository = getEntityRepository("journal");
     if (repository) repository.save(state.journal); else deosDataService.save("journal", state.journal);
-  } finally { deosJournalSyncApplyingRemote = false; }
+  } finally {
+    deosJournalSyncApplyingRemote = false;
+  }
+
+  // Republie l'état fusionné dans le flux propre à cet appareil.
+  stageJournalSyncTransport();
+
   if (!options.silent) showDeosToast?.("Notes / Journal synchronisés sur cet appareil.", "success");
   if (currentView === "journal" && !options.silent) renderJournal();
   return true;
@@ -1141,37 +1203,21 @@ function scheduleJournalSyncWrite() {
     deosJournalSyncTimer = null;
     if (!multiDeviceConnected?.() || !deosDocumentsSyncController?.syncNow) return;
     try {
-      // N4B — le pont Journal doit attendre toute synchro Documents déjà en cours.
-      // Un appel direct à syncNow() pouvait auparavant sortir immédiatement si le
-      // contrôleur Documents était occupé, laissant le document système Journal
-      // uniquement en local jusqu'à une synchro ultérieure.
-      const run = () => deosDocumentsSyncController.syncNow({ silent: true, source: "journal-bridge" });
-      if (typeof deosDocumentsSyncController.runExclusive === "function") {
-        await deosDocumentsSyncController.runExclusive(run);
-      } else {
-        await run();
-      }
-      applyJournalSyncTransportFromDocuments({ silent: true, source: "journal-bridge" });
+      stageJournalSyncTransport();
+      const run = () => deosDocumentsSyncController.syncNow({ silent: true, source: "journal-bridge-v3" });
+      if (typeof deosDocumentsSyncController.runExclusive === "function") await deosDocumentsSyncController.runExclusive(run);
+      else await run();
 
-      // Contrôle de rattrapage : si le document système n'est toujours pas marqué
-      // synchronisé, une seconde tentative sérialisée est programmée.
-      const runtime = typeof deosDocumentsSyncController.runtime === "function" ? deosDocumentsSyncController.runtime() : null;
-      const meta = runtime?.metaByClientId?.[DEOS_JOURNAL_SYNC_DOC_ID];
-      if (multiDeviceConnected?.() && (!meta || meta.syncStatus !== DEOS_LINKS_SYNC_STATUS.SYNCED)) {
-        window.setTimeout(async () => {
-          if (!multiDeviceConnected?.() || !deosDocumentsSyncController?.syncNow) return;
-          try {
-            const retry = () => deosDocumentsSyncController.syncNow({ silent: true, source: "journal-bridge-retry" });
-            if (typeof deosDocumentsSyncController.runExclusive === "function") await deosDocumentsSyncController.runExclusive(retry);
-            else await retry();
-            applyJournalSyncTransportFromDocuments({ silent: true, source: "journal-bridge-retry" });
-          } catch (retryError) {
-            console.warn("[DEOS Journal Sync] Nouvelle tentative différée", retryError);
-          }
-        }, 1500);
+      const changed = applyJournalSyncTransportFromDocuments({ silent: true, source: "journal-bridge-v3" });
+      if (changed) {
+        const pushMerged = () => deosDocumentsSyncController.syncNow({ silent: true, source: "journal-bridge-v3-merged" });
+        if (typeof deosDocumentsSyncController.runExclusive === "function") await deosDocumentsSyncController.runExclusive(pushMerged);
+        else await pushMerged();
       }
-    } catch (error) { console.warn("[DEOS Journal Sync] Synchronisation différée", error); }
-  }, 1200);
+    } catch (error) {
+      console.warn("[DEOS Journal Sync V3] Synchronisation différée", error);
+    }
+  }, 900);
 }
 
 function persist(name) {
