@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30N4H-TEST";
+const DEOS_VERSION = "V5.30N4I-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -24023,6 +24023,78 @@ let deosMultiDeviceSyncRuntime = {
   lastAutoAttemptAt: 0
 };
 
+
+// -----------------------------------------------------------------------------
+// V5.30N4I — Auto-réparation du contexte multi-appareils
+// Cas visé : session Supabase encore valide mais runtime/workspace perdu ou resté
+// en mode local temporaire après un démarrage lent / retour réseau / Safari iPad.
+// -----------------------------------------------------------------------------
+let deosMultiDeviceRecoveryPromise = null;
+async function ensureMultiDeviceRemoteReady(options = {}) {
+  if (navigator.onLine === false) return false;
+  if (multiDeviceConnected()) return true;
+  if (deosMultiDeviceRecoveryPromise) return deosMultiDeviceRecoveryPromise;
+  deosMultiDeviceRecoveryPromise = (async () => {
+    try {
+      if (!deosRemoteAuthService) {
+        await initializeRemoteServices({ silent: true });
+      }
+      if (!deosRemoteAuthService) return false;
+      let session = deosRemoteAuthService.session || null;
+      const client = deosRemoteAuthService.getClient?.() || deosRemoteAuthService.client || null;
+      if (!session?.user && client?.auth?.getSession) {
+        const result = await withRemoteTimeout(client.auth.getSession(), 7000, 'MULTIDEVICE_SESSION_TIMEOUT', 'Session distante trop lente.');
+        session = result?.data?.session || null;
+      }
+      if (!session?.user) return false;
+      remoteFastSetSession(session);
+      const snapshot = await remoteFastHydrateContext(session);
+      updateRemoteRuntime(snapshot || deosRemoteAuthService.getStateSnapshot?.() || {});
+      ensureRecoveredRemoteAdapter();
+      if (deosRemoteAuthService.currentWorkspace && !deosRemoteRuntime.workspace) {
+        deosRemoteRuntime.workspace = deosRemoteAuthService.currentWorkspace;
+        deosRemoteRuntime.site = deosRemoteAuthService.currentSite || deosRemoteRuntime.site;
+        deosRemoteRuntime.role = deosRemoteAuthService.currentRole || deosRemoteRuntime.role;
+      }
+      deosRemoteRuntime.connectionStatus = 'authenticated';
+      deosRemoteRuntime.temporaryLocal = false;
+      deosRemoteRuntime.lastError = '';
+      deosRemoteRuntime.lastErrorCode = '';
+      if (deosRemoteRuntime.workspace && deosRemoteAdapter) enableAllMultiDevicePilots();
+      applyRemoteEnvironmentBadge();
+      renderRemoteUserContext();
+      return multiDeviceConnected();
+    } catch (error) {
+      deosMultiDeviceSyncRuntime.lastError = error?.message || String(error);
+      return false;
+    } finally {
+      deosMultiDeviceRecoveryPromise = null;
+    }
+  })();
+  return deosMultiDeviceRecoveryPromise;
+}
+window.ensureMultiDeviceRemoteReady = ensureMultiDeviceRemoteReady;
+
+function dedupeSimpleEntityLocally(entity) {
+  if (!['decisions','documents'].includes(entity)) return 0;
+  const source = ensureArray(state[entity]);
+  const seen = new Map();
+  const kept = [];
+  let removed = 0;
+  for (const item of source) {
+    if (entity === 'documents' && isJournalSyncTransportDocument(item)) { kept.push(item); continue; }
+    const fp = simpleSyncFingerprint(item);
+    if (!fp || !seen.has(fp)) { seen.set(fp, item); kept.push(item); continue; }
+    removed++;
+  }
+  if (removed) {
+    state[entity] = kept;
+    const repository = getEntityRepository(entity);
+    if (repository) repository.save(kept); else deosDataService.save(entity, kept);
+  }
+  return removed;
+}
+
 function multiDeviceConnected() {
   return Boolean(
     navigator.onLine !== false
@@ -24070,11 +24142,14 @@ function multiDeviceEntityRuntime(entity) {
 async function syncAllMultiDeviceNow(options = {}) {
   const silent = Boolean(options.silent);
   if (deosMultiDeviceSyncRuntime.syncing) return deosMultiDeviceSyncRuntime;
+  if (!multiDeviceConnected()) await ensureMultiDeviceRemoteReady({ source: options.source || "multi-device" });
   if (!multiDeviceConnected()) {
-    deosMultiDeviceSyncRuntime.lastError = navigator.onLine === false ? "Hors ligne." : "Connexion au workspace requise.";
+    deosMultiDeviceSyncRuntime.lastError = navigator.onLine === false ? "Hors ligne." : "Connexion au workspace requise — tentative de restauration automatique effectuée.";
     if (!silent && currentView === "settings") renderSettings(deosMultiDeviceSyncRuntime.lastError);
     return deosMultiDeviceSyncRuntime;
   }
+  dedupeSimpleEntityLocally("decisions");
+  dedupeSimpleEntityLocally("documents");
   enableAllMultiDevicePilots();
   deosMultiDeviceSyncRuntime.syncing = true;
   deosMultiDeviceSyncRuntime.lastError = "";
@@ -24120,11 +24195,14 @@ async function syncAllMultiDeviceNow(options = {}) {
 window.syncAllMultiDeviceNow = syncAllMultiDeviceNow;
 
 function scheduleMultiDeviceAutoSync(source = "auto") {
-  if (!multiDeviceConnected()) return;
+  if (navigator.onLine === false) return;
   const now = Date.now();
   if (now - deosMultiDeviceSyncRuntime.lastAutoAttemptAt < 12000) return;
   deosMultiDeviceSyncRuntime.lastAutoAttemptAt = now;
-  window.setTimeout(() => syncAllMultiDeviceNow({ silent: true, source }), 500);
+  window.setTimeout(async () => {
+    if (!multiDeviceConnected()) await ensureMultiDeviceRemoteReady({ source });
+    if (multiDeviceConnected()) await syncAllMultiDeviceNow({ silent: true, source });
+  }, 500);
 }
 
 // V5.30L — debounce dédié aux écritures métier. Contrairement au contrôle
@@ -24132,13 +24210,14 @@ function scheduleMultiDeviceAutoSync(source = "auto") {
 let deosMultiDeviceWriteSyncTimer = null;
 function scheduleMultiDeviceWriteSync(entity = "change") {
   if (typeof window === "undefined") return;
-  if (!multiDeviceConnected()) return;
+  if (navigator.onLine === false) return;
   // Une persistance effectuée pendant une synchro distante ne doit pas
   // réamorcer une boucle de synchronisation.
   if (deosMultiDeviceSyncRuntime.syncing) return;
   if (deosMultiDeviceWriteSyncTimer) window.clearTimeout(deosMultiDeviceWriteSyncTimer);
   deosMultiDeviceWriteSyncTimer = window.setTimeout(async () => {
     deosMultiDeviceWriteSyncTimer = null;
+    if (!multiDeviceConnected()) await ensureMultiDeviceRemoteReady({ source: `write:${entity}` });
     if (!multiDeviceConnected() || deosMultiDeviceSyncRuntime.syncing) return;
     await syncAllMultiDeviceNow({ silent: true, source: `write:${entity}` });
   }, 1200);
@@ -24155,9 +24234,19 @@ function bindMultiDeviceSyncListeners() {
 
 function initializeMultiDeviceSyncForAuthenticatedSession(options = {}) {
   bindMultiDeviceSyncListeners();
-  if (!multiDeviceConnected()) return;
-  enableAllMultiDevicePilots();
-  if (!options.skipSync) scheduleMultiDeviceAutoSync(options.source || "startup");
+  if (multiDeviceConnected()) {
+    enableAllMultiDevicePilots();
+    if (!options.skipSync) scheduleMultiDeviceAutoSync(options.source || "startup");
+    return;
+  }
+  if (navigator.onLine === false) return;
+  window.setTimeout(async () => {
+    const ready = await ensureMultiDeviceRemoteReady({ source: options.source || "startup" });
+    if (!ready) return;
+    enableAllMultiDevicePilots();
+    if (!options.skipSync) scheduleMultiDeviceAutoSync(options.source || "startup-recovered");
+    if (currentView === "settings") renderSettings();
+  }, 0);
 }
 
 function multiDeviceSyncSummary() {
@@ -24178,7 +24267,7 @@ function renderMultiDeviceSyncSettingsCardHtml() {
   const connected = multiDeviceConnected();
   const summary = multiDeviceSyncSummary();
   const labelMap = { links:"Liens", actions:"Actions", projects:"Projets", folders:"Dossiers", managers:"Managers", decisions:"Décisions", documents:"Documents" };
-  return `<div id="multiDeviceSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation multi-appareils</h2><p class="muted">V5.30Q1 · un seul workspace pour retrouver automatiquement les objets métier principaux sur PC, iPad et autres navigateurs, y compris Priorités / To-Do via Documents.</p></div><span class="remote-mode-badge ${connected ? (summary.conflicts ? "red" : "green") : "orange"}">${connected ? (summary.conflicts ? `${summary.conflicts} conflit(s)` : "Cloud connecté") : "Connexion requise"}</span></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Workspace</strong><span>${esc(deosRemoteRuntime.workspace?.name || "--")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchro globale</strong><span>${esc(deosMultiDeviceSyncRuntime.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Conflits</strong><span>${summary.conflicts}</span></div><div class="settings-calendar-summary-item"><strong>Erreurs</strong><span>${summary.errors}</span></div></div><div class="row-actions"><button class="action" type="button" onclick="syncAllMultiDeviceNow({silent:false,source:'manual'})" ${connected && !deosMultiDeviceSyncRuntime.syncing ? "" : "disabled"}>${deosMultiDeviceSyncRuntime.syncing ? "Synchronisation…" : "Synchroniser maintenant"}</button></div>${deosMultiDeviceSyncRuntime.lastError ? `<p class="remote-error-box">${esc(deosMultiDeviceSyncRuntime.lastError)}</p>` : ""}</section><section class="settings-card-block"><h3>Objets synchronisés</h3><div class="settings-calendar-summary">${summary.rows.map(r => `<div class="settings-calendar-summary-item"><strong>${esc(labelMap[r.entity] || r.entity)}</strong><span>${r.conflicts ? `${r.conflicts} conflit(s)` : r.error ? "Erreur" : "Actif"}</span></div>`).join("")}</div><p class="muted">Le stockage local reste conservé. En cas de modifications concurrentes, les moteurs existants signalent un conflit au lieu d'écraser silencieusement les données.</p></section></div></div>`;
+  return `<div id="multiDeviceSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation multi-appareils</h2><p class="muted">V5.30Q1 · un seul workspace pour retrouver automatiquement les objets métier principaux sur PC, iPad et autres navigateurs, y compris Priorités / To-Do via Documents.</p></div><span class="remote-mode-badge ${connected ? (summary.conflicts ? "red" : "green") : "orange"}">${connected ? (summary.conflicts ? `${summary.conflicts} conflit(s)` : "Cloud connecté") : "Connexion requise"}</span></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Workspace</strong><span>${esc(deosRemoteRuntime.workspace?.name || "--")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchro globale</strong><span>${esc(deosMultiDeviceSyncRuntime.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Conflits</strong><span>${summary.conflicts}</span></div><div class="settings-calendar-summary-item"><strong>Erreurs</strong><span>${summary.errors}</span></div></div><div class="row-actions"><button class="action" type="button" onclick="syncAllMultiDeviceNow({silent:false,source:'manual'})" ${navigator.onLine !== false && !deosMultiDeviceSyncRuntime.syncing ? "" : "disabled"}>${deosMultiDeviceSyncRuntime.syncing ? "Synchronisation…" : connected ? "Synchroniser maintenant" : "Reconnecter et synchroniser"}</button></div>${deosMultiDeviceSyncRuntime.lastError ? `<p class="remote-error-box">${esc(deosMultiDeviceSyncRuntime.lastError)}</p>` : ""}</section><section class="settings-card-block"><h3>Objets synchronisés</h3><div class="settings-calendar-summary">${summary.rows.map(r => `<div class="settings-calendar-summary-item"><strong>${esc(labelMap[r.entity] || r.entity)}</strong><span>${r.conflicts ? `${r.conflicts} conflit(s)` : r.error ? "Erreur" : "Actif"}</span></div>`).join("")}</div><p class="muted">Le stockage local reste conservé. En cas de modifications concurrentes, les moteurs existants signalent un conflit au lieu d'écraser silencieusement les données.</p></section></div></div>`;
 }
 
 function mountMultiDeviceSyncSettingsCard() {
