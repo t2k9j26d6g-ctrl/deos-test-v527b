@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30N4D-TEST";
+const DEOS_VERSION = "V5.30N4E-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -21,7 +21,7 @@ function ensureDeosAsyncFeedbackUi() {
       @media (max-width:800px){#deosQuickNoteFab{top:88px;right:0;bottom:0;width:42px;border-radius:0;padding:0;flex-direction:column;gap:2px;box-shadow:-3px 0 12px rgba(15,23,42,.16)}#deosQuickNoteFab .deos-note-plus{font-size:18px}#deosQuickNoteFab .deos-note-label{font-size:12px;display:block!important;color:#fff!important;visibility:visible!important;opacity:1!important}}
       .deos-note-filters{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.deos-note-filter.active{font-weight:700;box-shadow:inset 0 0 0 2px currentColor}
       .deos-note-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.deos-note-card-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.deos-note-card-actions button{padding:6px 9px;font-size:12px}
-      .deos-note-status{display:flex;column-gap:10px;row-gap:6px;align-items:center;flex-wrap:wrap;margin-top:5px}.deos-note-chip{display:inline-flex;align-items:center;font-size:12px;border:1px solid rgba(148,163,184,.45);border-radius:999px;padding:3px 8px;line-height:1.35;white-space:nowrap}.deos-note-chip+.deos-note-chip{margin-left:2px}
+      .deos-note-status{display:flex!important;gap:8px!important;align-items:center;flex-wrap:wrap;margin-top:5px}.deos-note-chip{display:inline-flex;align-items:center;font-size:12px;border:1px solid rgba(148,163,184,.45);border-radius:999px;padding:3px 8px;line-height:1.35;white-space:nowrap}.deos-note-chip+.deos-note-chip{margin-left:0!important}
       .cockpit-notes-top{margin-top:14px;margin-bottom:14px}.cockpit-notes-top>.row{align-items:center}.cockpit-notes-top h2{margin:0}.cockpit-note-row{padding:10px 0;border-bottom:1px solid rgba(148,163,184,.18)}.cockpit-note-row:last-child{border-bottom:0}.cockpit-note-main{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.cockpit-note-title{font-weight:700;cursor:pointer}.cockpit-note-title:hover{text-decoration:underline}.cockpit-note-preview{margin:4px 0 7px;line-height:1.4}.cockpit-note-actions{display:flex;gap:6px;flex-wrap:wrap}.cockpit-note-actions button{padding:5px 8px;font-size:12px}
       .deos-quick-note-panel{width:min(720px,calc(100vw - 28px))}.deos-quick-note-panel textarea{min-height:220px}.deos-note-context{padding:9px 11px;border-radius:10px;background:rgba(148,163,184,.12);margin:8px 0 12px}.deos-quick-note-detail{display:flex;flex-direction:column;gap:18px}.deos-quick-note-detail>.secondary{align-self:flex-start}.deos-quick-note-content{font-size:1.05rem;line-height:1.65;padding:18px 0;white-space:normal}.deos-quick-note-detail .row-actions{margin-top:4px}
     `;
@@ -4821,7 +4821,7 @@ function getCockpitPendingNotes(limit = 5) {
 function cockpitPendingNoteRow(j) {
   const text = String(j.summary || j.content || "").trim();
   const preview = text.length > 150 ? `${text.slice(0, 147)}…` : text;
-  return `<div class="cockpit-note-row"><div class="cockpit-note-main"><div><div class="cockpit-note-title" onclick="openJournal('${j.id}')">${j.pinned ? "📌 " : ""}${esc(j.title || "Note rapide")}</div><div class="deos-note-status"><span class="deos-note-chip">${esc(j.entryType || "Note rapide")}</span><span class="deos-note-chip">À traiter</span></div></div><span class="muted">${esc(j.date || "")}</span></div>${preview ? `<div class="cockpit-note-preview">${esc(preview)}</div>` : ""}<div class="cockpit-note-actions"><button class="secondary" type="button" onclick="openJournal('${j.id}')">Ouvrir</button><button class="secondary" type="button" onclick="toggleCockpitNotePinned('${j.id}')">${j.pinned ? "Désépingler" : "Épingler"}</button><button class="secondary" type="button" onclick="completeCockpitNote('${j.id}')">Marquer traité</button></div></div>`;
+  return `<div class="cockpit-note-row"><div class="cockpit-note-main"><div><div class="cockpit-note-title" onclick="openJournal('${j.id}')">${j.pinned ? "📌 " : ""}${esc(j.title || "Note rapide")}</div><div class="deos-note-status" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:5px"><span class="deos-note-chip" style="display:inline-flex;padding:3px 8px;border:1px solid rgba(148,163,184,.45);border-radius:999px;white-space:nowrap">${esc(j.entryType || "Note rapide")}</span><span class="deos-note-chip" style="display:inline-flex;padding:3px 8px;border:1px solid rgba(148,163,184,.45);border-radius:999px;white-space:nowrap">À traiter</span></div></div><span class="muted">${esc(j.date || "")}</span></div>${preview ? `<div class="cockpit-note-preview">${esc(preview)}</div>` : ""}<div class="cockpit-note-actions"><button class="secondary" type="button" onclick="openJournal('${j.id}')">Ouvrir</button><button class="secondary" type="button" onclick="toggleCockpitNotePinned('${j.id}')">${j.pinned ? "Désépingler" : "Épingler"}</button><button class="secondary" type="button" onclick="completeCockpitNote('${j.id}')">Marquer traité</button></div></div>`;
 }
 
 function toggleCockpitNotePinned(id) {
@@ -23640,6 +23640,21 @@ function simpleSyncConflictFields(a = {}, b = {}) {
 }
 function simpleSyncClientId(item = {}) { return String(item?.clientId || item?.id || "").trim(); }
 
+
+// -----------------------------------------------------------------------------
+// V5.30N4E — Stabilisation multi-appareils : tombstones + courses de création
+// -----------------------------------------------------------------------------
+function isDeosDuplicateKeyError(error) {
+  const message = String(error?.message || error || "").toLowerCase();
+  return message.includes("duplicate key") || message.includes("unique constraint") || message.includes("23505");
+}
+function deosRemoteRowByClientId(rows, clientId) {
+  const id = String(clientId || "");
+  const matches = ensureArray(rows).filter(row => String(row?.clientId || "") === id);
+  if (!matches.length) return null;
+  return [...matches].sort((a,b) => Number(b?.version || 0) - Number(a?.version || 0))[0];
+}
+
 function createSimpleEntitySyncController(config) {
   const {
     entity, singular, plural, settingPrefix, metaRepository,
@@ -23741,6 +23756,7 @@ function createSimpleEntitySyncController(config) {
         stageJournalSyncTransport();
       }
       let rows=await timeout(deosRemoteAdapter[listMethod](),`Lecture des ${plural} distants`);
+      let remoteAllMap=new Map(rows.map(r=>[String(r.clientId||""),r]).filter(([id])=>id));
       let remoteMap=new Map(rows.filter(r=>!r.deletedAt).map(r=>[String(r.clientId||""),r]));
       let localChanged=false;
       // Suppressions locales connues.
@@ -23753,13 +23769,53 @@ function createSimpleEntitySyncController(config) {
         }
       }
       rows=await timeout(deosRemoteAdapter[listMethod](),`Actualisation des ${plural} distants`);
+      remoteAllMap=new Map(rows.map(r=>[String(r.clientId||""),r]).filter(([id])=>id));
       remoteMap=new Map(rows.filter(r=>!r.deletedAt).map(r=>[String(r.clientId||""),r]));
-      // Créations locales.
+      // Créations locales. N4E : si le même clientId existe sous forme de tombstone,
+      // on le réactive par update au lieu de tenter un INSERT qui viole la contrainte unique.
       for (const local of ensureArray(state[entity])) {
         const id=simpleSyncClientId(local); if (!id || remoteMap.has(id)) continue;
         local.clientId=id;
-        const created=await timeout(deosRemoteAdapter[createMethod]({...local,id,clientId:id}),`Création ${singular} ${local.title||id}`);
-        setMeta(id,{remoteId:created.remoteId,remoteVersion:Number(created.version||0),remoteUpdatedAt:created.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:simpleSyncFingerprint(local),lastSyncError:"",conflictFields:[]});
+        const tombstone=remoteAllMap.get(id);
+        if (tombstone && tombstone.deletedAt) {
+          try {
+            const restored=await timeout(deosRemoteAdapter[updateMethod](id,{...local,id,clientId:id},Number(tombstone.version||0)),`Réactivation ${singular} ${local.title||id}`);
+            const verifyRows=await timeout(deosRemoteAdapter[listMethod](),`Vérification réactivation ${singular} ${id}`);
+            const verified=deosRemoteRowByClientId(verifyRows,id);
+            if (verified && !verified.deletedAt) {
+              setMeta(id,{remoteId:verified.remoteId||restored?.remoteId||"",remoteVersion:Number(verified.version||restored?.version||0),remoteUpdatedAt:verified.updatedAt||restored?.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:simpleSyncFingerprint(local),lastSyncError:"",conflictFields:[]});
+              rows=verifyRows; remoteAllMap=new Map(rows.map(r=>[String(r.clientId||""),r]).filter(([key])=>key)); remoteMap=new Map(rows.filter(r=>!r.deletedAt).map(r=>[String(r.clientId||""),r]));
+              continue;
+            }
+          } catch (restoreError) {
+            console.warn(`[DEOS N4E] Réactivation ${entity} différée`, restoreError);
+          }
+        }
+        try {
+          const created=await timeout(deosRemoteAdapter[createMethod]({...local,id,clientId:id}),`Création ${singular} ${local.title||id}`);
+          setMeta(id,{remoteId:created.remoteId,remoteVersion:Number(created.version||0),remoteUpdatedAt:created.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:simpleSyncFingerprint(local),lastSyncError:"",conflictFields:[]});
+        } catch (createError) {
+          if (!isDeosDuplicateKeyError(createError)) throw createError;
+          // Course entre deux appareils ou ancienne ligne soft-delete : relire avant de conclure à l'erreur.
+          const retryRows=await timeout(deosRemoteAdapter[listMethod](),`Relecture après doublon ${singular} ${id}`);
+          const existing=deosRemoteRowByClientId(retryRows,id);
+          if (existing && !existing.deletedAt) {
+            setMeta(id,{remoteId:existing.remoteId,remoteVersion:Number(existing.version||0),remoteUpdatedAt:existing.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:simpleSyncFingerprint(local),lastSyncError:"",conflictFields:[]});
+            rows=retryRows; remoteAllMap=new Map(rows.map(r=>[String(r.clientId||""),r]).filter(([key])=>key)); remoteMap=new Map(rows.filter(r=>!r.deletedAt).map(r=>[String(r.clientId||""),r]));
+            continue;
+          }
+          if (existing && existing.deletedAt) {
+            const restored=await timeout(deosRemoteAdapter[updateMethod](id,{...local,id,clientId:id},Number(existing.version||0)),`Réactivation après doublon ${singular} ${id}`);
+            const verifyRows=await timeout(deosRemoteAdapter[listMethod](),`Vérification finale ${singular} ${id}`);
+            const verified=deosRemoteRowByClientId(verifyRows,id);
+            if (verified && !verified.deletedAt) {
+              setMeta(id,{remoteId:verified.remoteId||restored?.remoteId||"",remoteVersion:Number(verified.version||restored?.version||0),remoteUpdatedAt:verified.updatedAt||restored?.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:simpleSyncFingerprint(local),lastSyncError:"",conflictFields:[]});
+              rows=verifyRows; remoteAllMap=new Map(rows.map(r=>[String(r.clientId||""),r]).filter(([key])=>key)); remoteMap=new Map(rows.filter(r=>!r.deletedAt).map(r=>[String(r.clientId||""),r]));
+              continue;
+            }
+          }
+          throw createError;
+        }
       }
       rows=await timeout(deosRemoteAdapter[listMethod](),`Rafraîchissement des ${plural} distants`);
       for (const row of rows) {
@@ -23819,6 +23875,18 @@ function createSimpleEntitySyncController(config) {
           }
         }
         const lfp=simpleSyncFingerprint(local), rfp=simpleSyncFingerprint(remote);
+        // N4E — Documents système Journal : le flux propre à cet appareil est local-authoritaire ;
+        // les flux des autres appareils sont distants-autoritaires. On évite ainsi les faux conflits.
+        if (entity === "documents" && isJournalSyncTransportDocument(local) && isJournalSyncTransportDocument(remote) && lfp !== rfp) {
+          if (id === journalSyncOwnDocumentId()) {
+            const updated=await timeout(deosRemoteAdapter[updateMethod](id,local,Number(row.version||meta.remoteVersion||0)),`Publication Journal ${id}`);
+            setMeta(id,{remoteId:updated.remoteId||row.remoteId,remoteVersion:Number(updated.version||row.version||0),remoteUpdatedAt:updated.updatedAt||row.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:lfp,lastSyncError:"",conflictFields:[]});
+          } else {
+            state[entity][idx]=normalizeEntity(entity,{...remote,id,clientId:id}); localChanged=true;
+            setMeta(id,{remoteId:row.remoteId,remoteVersion:Number(row.version||0),remoteUpdatedAt:row.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:rfp,lastSyncError:"",conflictFields:[]});
+          }
+          continue;
+        }
         if (!meta.lastLocalFingerprint) {
           if (lfp!==rfp) { setMeta(id,{remoteId:row.remoteId,remoteVersion:Number(row.version||0),remoteUpdatedAt:row.updatedAt||"",syncStatus:DEOS_LINKS_SYNC_STATUS.CONFLICT,lastSyncError:"CONFLICT",conflictFields:simpleSyncConflictFields(local,remote)}); }
           else setMeta(id,{remoteId:row.remoteId,remoteVersion:Number(row.version||0),remoteUpdatedAt:row.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:lfp,lastSyncError:"",conflictFields:[]});
@@ -23889,6 +23957,54 @@ window.simpleSyncAnalyzeFromSettings=simpleSyncAnalyzeFromSettings; window.simpl
 let simpleEntityAutoSyncTimers={};
 function scheduleSimpleEntityAutoSync(entity){const c=simpleSyncControllerFor(entity);if(!c||!c.runtime().enabled)return;clearTimeout(simpleEntityAutoSyncTimers[entity]);simpleEntityAutoSyncTimers[entity]=window.setTimeout(()=>c.syncNow({silent:true,source:"local-change"}),900);}
 
+
+
+// -----------------------------------------------------------------------------
+// V5.30N4E — Réparation automatique STRICTEMENT limitée aux doublons exacts
+// Actions / Projets. Aucun enregistrement divergent n'est fusionné ou supprimé.
+// -----------------------------------------------------------------------------
+async function n4eRepairExactActionDuplicates() {
+  if (!actionsSyncCanUseRemote()) return {remote:0,local:0};
+  const remoteRows = await withActionsRemoteTimeout(deosRemoteAdapter.listActions(), "N4E lecture doublons Actions");
+  const groups = new Map();
+  remoteRows.filter(row=>!row.deletedAt).forEach(row=>{ const fp=actionFingerprint(row.action||{}); if(!groups.has(fp))groups.set(fp,[]); groups.get(fp).push(row); });
+  let remote=0, local=0, localChanged=false;
+  for (const group of [...groups.values()].filter(rows=>rows.length>1)) {
+    const sorted=[...group].sort((a,b)=>String(a.createdAt||"").localeCompare(String(b.createdAt||""))||String(a.clientId||"").localeCompare(String(b.clientId||"")));
+    const canonical=sorted[0];
+    for (const duplicate of sorted.slice(1)) { await withActionsRemoteTimeout(deosRemoteAdapter.softDeleteAction(duplicate.clientId,Number(duplicate.version||0)),`N4E suppression doublon Action ${duplicate.clientId}`); remote++; }
+    const same=state.actions.filter(x=>actionFingerprint(x)===actionFingerprint(canonical.action||{}));
+    if(same.length>1){ const keep=same.find(x=>actionSyncClientId(x)===String(canonical.clientId||""))||same[0]; const remove=new Set(same.filter(x=>x!==keep).map(actionSyncClientId)); const before=state.actions.length; state.actions=state.actions.filter(x=>!remove.has(actionSyncClientId(x))); local+=before-state.actions.length; localChanged ||= before!==state.actions.length; }
+  }
+  if(localChanged) persist("actions");
+  return {remote,local};
+}
+async function n4eRepairExactProjectDuplicates() {
+  if (!projectsSyncCanUseRemote()) return {remote:0,local:0};
+  const remoteRows = await withProjectsRemoteTimeout(deosRemoteAdapter.listProjects(), "N4E lecture doublons Projets");
+  const groups = new Map();
+  remoteRows.filter(row=>!row.deletedAt).forEach(row=>{ const fp=projectFingerprint(row.project||{}); if(!groups.has(fp))groups.set(fp,[]); groups.get(fp).push(row); });
+  let remote=0, local=0, localChanged=false;
+  for (const group of [...groups.values()].filter(rows=>rows.length>1)) {
+    const sorted=[...group].sort((a,b)=>String(a.createdAt||"").localeCompare(String(b.createdAt||""))||String(a.clientId||"").localeCompare(String(b.clientId||"")));
+    const canonical=sorted[0];
+    for (const duplicate of sorted.slice(1)) { await withProjectsRemoteTimeout(deosRemoteAdapter.softDeleteProject(duplicate.clientId,Number(duplicate.version||0)),`N4E suppression doublon Projet ${duplicate.clientId}`); remote++; }
+    const same=state.projects.filter(x=>projectFingerprint(x)===projectFingerprint(canonical.project||{}));
+    if(same.length>1){ const keep=same.find(x=>projectSyncClientId(x)===String(canonical.clientId||""))||same[0]; const remove=new Set(same.filter(x=>x!==keep).map(projectSyncClientId)); const before=state.projects.length; state.projects=state.projects.filter(x=>!remove.has(projectSyncClientId(x))); local+=before-state.projects.length; localChanged ||= before!==state.projects.length; }
+  }
+  if(localChanged) persist("projects");
+  return {remote,local};
+}
+async function n4eSyncWithExactDuplicateRecovery(entity, syncFn) {
+  await syncFn();
+  let runtime=multiDeviceEntityRuntime(entity);
+  if (!String(runtime?.lastError||"").includes("DUPLICATES_")) return runtime;
+  if (entity === "actions") await n4eRepairExactActionDuplicates();
+  else if (entity === "projects") await n4eRepairExactProjectDuplicates();
+  else return runtime;
+  await syncFn();
+  return multiDeviceEntityRuntime(entity);
+}
 
 // -----------------------------------------------------------------------------
 // V5.30A — Synchronisation multi-appareils unifiée
@@ -23964,8 +24080,8 @@ async function syncAllMultiDeviceNow(options = {}) {
   const results = {};
   const tasks = [
     ["links", () => linksHybridRepository.syncNow({ silent: true, source: options.source || "multi-device" })],
-    ["actions", () => actionsHybridRepository.syncNow({ silent: true, source: options.source || "multi-device" })],
-    ["projects", () => projectsHybridRepository.syncNow({ silent: true, source: options.source || "multi-device" })],
+    ["actions", () => n4eSyncWithExactDuplicateRecovery("actions", () => actionsHybridRepository.syncNow({ silent: true, source: options.source || "multi-device" }))],
+    ["projects", () => n4eSyncWithExactDuplicateRecovery("projects", () => projectsHybridRepository.syncNow({ silent: true, source: options.source || "multi-device" }))],
     ["folders", () => foldersHybridRepository.syncNow({ silent: true, source: options.source || "multi-device" })],
     ["managers", () => managersHybridRepository.syncNow({ silent: true, source: options.source || "multi-device" })],
     ["decisions", () => deosDecisionsSyncController.syncNow({ silent: true, source: options.source || "multi-device" })],
