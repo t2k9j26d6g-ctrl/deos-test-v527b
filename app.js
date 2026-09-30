@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30N4J-TEST";
+const DEOS_VERSION = "V5.30N4K-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -24051,6 +24051,7 @@ async function ensureMultiDeviceRemoteReady(options = {}) {
       const snapshot = await remoteFastHydrateContext(session);
       updateRemoteRuntime(snapshot || deosRemoteAuthService.getStateSnapshot?.() || {});
       ensureRecoveredRemoteAdapter();
+      alignRemoteAuthWorkspaceContext();
       if (deosRemoteAuthService.currentWorkspace && !deosRemoteRuntime.workspace) {
         deosRemoteRuntime.workspace = deosRemoteAuthService.currentWorkspace;
         deosRemoteRuntime.site = deosRemoteAuthService.currentSite || deosRemoteRuntime.site;
@@ -24100,7 +24101,49 @@ function dedupeSimpleEntityLocally(entity) {
   return removed;
 }
 
+// V5.30N4K — réalignement du contexte workspace entre l’UI et le service Auth.
+// Le diagnostic Supabase a confirmé que deos_current_workspace_id() fonctionne
+// correctement avec le JWT utilisateur. Le défaut observé venait donc d’un
+// décalage client possible : deosRemoteRuntime conservait le workspace affiché
+// alors que DeosAuthService.currentWorkspace pouvait avoir été remis à null par
+// un rafraîchissement Auth asynchrone. L’adapter lit le service Auth, pas l’UI.
+function alignRemoteAuthWorkspaceContext() {
+  if (!deosRemoteAuthService) return false;
+  const runtimeWorkspace = deosRemoteRuntime?.workspace || null;
+  const serviceWorkspace = deosRemoteAuthService.currentWorkspace || null;
+
+  // Si le runtime possède un workspace valide mais pas le service Auth,
+  // restaurer explicitement le contexte utilisé par SupabaseRemoteAdapter.
+  if (runtimeWorkspace?.id && !serviceWorkspace?.id) {
+    deosRemoteAuthService.currentWorkspace = { ...runtimeWorkspace };
+    if (deosRemoteRuntime?.site?.id) deosRemoteAuthService.currentSite = { ...deosRemoteRuntime.site };
+    if (deosRemoteRuntime?.role) deosRemoteAuthService.currentRole = String(deosRemoteRuntime.role);
+  }
+
+  // À l’inverse, si le service Auth possède le contexte mais pas le runtime,
+  // réaligner l’affichage sans relancer une reconstruction distante.
+  if (!deosRemoteRuntime?.workspace?.id && deosRemoteAuthService.currentWorkspace?.id) {
+    deosRemoteRuntime.workspace = { ...deosRemoteAuthService.currentWorkspace };
+    deosRemoteRuntime.site = deosRemoteAuthService.currentSite ? { ...deosRemoteAuthService.currentSite } : deosRemoteRuntime.site;
+    deosRemoteRuntime.role = deosRemoteAuthService.currentRole || deosRemoteRuntime.role;
+  }
+
+  // En cas de divergence d’ID, le workspace affiché/explicitement sélectionné
+  // par DEOS est la référence pour cette session à workspace unique.
+  if (deosRemoteRuntime?.workspace?.id && deosRemoteAuthService.currentWorkspace?.id
+      && String(deosRemoteRuntime.workspace.id) !== String(deosRemoteAuthService.currentWorkspace.id)) {
+    deosRemoteAuthService.currentWorkspace = { ...deosRemoteRuntime.workspace };
+    if (deosRemoteRuntime?.site?.id) deosRemoteAuthService.currentSite = { ...deosRemoteRuntime.site };
+    if (deosRemoteRuntime?.role) deosRemoteAuthService.currentRole = String(deosRemoteRuntime.role);
+  }
+
+  ensureRecoveredRemoteAdapter();
+  return Boolean(deosRemoteAuthService.currentWorkspace?.id);
+}
+window.alignRemoteAuthWorkspaceContext = alignRemoteAuthWorkspaceContext;
+
 function multiDeviceConnected() {
+  alignRemoteAuthWorkspaceContext();
   return Boolean(
     navigator.onLine !== false
     && !deosRemoteRuntime.temporaryLocal
@@ -24148,8 +24191,13 @@ async function syncAllMultiDeviceNow(options = {}) {
   const silent = Boolean(options.silent);
   if (deosMultiDeviceSyncRuntime.syncing) return deosMultiDeviceSyncRuntime;
   if (!multiDeviceConnected()) await ensureMultiDeviceRemoteReady({ source: options.source || "multi-device" });
+  alignRemoteAuthWorkspaceContext();
   if (!multiDeviceConnected()) {
-    deosMultiDeviceSyncRuntime.lastError = navigator.onLine === false ? "Hors ligne." : (deosRemoteRuntime.lastError || "Connexion au workspace requise — tentative de restauration automatique effectuée.");
+    const authWorkspaceId = String(deosRemoteAuthService?.currentWorkspace?.id || "");
+    const runtimeWorkspaceId = String(deosRemoteRuntime?.workspace?.id || "");
+    deosMultiDeviceSyncRuntime.lastError = navigator.onLine === false
+      ? "Hors ligne."
+      : (deosRemoteRuntime.lastError || `Connexion au workspace requise — contexte Auth=${authWorkspaceId || "--"}, UI=${runtimeWorkspaceId || "--"}.`);
     if (!silent && currentView === "settings") renderSettings(deosMultiDeviceSyncRuntime.lastError);
     return deosMultiDeviceSyncRuntime;
   }
