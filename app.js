@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30N4K-TEST";
+const DEOS_VERSION = "V5.30N4L-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -23656,6 +23656,68 @@ function deosRemoteRowByClientId(rows, clientId) {
   return [...matches].sort((a,b) => Number(b?.version || 0) - Number(a?.version || 0))[0];
 }
 
+// V5.30N4L — récupération directe d'une ligne distante masquée par les RPC de liste.
+// Cas visé : une ancienne ligne (notamment soft-delete) existe encore avec le même
+// couple (workspace_id, client_id). Un INSERT classique déclenche alors 23505 alors
+// que la ligne n'est pas forcément visible dans listDecisions/listDocuments.
+function simpleSyncDirectTable(entity) {
+  if (entity === "decisions") return { table: "deos_decisions", payloadKey: "decision" };
+  if (entity === "documents") return { table: "deos_documents", payloadKey: "document" };
+  return null;
+}
+function simpleSyncNormalizeDirectRow(entity, row) {
+  const config = simpleSyncDirectTable(entity);
+  if (!config || !row) return null;
+  return {
+    remoteId: row.id || "",
+    workspaceId: row.workspace_id || "",
+    ownerId: row.owner_id || "",
+    clientId: String(row.client_id || ""),
+    [config.payloadKey]: row.data && typeof row.data === "object" ? row.data : {},
+    createdAt: row.created_at || "",
+    updatedAt: row.updated_at || "",
+    deletedAt: row.deleted_at || "",
+    version: Number(row.version || 0)
+  };
+}
+async function simpleSyncFetchDirectRow(entity, clientId) {
+  const config = simpleSyncDirectTable(entity);
+  if (!config || !deosRemoteAdapter || typeof deosRemoteAdapter.getContext !== "function") return null;
+  const context = deosRemoteAdapter.getContext();
+  if (!context?.client || !context.workspaceId) return null;
+  const response = await context.client
+    .from(config.table)
+    .select("id, workspace_id, owner_id, client_id, data, created_at, updated_at, deleted_at, version")
+    .eq("workspace_id", context.workspaceId)
+    .eq("client_id", String(clientId || ""))
+    .maybeSingle();
+  if (response.error) throw new Error(response.error.message || `Lecture directe ${entity} impossible.`);
+  return simpleSyncNormalizeDirectRow(entity, response.data);
+}
+async function simpleSyncReviveDirectTombstone(entity, clientId, expectedVersion) {
+  const config = simpleSyncDirectTable(entity);
+  if (!config || !deosRemoteAdapter || typeof deosRemoteAdapter.getContext !== "function") return null;
+  const context = deosRemoteAdapter.getContext();
+  if (!context?.client || !context.workspaceId) return null;
+  if (typeof deosRemoteAdapter.assertWritableRole === "function") deosRemoteAdapter.assertWritableRole(context.role);
+  const version = Number(expectedVersion || 0);
+  if (!Number.isInteger(version) || version < 1) return null;
+  const response = await context.client
+    .from(config.table)
+    .update({
+      deleted_at: null,
+      version: version + 1,
+      updated_at: new Date().toISOString()
+    })
+    .eq("workspace_id", context.workspaceId)
+    .eq("client_id", String(clientId || ""))
+    .eq("version", version)
+    .select("id, workspace_id, owner_id, client_id, data, created_at, updated_at, deleted_at, version")
+    .maybeSingle();
+  if (response.error) throw new Error(response.error.message || `Réactivation directe ${entity} impossible.`);
+  return simpleSyncNormalizeDirectRow(entity, response.data);
+}
+
 function createSimpleEntitySyncController(config) {
   const {
     entity, singular, plural, settingPrefix, metaRepository,
@@ -23797,18 +23859,46 @@ function createSimpleEntitySyncController(config) {
           setMeta(id,{remoteId:created.remoteId,remoteVersion:Number(created.version||0),remoteUpdatedAt:created.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:simpleSyncFingerprint(local),lastSyncError:"",conflictFields:[]});
         } catch (createError) {
           if (!isDeosDuplicateKeyError(createError)) throw createError;
-          // Course entre deux appareils ou ancienne ligne soft-delete : relire avant de conclure à l'erreur.
+          // N4L — Course entre deux appareils / ligne masquée par le RPC de liste.
+          // On relit d'abord par le moteur normal puis, pour Décisions/Documents,
+          // directement par (workspace_id, client_id) avant de retenter un INSERT.
           const retryRows=await timeout(deosRemoteAdapter[listMethod](),`Relecture après doublon ${singular} ${id}`);
-          const existing=deosRemoteRowByClientId(retryRows,id);
+          let existing=deosRemoteRowByClientId(retryRows,id);
+          if (!existing && (entity === "decisions" || entity === "documents")) {
+            existing=await timeout(simpleSyncFetchDirectRow(entity,id),`Recherche directe après doublon ${singular} ${id}`);
+          }
           if (existing && !existing.deletedAt) {
-            setMeta(id,{remoteId:existing.remoteId,remoteVersion:Number(existing.version||0),remoteUpdatedAt:existing.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:simpleSyncFingerprint(local),lastSyncError:"",conflictFields:[]});
-            rows=retryRows; remoteAllMap=new Map(rows.map(r=>[String(r.clientId||""),r]).filter(([key])=>key)); remoteMap=new Map(rows.filter(r=>!r.deletedAt).map(r=>[String(r.clientId||""),r]));
+            const remotePayload=existing[remotePayloadKey] || {};
+            const localFingerprint=simpleSyncFingerprint(local);
+            const remoteFingerprint=simpleSyncFingerprint(remotePayload);
+            if (localFingerprint === remoteFingerprint) {
+              setMeta(id,{remoteId:existing.remoteId,remoteVersion:Number(existing.version||0),remoteUpdatedAt:existing.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:localFingerprint,lastSyncError:"",conflictFields:[]});
+            } else {
+              // La ligne existe réellement : mise à jour versionnée au lieu d'un nouvel INSERT.
+              const updated=await timeout(deosRemoteAdapter[updateMethod](id,{...local,id,clientId:id},Number(existing.version||0)),`Upsert sécurisé ${singular} ${local.title||id}`);
+              setMeta(id,{remoteId:updated?.remoteId||existing.remoteId,remoteVersion:Number(updated?.version||existing.version||0),remoteUpdatedAt:updated?.updatedAt||existing.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:localFingerprint,lastSyncError:"",conflictFields:[]});
+            }
+            rows=await timeout(deosRemoteAdapter[listMethod](),`Rafraîchissement après upsert ${singular} ${id}`);
+            remoteAllMap=new Map(rows.map(r=>[String(r.clientId||""),r]).filter(([key])=>key)); remoteMap=new Map(rows.filter(r=>!r.deletedAt).map(r=>[String(r.clientId||""),r]));
             continue;
           }
           if (existing && existing.deletedAt) {
-            const restored=await timeout(deosRemoteAdapter[updateMethod](id,{...local,id,clientId:id},Number(existing.version||0)),`Réactivation après doublon ${singular} ${id}`);
+            let baseVersion=Number(existing.version||0);
+            let restored=null;
+            try {
+              restored=await timeout(deosRemoteAdapter[updateMethod](id,{...local,id,clientId:id},baseVersion),`Réactivation après doublon ${singular} ${id}`);
+            } catch (restoreError) {
+              // Certains RPC d'update ignorent volontairement les lignes soft-delete.
+              // Dans ce cas, on réactive uniquement la ligne existante de manière versionnée,
+              // puis on repasse par le RPC standard pour publier les données métier.
+              if (!(entity === "decisions" || entity === "documents")) throw restoreError;
+              const revived=await timeout(simpleSyncReviveDirectTombstone(entity,id,baseVersion),`Réactivation directe ${singular} ${id}`);
+              if (!revived) throw restoreError;
+              baseVersion=Number(revived.version||0);
+              restored=await timeout(deosRemoteAdapter[updateMethod](id,{...local,id,clientId:id},baseVersion),`Publication après réactivation ${singular} ${id}`);
+            }
             const verifyRows=await timeout(deosRemoteAdapter[listMethod](),`Vérification finale ${singular} ${id}`);
-            const verified=deosRemoteRowByClientId(verifyRows,id);
+            const verified=deosRemoteRowByClientId(verifyRows,id) || ((entity === "decisions" || entity === "documents") ? await timeout(simpleSyncFetchDirectRow(entity,id),`Vérification directe ${singular} ${id}`) : null);
             if (verified && !verified.deletedAt) {
               setMeta(id,{remoteId:verified.remoteId||restored?.remoteId||"",remoteVersion:Number(verified.version||restored?.version||0),remoteUpdatedAt:verified.updatedAt||restored?.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:simpleSyncFingerprint(local),lastSyncError:"",conflictFields:[]});
               rows=verifyRows; remoteAllMap=new Map(rows.map(r=>[String(r.clientId||""),r]).filter(([key])=>key)); remoteMap=new Map(rows.filter(r=>!r.deletedAt).map(r=>[String(r.clientId||""),r]));
