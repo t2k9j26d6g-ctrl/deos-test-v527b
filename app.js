@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-BASELINE-TEST";
+const DEOS_VERSION = "V5.30-BASELINE2-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -25190,6 +25190,32 @@ async function initializeRemoteServices(options = {}) {
       debug: config.debug
     });
     updateRemoteRuntime(summary);
+
+    // BASELINE2 — une initialisation Auth peut réussir sans avoir encore hydraté
+    // workspace/site/rôle. Dans ce cas, reconstruire immédiatement le contexte
+    // au lieu d'afficher un faux état « non connecté ».
+    if (summary?.authenticated && !summary?.workspace) {
+      try {
+        const client = deosRemoteAuthService?.getClient?.() || deosRemoteAuthService?.client || null;
+        const sessionResult = client?.auth?.getSession
+          ? await withRemoteTimeout(
+              client.auth.getSession(),
+              15000,
+              "REMOTE_BASELINE_SESSION_TIMEOUT",
+              "Lecture de session trop lente."
+            )
+          : null;
+        if (sessionResult?.error) throw sessionResult.error;
+        const session = sessionResult?.data?.session || deosRemoteAuthService?.session || null;
+        if (session?.user) {
+          const hydrated = await remoteFastHydrateContext(session);
+          updateRemoteRuntime(hydrated);
+        }
+      } catch (hydrateError) {
+        console.warn("[DEOS BASELINE2] Hydratation du contexte après initialisation :", hydrateError?.message || hydrateError);
+      }
+    }
+
     deosRemoteRuntime.temporaryLocal = false;
     syncRemoteStartupOverlayState();
     deosRemoteAuthSubscription = deosRemoteAuthService.onAuthStateChange((_event, _session, snapshot) => {
