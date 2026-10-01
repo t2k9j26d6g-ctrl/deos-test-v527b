@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30N4L-TEST";
+const DEOS_VERSION = "V5.30SYNC-BASE-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -21,9 +21,8 @@ function ensureDeosAsyncFeedbackUi() {
       @media (max-width:800px){#deosQuickNoteFab{top:88px;right:0;bottom:0;width:42px;border-radius:0;padding:0;flex-direction:column;gap:2px;box-shadow:-3px 0 12px rgba(15,23,42,.16)}#deosQuickNoteFab .deos-note-plus{font-size:18px}#deosQuickNoteFab .deos-note-label{font-size:12px;display:block!important;color:#fff!important;visibility:visible!important;opacity:1!important}}
       .deos-note-filters{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.deos-note-filter.active{font-weight:700;box-shadow:inset 0 0 0 2px currentColor}
       .deos-note-card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.deos-note-card-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.deos-note-card-actions button{padding:6px 9px;font-size:12px}
-      .deos-note-status{display:flex!important;gap:8px!important;align-items:center;flex-wrap:wrap;margin-top:5px}.deos-note-chip{display:inline-flex;align-items:center;font-size:12px;border:1px solid rgba(148,163,184,.45);border-radius:999px;padding:3px 8px;line-height:1.35;white-space:nowrap}.deos-note-chip+.deos-note-chip{margin-left:0!important}.deos-note-status>.deos-note-chip{margin-bottom:2px}
-      .cockpit-notes-top{margin-top:14px;margin-bottom:14px}.cockpit-notes-top>.row{align-items:center}.cockpit-notes-top h2{margin:0}.cockpit-note-row{padding:14px 16px;margin:12px 0;border:1px solid #cbd5e1;border-left:4px solid #2563eb;border-radius:12px;background:#fff;box-shadow:0 3px 10px rgba(15,23,42,.08)}.cockpit-note-row+.cockpit-note-row{margin-top:14px}.cockpit-note-main{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.cockpit-note-title{font-weight:800;font-size:1.02rem;cursor:pointer}.cockpit-note-title:hover{text-decoration:underline}.cockpit-note-preview{margin:7px 0 10px;line-height:1.45;color:#334155}.cockpit-note-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0}.cockpit-note-actions button{padding:5px 8px;font-size:12px}@media (max-width:800px){.cockpit-note-row{padding:12px 13px;margin:10px 0}.cockpit-note-row+.cockpit-note-row{margin-top:12px}}
-      .deos-create-details{padding:0!important;overflow:hidden}.deos-create-details>summary{cursor:pointer;list-style:none;font-size:1.35rem;font-weight:800;padding:18px 20px;display:flex;align-items:center;justify-content:space-between}.deos-create-details>summary::-webkit-details-marker{display:none}.deos-create-details>summary::after{content:"+";font-size:1.35rem;font-weight:800}.deos-create-details[open]>summary::after{content:"−"}.deos-create-details[open]>summary{border-bottom:1px solid #e2e8f0}.deos-create-details-body{padding:18px 20px 20px}
+      .deos-note-status{display:flex;column-gap:8px;row-gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px}.deos-note-chip{display:inline-block;font-size:12px;border:1px solid rgba(148,163,184,.45);border-radius:999px;padding:2px 7px;line-height:1.35;white-space:nowrap}
+      .cockpit-notes-top{margin-top:14px;margin-bottom:14px}.cockpit-notes-top>.row{align-items:center}.cockpit-notes-top h2{margin:0}.cockpit-note-row{padding:10px 0;border-bottom:1px solid rgba(148,163,184,.18)}.cockpit-note-row:last-child{border-bottom:0}.cockpit-note-main{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.cockpit-note-title{font-weight:700;cursor:pointer}.cockpit-note-title:hover{text-decoration:underline}.cockpit-note-preview{margin:4px 0 7px;line-height:1.4}.cockpit-note-actions{display:flex;gap:6px;flex-wrap:wrap}.cockpit-note-actions button{padding:5px 8px;font-size:12px}
       .deos-quick-note-panel{width:min(720px,calc(100vw - 28px))}.deos-quick-note-panel textarea{min-height:220px}.deos-note-context{padding:9px 11px;border-radius:10px;background:rgba(148,163,184,.12);margin:8px 0 12px}.deos-quick-note-detail{display:flex;flex-direction:column;gap:18px}.deos-quick-note-detail>.secondary{align-self:flex-start}.deos-quick-note-content{font-size:1.05rem;line-height:1.65;padding:18px 0;white-space:normal}.deos-quick-note-detail .row-actions{margin-top:4px}
     `;
     document.head.appendChild(style);
@@ -1043,63 +1042,25 @@ function schedulePrioritySyncWrite() {
 }
 
 // -----------------------------------------------------------------------------
-// V5.30N4D — Pont multi-appareils Notes / Journal via Documents, flux par appareil
+// V5.30N1 — Pont multi-appareils Notes / Journal via Documents
 // -----------------------------------------------------------------------------
-// Chaque appareil publie son propre document système Journal. Cela évite qu'un
-// PC et un iPad entrent en conflit dès leur première synchro avec le même clientId.
-// Les flux sont ensuite fusionnés par identifiant de note, sans suppression implicite.
-const DEOS_JOURNAL_SYNC_DOC_PREFIX = "deos-system-journal-sync-v3-";
-const DEOS_JOURNAL_SYNC_LEGACY_IDS = new Set(["deos-system-journal-sync", "deos-system-journal-sync-v2"]);
+const DEOS_JOURNAL_SYNC_DOC_ID = "deos-system-journal-sync-v1";
 const DEOS_JOURNAL_SYNC_SOURCE = "DEOS_JOURNAL_SYNC";
-const DEOS_JOURNAL_SYNC_DEVICE_KEY = "deos_journal_sync_device_id";
 let deosJournalSyncApplyingRemote = false;
 let deosJournalSyncTimer = null;
 
-function journalSyncDeviceId() {
-  try {
-    let id = String(localStorage.getItem(DEOS_JOURNAL_SYNC_DEVICE_KEY) || "").trim();
-    if (!id) {
-      const seed = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      id = seed.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || `device-${Date.now()}`;
-      localStorage.setItem(DEOS_JOURNAL_SYNC_DEVICE_KEY, id);
-    }
-    return id;
-  } catch (_) {
-    return `device-${String((typeof detectLinksSyncDeviceLabel === "function" ? detectLinksSyncDeviceLabel() : "browser")).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
-  }
-}
-
-function journalSyncOwnDocumentId() {
-  return `${DEOS_JOURNAL_SYNC_DOC_PREFIX}${journalSyncDeviceId()}`;
-}
-
 function isJournalSyncTransportDocument(item) {
   const doc = item && typeof item === "object" ? item : {};
-  const id = String(doc.id || doc.clientId || "");
-  return id.startsWith(DEOS_JOURNAL_SYNC_DOC_PREFIX)
-    || DEOS_JOURNAL_SYNC_LEGACY_IDS.has(id)
+  return String(doc.id || "") === DEOS_JOURNAL_SYNC_DOC_ID
     || String(doc.sourceType || "") === DEOS_JOURNAL_SYNC_SOURCE
     || String(doc.documentType || "") === "system_journal_sync";
 }
 
 function journalSyncPayloadFromDocument(doc) {
   if (!isJournalSyncTransportDocument(doc)) return null;
-  let content = doc?.content;
-  if (typeof content === "string") {
-    const raw = content.trim();
-    if (!raw) return null;
-    try { content = JSON.parse(raw); } catch (_) { return null; }
-  }
+  const content = doc?.content;
   if (!content || typeof content !== "object" || Array.isArray(content) || !Array.isArray(content.journal)) return null;
-  return {
-    schema: Number(content.schema || 3),
-    updatedAt: String(content.updatedAt || doc.updatedAt || ""),
-    deviceId: String(content.deviceId || ""),
-    device: String(content.device || ""),
-    journal: content.journal
-  };
+  return { schema: Number(content.schema || 1), updatedAt: String(content.updatedAt || doc.updatedAt || ""), journal: content.journal };
 }
 
 function stageJournalSyncTransport() {
@@ -1107,91 +1068,36 @@ function stageJournalSyncTransport() {
   if (!Array.isArray(state.documents) || !Array.isArray(state.journal)) return false;
   const nowIso = new Date().toISOString();
   const payload = state.journal.map(item => normalizeEntity("journal", item));
-  const ownId = journalSyncOwnDocumentId();
-  const index = state.documents.findIndex(doc => String(doc?.id || doc?.clientId || "") === ownId);
+  const index = state.documents.findIndex(isJournalSyncTransportDocument);
   const existing = index >= 0 ? state.documents[index] : null;
   const existingPayload = journalSyncPayloadFromDocument(existing);
   if (existingPayload && JSON.stringify(existingPayload.journal) === JSON.stringify(payload)) return false;
   const next = normalizeEntity("documents", {
-    ...(existing || {}),
-    id: ownId,
-    clientId: ownId,
-    title: `DEOS système — Notes / Journal — ${typeof detectLinksSyncDeviceLabel === "function" ? detectLinksSyncDeviceLabel() : "Navigateur"}`,
-    type: "Système",
-    category: "Système",
-    status: "Actif",
-    owner: identityName(),
-    author: identityName(),
-    version: "SYS3",
-    date: localIsoDate(),
-    updatedAt: nowIso,
-    createdAt: existing?.createdAt || nowIso,
-    summary: "Transport interne multi-appareils des Notes / Journal.",
-    tags: ["DEOS_SYSTEM", "JOURNAL_SYNC", "JOURNAL_SYNC_V3"],
-    documentType: "system_journal_sync",
-    sourceType: DEOS_JOURNAL_SYNC_SOURCE,
-    sourceId: ownId,
-    hiddenSystem: true,
-    content: JSON.stringify({
-      schema: 3,
-      updatedAt: nowIso,
-      deviceId: journalSyncDeviceId(),
-      device: typeof detectLinksSyncDeviceLabel === "function" ? detectLinksSyncDeviceLabel() : "Navigateur",
-      journal: payload
-    })
+    ...(existing || {}), id: DEOS_JOURNAL_SYNC_DOC_ID, title: "DEOS système — Notes / Journal", type: "Système", category: "Système", status: "Actif",
+    owner: identityName(), author: identityName(), version: "SYS1", date: localIsoDate(), updatedAt: nowIso, createdAt: existing?.createdAt || nowIso,
+    summary: "Transport interne multi-appareils des Notes / Journal.", tags: ["DEOS_SYSTEM", "JOURNAL_SYNC"], documentType: "system_journal_sync",
+    sourceType: DEOS_JOURNAL_SYNC_SOURCE, sourceId: DEOS_JOURNAL_SYNC_DOC_ID, hiddenSystem: true,
+    content: { schema: 1, updatedAt: nowIso, device: typeof detectLinksSyncDeviceLabel === "function" ? detectLinksSyncDeviceLabel() : "Navigateur", journal: payload }
   });
   if (index >= 0) state.documents[index] = next; else state.documents.unshift(next);
   saveDocumentsLocalOnly();
   return true;
 }
 
-function journalItemStamp(item) {
-  const raw = item?.updatedAt || item?.createdAt || item?.date || "";
-  const t = Date.parse(raw);
-  return Number.isFinite(t) ? t : 0;
-}
-
 function applyJournalSyncTransportFromDocuments(options = {}) {
   if (!Array.isArray(state.documents)) return false;
-  const transportDocs = state.documents.filter(isJournalSyncTransportDocument);
-  if (!transportDocs.length) return false;
-
+  const doc = state.documents.find(isJournalSyncTransportDocument);
+  const payload = journalSyncPayloadFromDocument(doc);
+  if (!payload) return false;
+  const incoming = normalizeCollection("journal", payload.journal);
   const current = normalizeCollection("journal", state.journal || []);
-  const byKey = new Map();
-  current.forEach(item => {
-    const id = String(item?.id || "").trim();
-    if (id) byKey.set(id, item);
-  });
-
-  transportDocs
-    .map(doc => ({ doc, payload: journalSyncPayloadFromDocument(doc) }))
-    .filter(x => x.payload)
-    .sort((a, b) => Date.parse(a.payload.updatedAt || 0) - Date.parse(b.payload.updatedAt || 0))
-    .forEach(({ payload }) => {
-      normalizeCollection("journal", payload.journal).forEach(item => {
-        const id = String(item?.id || "").trim();
-        if (!id) return;
-        const local = byKey.get(id);
-        if (!local || journalItemStamp(item) >= journalItemStamp(local)) byKey.set(id, item);
-      });
-    });
-
-  const merged = [...byKey.values()].map(item => normalizeEntity("journal", item));
-  merged.sort((a, b) => journalItemStamp(b) - journalItemStamp(a));
-  if (JSON.stringify(current) === JSON.stringify(merged)) return false;
-
+  if (JSON.stringify(current) === JSON.stringify(incoming)) return false;
   deosJournalSyncApplyingRemote = true;
   try {
-    state.journal = merged;
+    state.journal = incoming;
     const repository = getEntityRepository("journal");
     if (repository) repository.save(state.journal); else deosDataService.save("journal", state.journal);
-  } finally {
-    deosJournalSyncApplyingRemote = false;
-  }
-
-  // Republie l'état fusionné dans le flux propre à cet appareil.
-  stageJournalSyncTransport();
-
+  } finally { deosJournalSyncApplyingRemote = false; }
   if (!options.silent) showDeosToast?.("Notes / Journal synchronisés sur cet appareil.", "success");
   if (currentView === "journal" && !options.silent) renderJournal();
   return true;
@@ -1204,21 +1110,10 @@ function scheduleJournalSyncWrite() {
     deosJournalSyncTimer = null;
     if (!multiDeviceConnected?.() || !deosDocumentsSyncController?.syncNow) return;
     try {
-      stageJournalSyncTransport();
-      const run = () => deosDocumentsSyncController.syncNow({ silent: true, source: "journal-bridge-v3" });
-      if (typeof deosDocumentsSyncController.runExclusive === "function") await deosDocumentsSyncController.runExclusive(run);
-      else await run();
-
-      const changed = applyJournalSyncTransportFromDocuments({ silent: true, source: "journal-bridge-v3" });
-      if (changed) {
-        const pushMerged = () => deosDocumentsSyncController.syncNow({ silent: true, source: "journal-bridge-v3-merged" });
-        if (typeof deosDocumentsSyncController.runExclusive === "function") await deosDocumentsSyncController.runExclusive(pushMerged);
-        else await pushMerged();
-      }
-    } catch (error) {
-      console.warn("[DEOS Journal Sync V3] Synchronisation différée", error);
-    }
-  }, 900);
+      await deosDocumentsSyncController.syncNow({ silent: true, source: "journal-bridge" });
+      applyJournalSyncTransportFromDocuments({ silent: true, source: "journal-bridge" });
+    } catch (error) { console.warn("[DEOS Journal Sync] Synchronisation différée", error); }
+  }, 1200);
 }
 
 function persist(name) {
@@ -4822,7 +4717,7 @@ function getCockpitPendingNotes(limit = 5) {
 function cockpitPendingNoteRow(j) {
   const text = String(j.summary || j.content || "").trim();
   const preview = text.length > 150 ? `${text.slice(0, 147)}…` : text;
-  return `<div class="cockpit-note-row" style="display:block!important;box-sizing:border-box!important;padding:14px 16px!important;margin:14px 0!important;border:1px solid #cbd5e1!important;border-left:5px solid #2563eb!important;border-radius:12px!important;background:#ffffff!important;box-shadow:0 4px 12px rgba(15,23,42,.10)!important"><div class="cockpit-note-main"><div><div class="cockpit-note-title" onclick="openJournal('${j.id}')">${j.pinned ? "📌 " : ""}${esc(j.title || "Note rapide")}</div><div class="deos-note-status" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:5px"><span class="deos-note-chip" style="display:inline-flex;padding:3px 8px;border:1px solid rgba(148,163,184,.45);border-radius:999px;white-space:nowrap">${esc(j.entryType || "Note rapide")}</span><span class="deos-note-chip" style="display:inline-flex;padding:3px 8px;border:1px solid rgba(148,163,184,.45);border-radius:999px;white-space:nowrap">À traiter</span></div></div><span class="muted">${esc(j.date || "")}</span></div>${preview ? `<div class="cockpit-note-preview">${esc(preview)}</div>` : ""}<div class="cockpit-note-actions" style="display:flex;gap:7px;flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid #e2e8f0"><button class="secondary" type="button" onclick="openJournal('${j.id}')">Ouvrir</button><button class="secondary" type="button" onclick="toggleCockpitNotePinned('${j.id}')">${j.pinned ? "Désépingler" : "Épingler"}</button><button class="secondary" type="button" onclick="completeCockpitNote('${j.id}')">Marquer traité</button></div></div>`;
+  return `<div class="cockpit-note-row"><div class="cockpit-note-main"><div><div class="cockpit-note-title" onclick="openJournal('${j.id}')">${j.pinned ? "📌 " : ""}${esc(j.title || "Note rapide")}</div><div class="deos-note-status"><span class="deos-note-chip">${esc(j.entryType || "Note rapide")}</span><span class="deos-note-chip">À traiter</span></div></div><span class="muted">${esc(j.date || "")}</span></div>${preview ? `<div class="cockpit-note-preview">${esc(preview)}</div>` : ""}<div class="cockpit-note-actions"><button class="secondary" type="button" onclick="openJournal('${j.id}')">Ouvrir</button><button class="secondary" type="button" onclick="toggleCockpitNotePinned('${j.id}')">${j.pinned ? "Désépingler" : "Épingler"}</button><button class="secondary" type="button" onclick="completeCockpitNote('${j.id}')">Marquer traité</button></div></div>`;
 }
 
 function toggleCockpitNotePinned(id) {
@@ -7816,7 +7711,7 @@ function linkedFoldersList(item) {
 
 function renderActions() {
   actionDetailId = "";
-  appHtml(`<div class="card hero"><h2>Actions</h2><p class="muted">L'action fait avancer : suivez ici ce qui doit concrètement être fait, par qui et pour quand.</p></div><details class="card deos-create-details"><summary>Ajouter une action</summary><div class="deos-create-details-body"><input id="aTitle" placeholder="Action"><input id="aLink" placeholder="Lien ou contexte"><div class="grid three manager-links"><div><label>Dossiers liés</label>${folderSelect("aFolders")}</div><div><label>Projets liés</label>${checkboxList("aProjects", state.projects, [], p => p.name)}</div><div><label>Décisions liées</label>${checkboxList("aDecisions", state.decisions, [], d => d.title)}</div></div><button class="action" onclick="addAction()">Ajouter</button></div></details>${state.actions.map(actionItem).join("") || `<div class="card empty">Aucune action.</div>`}`);
+  appHtml(`<div class="card hero"><h2>Actions</h2><p class="muted">L'action fait avancer : suivez ici ce qui doit concrètement être fait, par qui et pour quand.</p></div><div class="card"><h2>Ajouter une action</h2><input id="aTitle" placeholder="Action"><input id="aLink" placeholder="Lien ou contexte"><div class="grid three manager-links"><div><label>Dossiers liés</label>${folderSelect("aFolders")}</div><div><label>Projets liés</label>${checkboxList("aProjects", state.projects, [], p => p.name)}</div><div><label>Décisions liées</label>${checkboxList("aDecisions", state.decisions, [], d => d.title)}</div></div><button class="action" onclick="addAction()">Ajouter</button></div>${state.actions.map(actionItem).join("") || `<div class="card empty">Aucune action.</div>`}`);
 }
 
 function actionItem(a) {
@@ -8918,7 +8813,7 @@ function renderProjects() {
   restoreProjectsFromSyncShadowIfNeeded();
   document.getElementById("viewTitle").textContent = "Projets V5";
   document.querySelectorAll(".nav").forEach(btn => btn.classList.toggle("active", btn.dataset.view === "projects"));
-  appHtml(`<div class="card hero"><h2>Projets V5</h2><p class="muted">Le projet transforme : pilotez ici les changements structurés ayant un objectif et un résultat attendu.</p></div><details class="card deos-create-details"><summary>Ajouter un projet</summary><div class="deos-create-details-body"><input id="prName" placeholder="Nom"><input id="prNext" placeholder="Prochaine étape"><div class="form-grid"><div><label>Responsable principal</label>${ownerSelect("prOwnerId")}</div><input id="prDeadline" placeholder="Échéance"><input id="prProgress" type="number" min="0" max="100" value="0"><select id="prStatus"><option value="green">Maîtrisé</option><option value="orange">À suivre</option><option value="red">Critique</option></select></div><div class="manager-links"><label>Dossiers liés</label>${folderSelect("prFolders")}</div><button class="action" onclick="addProject()">Ajouter</button></div></details><div class="grid two">${state.projects.map(projectCard).join("")}</div>`);
+  appHtml(`<div class="card hero"><h2>Projets V5</h2><p class="muted">Le projet transforme : pilotez ici les changements structurés ayant un objectif et un résultat attendu.</p></div><div class="card"><h2>Ajouter un projet</h2><input id="prName" placeholder="Nom"><input id="prNext" placeholder="Prochaine étape"><div class="form-grid"><div><label>Responsable principal</label>${ownerSelect("prOwnerId")}</div><input id="prDeadline" placeholder="Échéance"><input id="prProgress" type="number" min="0" max="100" value="0"><select id="prStatus"><option value="green">Maîtrisé</option><option value="orange">À suivre</option><option value="red">Critique</option></select></div><div class="manager-links"><label>Dossiers liés</label>${folderSelect("prFolders")}</div><button class="action" onclick="addProject()">Ajouter</button></div><div class="grid two">${state.projects.map(projectCard).join("")}</div>`);
 }
 
 function projectCard(p) {
@@ -9474,7 +9369,7 @@ function decisionQuickForm(d, mode = "") {
 function renderDecisions() {
   document.getElementById("viewTitle").textContent = "Décisions V5";
   document.querySelectorAll(".nav").forEach(btn => btn.classList.toggle("active", btn.dataset.view === "decisions"));
-  appHtml(`<div class="card hero"><h2>Décisions V5</h2><p class="muted">La décision arbitre : retrouvez ici les arbitrages pris, attendus ou à formaliser.</p></div><details class="card deos-create-details"><summary>Ajouter une décision</summary><div class="deos-create-details-body"><input id="dTitle" placeholder="Titre"><textarea id="dContext" placeholder="Contexte"></textarea><div class="form-grid"><input id="dOwner" placeholder="Responsable du suivi"><input id="dNext" placeholder="Suite attendue"><input id="dImpact" placeholder="Impacts attendus" class="full"><input id="dTags" placeholder="Mots-clés séparés par virgule" class="full"></div><div class="grid two manager-links"><div><label>Dossiers liés</label>${folderSelect("dFolders")}</div><div><label>Projets concernés</label>${checkboxList("dProjects", state.projects, [], p => p.name)}</div></div><button class="action" onclick="addDecision()">Ajouter</button></div></details>${state.decisions.map(decisionCard).join("") || `<div class="card empty">Aucune décision.</div>`}`);
+  appHtml(`<div class="card hero"><h2>Décisions V5</h2><p class="muted">La décision arbitre : retrouvez ici les arbitrages pris, attendus ou à formaliser.</p></div><div class="card"><h2>Ajouter une décision</h2><input id="dTitle" placeholder="Titre"><textarea id="dContext" placeholder="Contexte"></textarea><div class="form-grid"><input id="dOwner" placeholder="Responsable du suivi"><input id="dNext" placeholder="Suite attendue"><input id="dImpact" placeholder="Impacts attendus" class="full"><input id="dTags" placeholder="Mots-clés séparés par virgule" class="full"></div><div class="grid two manager-links"><div><label>Dossiers liés</label>${folderSelect("dFolders")}</div><div><label>Projets concernés</label>${checkboxList("dProjects", state.projects, [], p => p.name)}</div></div><button class="action" onclick="addDecision()">Ajouter</button></div>${state.decisions.map(decisionCard).join("") || `<div class="card empty">Aucune décision.</div>`}`);
 }
 
 function decisionCard(d) {
@@ -9941,7 +9836,7 @@ function renderJournal() {
 
 function journalCard(j) {
   const ctx = j.sourceContext?.label ? `<span class="deos-note-chip">${esc(j.sourceContext.label)}</span>` : "";
-  return `<div class="card clickable" onclick="openJournal('${j.id}')"><div class="deos-note-card-head"><div><h2>${j.pinned ? "📌 " : ""}${esc(j.title || "Note")}</h2><div class="deos-note-status" style="display:flex;align-items:center;flex-wrap:wrap;row-gap:6px;margin-top:5px"><span class="deos-note-chip" style="margin-right:9px">${esc(j.entryType || "Note rapide")}</span>${!j.processed ? `<span class="deos-note-chip" style="margin-right:9px">À traiter</span>` : `<span class="deos-note-chip" style="margin-right:9px">Traité</span>`}${j.archived ? `<span class="deos-note-chip" style="margin-right:9px">Archivée</span>` : ""}${ctx}</div></div><span class="muted">${esc(j.date || "")}</span></div><p>${esc(j.summary || j.content || "")}</p><div class="deos-note-card-actions"><button class="secondary" onclick="event.stopPropagation();toggleJournalPinned('${j.id}')">${j.pinned ? "Désépingler" : "Épingler"}</button><button class="secondary" onclick="event.stopPropagation();openJournal('${j.id}','action')">→ Action</button><button class="secondary" onclick="event.stopPropagation();openJournal('${j.id}','decision')">→ Décision</button><button class="secondary" onclick="event.stopPropagation();editJournal('${j.id}')">Lier / modifier</button><button class="secondary" onclick="event.stopPropagation();toggleJournalProcessed('${j.id}')">${j.processed ? "À retraiter" : "Marquer traité"}</button><button class="secondary" onclick="event.stopPropagation();toggleJournalArchived('${j.id}')">${j.archived ? "Restaurer" : "Archiver"}</button></div></div>`;
+  return `<div class="card clickable" onclick="openJournal('${j.id}')"><div class="deos-note-card-head"><div><h2>${j.pinned ? "📌 " : ""}${esc(j.title || "Note")}</h2><div class="deos-note-status"><span class="deos-note-chip">${esc(j.entryType || "Note rapide")}</span>${!j.processed ? `<span class="deos-note-chip">À traiter</span>` : `<span class="deos-note-chip">Traité</span>`}${j.archived ? `<span class="deos-note-chip">Archivée</span>` : ""}${ctx}</div></div><span class="muted">${esc(j.date || "")}</span></div><p>${esc(j.summary || j.content || "")}</p><div class="deos-note-card-actions"><button class="secondary" onclick="event.stopPropagation();toggleJournalPinned('${j.id}')">${j.pinned ? "Désépingler" : "Épingler"}</button><button class="secondary" onclick="event.stopPropagation();openJournal('${j.id}','action')">→ Action</button><button class="secondary" onclick="event.stopPropagation();openJournal('${j.id}','decision')">→ Décision</button><button class="secondary" onclick="event.stopPropagation();editJournal('${j.id}')">Lier / modifier</button><button class="secondary" onclick="event.stopPropagation();toggleJournalProcessed('${j.id}')">${j.processed ? "À retraiter" : "Marquer traité"}</button><button class="secondary" onclick="event.stopPropagation();toggleJournalArchived('${j.id}')">${j.archived ? "Restaurer" : "Archiver"}</button></div></div>`;
 }
 
 function addJournal() {
@@ -10013,7 +9908,7 @@ function openJournal(id, mode = "") {
   if (j.captureMode === "quick") {
     const contextLabel = j.sourceContext ? noteContextLabel(j.sourceContext) : "";
     const workflow = `${j.processed ? "Traité" : "À traiter"}${j.archived ? " · Archivée" : ""}`;
-    appHtml(`<div class="card hero deos-quick-note-detail"><button class="secondary" onclick="renderJournal()">← Retour aux notes</button><div class="deos-note-card-head"><div><h2>${j.pinned ? "📌 " : ""}${esc(j.title || "Note")}</h2><div class="deos-note-status" style="display:flex;align-items:center;flex-wrap:wrap;row-gap:6px;margin-top:5px"><span class="deos-note-chip" style="margin-right:9px">${esc(j.entryType || "Note rapide")}</span><span class="deos-note-chip" style="margin-right:9px">${esc(workflow)}</span>${contextLabel ? `<span class="deos-note-chip" style="margin-right:9px">${esc(contextLabel)}</span>` : ""}</div></div><span class="muted">${esc(j.date || "")}</span></div><div class="deos-quick-note-content">${esc(j.summary || j.content || "").replace(/\n/g, "<br>")}</div><div class="row-actions"><button class="secondary" onclick="toggleJournalPinned('${j.id}')">${j.pinned ? "Désépingler" : "Épingler"}</button><button class="secondary" onclick="toggleJournalProcessed('${j.id}')">${j.processed ? "À retraiter" : "Marquer traité"}</button><button class="action" onclick="editJournal('${j.id}')">Modifier / Lier</button><button class="secondary" onclick="openJournal('${j.id}','action')">→ Action</button><button class="secondary" onclick="openJournal('${j.id}','decision')">→ Décision</button><button class="secondary" onclick="toggleJournalArchived('${j.id}')">${j.archived ? "Restaurer" : "Archiver"}</button><button class="danger" onclick="deleteJournal('${j.id}')">Supprimer</button></div></div>${journalQuickForm(j, mode)}${journalQuickLinksSummary(j)}`);
+    appHtml(`<div class="card hero deos-quick-note-detail"><button class="secondary" onclick="renderJournal()">← Retour aux notes</button><div class="deos-note-card-head"><div><h2>${j.pinned ? "📌 " : ""}${esc(j.title || "Note")}</h2><div class="deos-note-status"><span class="deos-note-chip">${esc(j.entryType || "Note rapide")}</span><span class="deos-note-chip">${esc(workflow)}</span>${contextLabel ? `<span class="deos-note-chip">${esc(contextLabel)}</span>` : ""}</div></div><span class="muted">${esc(j.date || "")}</span></div><div class="deos-quick-note-content">${esc(j.summary || j.content || "").replace(/\n/g, "<br>")}</div><div class="row-actions"><button class="secondary" onclick="toggleJournalPinned('${j.id}')">${j.pinned ? "Désépingler" : "Épingler"}</button><button class="secondary" onclick="toggleJournalProcessed('${j.id}')">${j.processed ? "À retraiter" : "Marquer traité"}</button><button class="action" onclick="editJournal('${j.id}')">Modifier / Lier</button><button class="secondary" onclick="openJournal('${j.id}','action')">→ Action</button><button class="secondary" onclick="openJournal('${j.id}','decision')">→ Décision</button><button class="secondary" onclick="toggleJournalArchived('${j.id}')">${j.archived ? "Restaurer" : "Archiver"}</button><button class="danger" onclick="deleteJournal('${j.id}')">Supprimer</button></div></div>${journalQuickForm(j, mode)}${journalQuickLinksSummary(j)}`);
     return;
   }
 
@@ -23641,83 +23536,6 @@ function simpleSyncConflictFields(a = {}, b = {}) {
 }
 function simpleSyncClientId(item = {}) { return String(item?.clientId || item?.id || "").trim(); }
 
-
-// -----------------------------------------------------------------------------
-// V5.30N4E — Stabilisation multi-appareils : tombstones + courses de création
-// -----------------------------------------------------------------------------
-function isDeosDuplicateKeyError(error) {
-  const message = String(error?.message || error || "").toLowerCase();
-  return message.includes("duplicate key") || message.includes("unique constraint") || message.includes("23505");
-}
-function deosRemoteRowByClientId(rows, clientId) {
-  const id = String(clientId || "");
-  const matches = ensureArray(rows).filter(row => String(row?.clientId || "") === id);
-  if (!matches.length) return null;
-  return [...matches].sort((a,b) => Number(b?.version || 0) - Number(a?.version || 0))[0];
-}
-
-// V5.30N4L — récupération directe d'une ligne distante masquée par les RPC de liste.
-// Cas visé : une ancienne ligne (notamment soft-delete) existe encore avec le même
-// couple (workspace_id, client_id). Un INSERT classique déclenche alors 23505 alors
-// que la ligne n'est pas forcément visible dans listDecisions/listDocuments.
-function simpleSyncDirectTable(entity) {
-  if (entity === "decisions") return { table: "deos_decisions", payloadKey: "decision" };
-  if (entity === "documents") return { table: "deos_documents", payloadKey: "document" };
-  return null;
-}
-function simpleSyncNormalizeDirectRow(entity, row) {
-  const config = simpleSyncDirectTable(entity);
-  if (!config || !row) return null;
-  return {
-    remoteId: row.id || "",
-    workspaceId: row.workspace_id || "",
-    ownerId: row.owner_id || "",
-    clientId: String(row.client_id || ""),
-    [config.payloadKey]: row.data && typeof row.data === "object" ? row.data : {},
-    createdAt: row.created_at || "",
-    updatedAt: row.updated_at || "",
-    deletedAt: row.deleted_at || "",
-    version: Number(row.version || 0)
-  };
-}
-async function simpleSyncFetchDirectRow(entity, clientId) {
-  const config = simpleSyncDirectTable(entity);
-  if (!config || !deosRemoteAdapter || typeof deosRemoteAdapter.getContext !== "function") return null;
-  const context = deosRemoteAdapter.getContext();
-  if (!context?.client || !context.workspaceId) return null;
-  const response = await context.client
-    .from(config.table)
-    .select("id, workspace_id, owner_id, client_id, data, created_at, updated_at, deleted_at, version")
-    .eq("workspace_id", context.workspaceId)
-    .eq("client_id", String(clientId || ""))
-    .maybeSingle();
-  if (response.error) throw new Error(response.error.message || `Lecture directe ${entity} impossible.`);
-  return simpleSyncNormalizeDirectRow(entity, response.data);
-}
-async function simpleSyncReviveDirectTombstone(entity, clientId, expectedVersion) {
-  const config = simpleSyncDirectTable(entity);
-  if (!config || !deosRemoteAdapter || typeof deosRemoteAdapter.getContext !== "function") return null;
-  const context = deosRemoteAdapter.getContext();
-  if (!context?.client || !context.workspaceId) return null;
-  if (typeof deosRemoteAdapter.assertWritableRole === "function") deosRemoteAdapter.assertWritableRole(context.role);
-  const version = Number(expectedVersion || 0);
-  if (!Number.isInteger(version) || version < 1) return null;
-  const response = await context.client
-    .from(config.table)
-    .update({
-      deleted_at: null,
-      version: version + 1,
-      updated_at: new Date().toISOString()
-    })
-    .eq("workspace_id", context.workspaceId)
-    .eq("client_id", String(clientId || ""))
-    .eq("version", version)
-    .select("id, workspace_id, owner_id, client_id, data, created_at, updated_at, deleted_at, version")
-    .maybeSingle();
-  if (response.error) throw new Error(response.error.message || `Réactivation directe ${entity} impossible.`);
-  return simpleSyncNormalizeDirectRow(entity, response.data);
-}
-
 function createSimpleEntitySyncController(config) {
   const {
     entity, singular, plural, settingPrefix, metaRepository,
@@ -23812,14 +23630,7 @@ function createSimpleEntitySyncController(config) {
     if (!canInspect()) return refresh({state:navigator.onLine===false?DEOS_LINKS_SYNC_STATUS.OFFLINE:DEOS_LINKS_SYNC_STATUS.ERROR,lastError:navigator.onLine===false?"Le navigateur est hors ligne.":`Connexion distante ${plural} indisponible.`});
     refresh({syncing:true,state:DEOS_LINKS_SYNC_STATUS.SYNCING,lastError:""});
     try {
-      // N4C — toute synchronisation Documents commence par matérialiser
-      // le snapshot Journal local courant. Cela couvre aussi les notes déjà
-      // présentes avant le chargement de cette version.
-      if (entity === "documents") {
-        stageJournalSyncTransport();
-      }
       let rows=await timeout(deosRemoteAdapter[listMethod](),`Lecture des ${plural} distants`);
-      let remoteAllMap=new Map(rows.map(r=>[String(r.clientId||""),r]).filter(([id])=>id));
       let remoteMap=new Map(rows.filter(r=>!r.deletedAt).map(r=>[String(r.clientId||""),r]));
       let localChanged=false;
       // Suppressions locales connues.
@@ -23832,81 +23643,13 @@ function createSimpleEntitySyncController(config) {
         }
       }
       rows=await timeout(deosRemoteAdapter[listMethod](),`Actualisation des ${plural} distants`);
-      remoteAllMap=new Map(rows.map(r=>[String(r.clientId||""),r]).filter(([id])=>id));
       remoteMap=new Map(rows.filter(r=>!r.deletedAt).map(r=>[String(r.clientId||""),r]));
-      // Créations locales. N4E : si le même clientId existe sous forme de tombstone,
-      // on le réactive par update au lieu de tenter un INSERT qui viole la contrainte unique.
+      // Créations locales.
       for (const local of ensureArray(state[entity])) {
         const id=simpleSyncClientId(local); if (!id || remoteMap.has(id)) continue;
         local.clientId=id;
-        const tombstone=remoteAllMap.get(id);
-        if (tombstone && tombstone.deletedAt) {
-          try {
-            const restored=await timeout(deosRemoteAdapter[updateMethod](id,{...local,id,clientId:id},Number(tombstone.version||0)),`Réactivation ${singular} ${local.title||id}`);
-            const verifyRows=await timeout(deosRemoteAdapter[listMethod](),`Vérification réactivation ${singular} ${id}`);
-            const verified=deosRemoteRowByClientId(verifyRows,id);
-            if (verified && !verified.deletedAt) {
-              setMeta(id,{remoteId:verified.remoteId||restored?.remoteId||"",remoteVersion:Number(verified.version||restored?.version||0),remoteUpdatedAt:verified.updatedAt||restored?.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:simpleSyncFingerprint(local),lastSyncError:"",conflictFields:[]});
-              rows=verifyRows; remoteAllMap=new Map(rows.map(r=>[String(r.clientId||""),r]).filter(([key])=>key)); remoteMap=new Map(rows.filter(r=>!r.deletedAt).map(r=>[String(r.clientId||""),r]));
-              continue;
-            }
-          } catch (restoreError) {
-            console.warn(`[DEOS N4E] Réactivation ${entity} différée`, restoreError);
-          }
-        }
-        try {
-          const created=await timeout(deosRemoteAdapter[createMethod]({...local,id,clientId:id}),`Création ${singular} ${local.title||id}`);
-          setMeta(id,{remoteId:created.remoteId,remoteVersion:Number(created.version||0),remoteUpdatedAt:created.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:simpleSyncFingerprint(local),lastSyncError:"",conflictFields:[]});
-        } catch (createError) {
-          if (!isDeosDuplicateKeyError(createError)) throw createError;
-          // N4L — Course entre deux appareils / ligne masquée par le RPC de liste.
-          // On relit d'abord par le moteur normal puis, pour Décisions/Documents,
-          // directement par (workspace_id, client_id) avant de retenter un INSERT.
-          const retryRows=await timeout(deosRemoteAdapter[listMethod](),`Relecture après doublon ${singular} ${id}`);
-          let existing=deosRemoteRowByClientId(retryRows,id);
-          if (!existing && (entity === "decisions" || entity === "documents")) {
-            existing=await timeout(simpleSyncFetchDirectRow(entity,id),`Recherche directe après doublon ${singular} ${id}`);
-          }
-          if (existing && !existing.deletedAt) {
-            const remotePayload=existing[remotePayloadKey] || {};
-            const localFingerprint=simpleSyncFingerprint(local);
-            const remoteFingerprint=simpleSyncFingerprint(remotePayload);
-            if (localFingerprint === remoteFingerprint) {
-              setMeta(id,{remoteId:existing.remoteId,remoteVersion:Number(existing.version||0),remoteUpdatedAt:existing.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:localFingerprint,lastSyncError:"",conflictFields:[]});
-            } else {
-              // La ligne existe réellement : mise à jour versionnée au lieu d'un nouvel INSERT.
-              const updated=await timeout(deosRemoteAdapter[updateMethod](id,{...local,id,clientId:id},Number(existing.version||0)),`Upsert sécurisé ${singular} ${local.title||id}`);
-              setMeta(id,{remoteId:updated?.remoteId||existing.remoteId,remoteVersion:Number(updated?.version||existing.version||0),remoteUpdatedAt:updated?.updatedAt||existing.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:localFingerprint,lastSyncError:"",conflictFields:[]});
-            }
-            rows=await timeout(deosRemoteAdapter[listMethod](),`Rafraîchissement après upsert ${singular} ${id}`);
-            remoteAllMap=new Map(rows.map(r=>[String(r.clientId||""),r]).filter(([key])=>key)); remoteMap=new Map(rows.filter(r=>!r.deletedAt).map(r=>[String(r.clientId||""),r]));
-            continue;
-          }
-          if (existing && existing.deletedAt) {
-            let baseVersion=Number(existing.version||0);
-            let restored=null;
-            try {
-              restored=await timeout(deosRemoteAdapter[updateMethod](id,{...local,id,clientId:id},baseVersion),`Réactivation après doublon ${singular} ${id}`);
-            } catch (restoreError) {
-              // Certains RPC d'update ignorent volontairement les lignes soft-delete.
-              // Dans ce cas, on réactive uniquement la ligne existante de manière versionnée,
-              // puis on repasse par le RPC standard pour publier les données métier.
-              if (!(entity === "decisions" || entity === "documents")) throw restoreError;
-              const revived=await timeout(simpleSyncReviveDirectTombstone(entity,id,baseVersion),`Réactivation directe ${singular} ${id}`);
-              if (!revived) throw restoreError;
-              baseVersion=Number(revived.version||0);
-              restored=await timeout(deosRemoteAdapter[updateMethod](id,{...local,id,clientId:id},baseVersion),`Publication après réactivation ${singular} ${id}`);
-            }
-            const verifyRows=await timeout(deosRemoteAdapter[listMethod](),`Vérification finale ${singular} ${id}`);
-            const verified=deosRemoteRowByClientId(verifyRows,id) || ((entity === "decisions" || entity === "documents") ? await timeout(simpleSyncFetchDirectRow(entity,id),`Vérification directe ${singular} ${id}`) : null);
-            if (verified && !verified.deletedAt) {
-              setMeta(id,{remoteId:verified.remoteId||restored?.remoteId||"",remoteVersion:Number(verified.version||restored?.version||0),remoteUpdatedAt:verified.updatedAt||restored?.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:simpleSyncFingerprint(local),lastSyncError:"",conflictFields:[]});
-              rows=verifyRows; remoteAllMap=new Map(rows.map(r=>[String(r.clientId||""),r]).filter(([key])=>key)); remoteMap=new Map(rows.filter(r=>!r.deletedAt).map(r=>[String(r.clientId||""),r]));
-              continue;
-            }
-          }
-          throw createError;
-        }
+        const created=await timeout(deosRemoteAdapter[createMethod]({...local,id,clientId:id}),`Création ${singular} ${local.title||id}`);
+        setMeta(id,{remoteId:created.remoteId,remoteVersion:Number(created.version||0),remoteUpdatedAt:created.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:simpleSyncFingerprint(local),lastSyncError:"",conflictFields:[]});
       }
       rows=await timeout(deosRemoteAdapter[listMethod](),`Rafraîchissement des ${plural} distants`);
       for (const row of rows) {
@@ -23966,18 +23709,6 @@ function createSimpleEntitySyncController(config) {
           }
         }
         const lfp=simpleSyncFingerprint(local), rfp=simpleSyncFingerprint(remote);
-        // N4E — Documents système Journal : le flux propre à cet appareil est local-authoritaire ;
-        // les flux des autres appareils sont distants-autoritaires. On évite ainsi les faux conflits.
-        if (entity === "documents" && isJournalSyncTransportDocument(local) && isJournalSyncTransportDocument(remote) && lfp !== rfp) {
-          if (id === journalSyncOwnDocumentId()) {
-            const updated=await timeout(deosRemoteAdapter[updateMethod](id,local,Number(row.version||meta.remoteVersion||0)),`Publication Journal ${id}`);
-            setMeta(id,{remoteId:updated.remoteId||row.remoteId,remoteVersion:Number(updated.version||row.version||0),remoteUpdatedAt:updated.updatedAt||row.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:lfp,lastSyncError:"",conflictFields:[]});
-          } else {
-            state[entity][idx]=normalizeEntity(entity,{...remote,id,clientId:id}); localChanged=true;
-            setMeta(id,{remoteId:row.remoteId,remoteVersion:Number(row.version||0),remoteUpdatedAt:row.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:rfp,lastSyncError:"",conflictFields:[]});
-          }
-          continue;
-        }
         if (!meta.lastLocalFingerprint) {
           if (lfp!==rfp) { setMeta(id,{remoteId:row.remoteId,remoteVersion:Number(row.version||0),remoteUpdatedAt:row.updatedAt||"",syncStatus:DEOS_LINKS_SYNC_STATUS.CONFLICT,lastSyncError:"CONFLICT",conflictFields:simpleSyncConflictFields(local,remote)}); }
           else setMeta(id,{remoteId:row.remoteId,remoteVersion:Number(row.version||0),remoteUpdatedAt:row.updatedAt||"",lastSyncedAt:new Date().toISOString(),syncStatus:DEOS_LINKS_SYNC_STATUS.SYNCED,lastLocalFingerprint:lfp,lastSyncError:"",conflictFields:[]});
@@ -24049,54 +23780,6 @@ let simpleEntityAutoSyncTimers={};
 function scheduleSimpleEntityAutoSync(entity){const c=simpleSyncControllerFor(entity);if(!c||!c.runtime().enabled)return;clearTimeout(simpleEntityAutoSyncTimers[entity]);simpleEntityAutoSyncTimers[entity]=window.setTimeout(()=>c.syncNow({silent:true,source:"local-change"}),900);}
 
 
-
-// -----------------------------------------------------------------------------
-// V5.30N4E — Réparation automatique STRICTEMENT limitée aux doublons exacts
-// Actions / Projets. Aucun enregistrement divergent n'est fusionné ou supprimé.
-// -----------------------------------------------------------------------------
-async function n4eRepairExactActionDuplicates() {
-  if (!actionsSyncCanUseRemote()) return {remote:0,local:0};
-  const remoteRows = await withActionsRemoteTimeout(deosRemoteAdapter.listActions(), "N4E lecture doublons Actions");
-  const groups = new Map();
-  remoteRows.filter(row=>!row.deletedAt).forEach(row=>{ const fp=actionFingerprint(row.action||{}); if(!groups.has(fp))groups.set(fp,[]); groups.get(fp).push(row); });
-  let remote=0, local=0, localChanged=false;
-  for (const group of [...groups.values()].filter(rows=>rows.length>1)) {
-    const sorted=[...group].sort((a,b)=>String(a.createdAt||"").localeCompare(String(b.createdAt||""))||String(a.clientId||"").localeCompare(String(b.clientId||"")));
-    const canonical=sorted[0];
-    for (const duplicate of sorted.slice(1)) { await withActionsRemoteTimeout(deosRemoteAdapter.softDeleteAction(duplicate.clientId,Number(duplicate.version||0)),`N4E suppression doublon Action ${duplicate.clientId}`); remote++; }
-    const same=state.actions.filter(x=>actionFingerprint(x)===actionFingerprint(canonical.action||{}));
-    if(same.length>1){ const keep=same.find(x=>actionSyncClientId(x)===String(canonical.clientId||""))||same[0]; const remove=new Set(same.filter(x=>x!==keep).map(actionSyncClientId)); const before=state.actions.length; state.actions=state.actions.filter(x=>!remove.has(actionSyncClientId(x))); local+=before-state.actions.length; localChanged ||= before!==state.actions.length; }
-  }
-  if(localChanged) persist("actions");
-  return {remote,local};
-}
-async function n4eRepairExactProjectDuplicates() {
-  if (!projectsSyncCanUseRemote()) return {remote:0,local:0};
-  const remoteRows = await withProjectsRemoteTimeout(deosRemoteAdapter.listProjects(), "N4E lecture doublons Projets");
-  const groups = new Map();
-  remoteRows.filter(row=>!row.deletedAt).forEach(row=>{ const fp=projectFingerprint(row.project||{}); if(!groups.has(fp))groups.set(fp,[]); groups.get(fp).push(row); });
-  let remote=0, local=0, localChanged=false;
-  for (const group of [...groups.values()].filter(rows=>rows.length>1)) {
-    const sorted=[...group].sort((a,b)=>String(a.createdAt||"").localeCompare(String(b.createdAt||""))||String(a.clientId||"").localeCompare(String(b.clientId||"")));
-    const canonical=sorted[0];
-    for (const duplicate of sorted.slice(1)) { await withProjectsRemoteTimeout(deosRemoteAdapter.softDeleteProject(duplicate.clientId,Number(duplicate.version||0)),`N4E suppression doublon Projet ${duplicate.clientId}`); remote++; }
-    const same=state.projects.filter(x=>projectFingerprint(x)===projectFingerprint(canonical.project||{}));
-    if(same.length>1){ const keep=same.find(x=>projectSyncClientId(x)===String(canonical.clientId||""))||same[0]; const remove=new Set(same.filter(x=>x!==keep).map(projectSyncClientId)); const before=state.projects.length; state.projects=state.projects.filter(x=>!remove.has(projectSyncClientId(x))); local+=before-state.projects.length; localChanged ||= before!==state.projects.length; }
-  }
-  if(localChanged) persist("projects");
-  return {remote,local};
-}
-async function n4eSyncWithExactDuplicateRecovery(entity, syncFn) {
-  await syncFn();
-  let runtime=multiDeviceEntityRuntime(entity);
-  if (!String(runtime?.lastError||"").includes("DUPLICATES_")) return runtime;
-  if (entity === "actions") await n4eRepairExactActionDuplicates();
-  else if (entity === "projects") await n4eRepairExactProjectDuplicates();
-  else return runtime;
-  await syncFn();
-  return multiDeviceEntityRuntime(entity);
-}
-
 // -----------------------------------------------------------------------------
 // V5.30A — Synchronisation multi-appareils unifiée
 // Active les 7 pilotes métier existants et orchestre aussi Priorités / To-Do via le pont Documents.
@@ -24113,127 +23796,7 @@ let deosMultiDeviceSyncRuntime = {
   lastAutoAttemptAt: 0
 };
 
-
-// -----------------------------------------------------------------------------
-// V5.30N4I — Auto-réparation du contexte multi-appareils
-// Cas visé : session Supabase encore valide mais runtime/workspace perdu ou resté
-// en mode local temporaire après un démarrage lent / retour réseau / Safari iPad.
-// -----------------------------------------------------------------------------
-let deosMultiDeviceRecoveryPromise = null;
-async function ensureMultiDeviceRemoteReady(options = {}) {
-  if (navigator.onLine === false) return false;
-  if (multiDeviceConnected()) return true;
-  if (deosMultiDeviceRecoveryPromise) return deosMultiDeviceRecoveryPromise;
-  deosMultiDeviceRecoveryPromise = (async () => {
-    try {
-      if (!deosRemoteAuthService) {
-        await initializeRemoteServices({ silent: true });
-      }
-      if (!deosRemoteAuthService) return false;
-      let session = deosRemoteAuthService.session || null;
-      const client = deosRemoteAuthService.getClient?.() || deosRemoteAuthService.client || null;
-      if (!session?.user && client?.auth?.getSession) {
-        const result = await withRemoteTimeout(client.auth.getSession(), 7000, 'MULTIDEVICE_SESSION_TIMEOUT', 'Session distante trop lente.');
-        session = result?.data?.session || null;
-      }
-      if (!session?.user) return false;
-      remoteFastSetSession(session);
-      const snapshot = await remoteFastHydrateContext(session);
-      updateRemoteRuntime(snapshot || deosRemoteAuthService.getStateSnapshot?.() || {});
-      ensureRecoveredRemoteAdapter();
-      alignRemoteAuthWorkspaceContext();
-      if (deosRemoteAuthService.currentWorkspace && !deosRemoteRuntime.workspace) {
-        deosRemoteRuntime.workspace = deosRemoteAuthService.currentWorkspace;
-        deosRemoteRuntime.site = deosRemoteAuthService.currentSite || deosRemoteRuntime.site;
-        deosRemoteRuntime.role = deosRemoteAuthService.currentRole || deosRemoteRuntime.role;
-      }
-      deosRemoteRuntime.connectionStatus = 'authenticated';
-      deosRemoteRuntime.temporaryLocal = false;
-      if (deosRemoteRuntime.workspace) {
-        deosRemoteRuntime.lastError = '';
-        deosRemoteRuntime.lastErrorCode = '';
-      } else if (!deosRemoteRuntime.lastError) {
-        deosRemoteRuntime.lastError = 'Session valide, mais aucun workspace n’a pu être chargé.';
-        deosRemoteRuntime.lastErrorCode = 'WORKSPACE_RECOVERY_FAILED';
-      }
-      if (deosRemoteRuntime.workspace && deosRemoteAdapter) enableAllMultiDevicePilots();
-      applyRemoteEnvironmentBadge();
-      renderRemoteUserContext();
-      return multiDeviceConnected();
-    } catch (error) {
-      deosMultiDeviceSyncRuntime.lastError = error?.message || String(error);
-      return false;
-    } finally {
-      deosMultiDeviceRecoveryPromise = null;
-    }
-  })();
-  return deosMultiDeviceRecoveryPromise;
-}
-window.ensureMultiDeviceRemoteReady = ensureMultiDeviceRemoteReady;
-
-function dedupeSimpleEntityLocally(entity) {
-  if (!['decisions','documents'].includes(entity)) return 0;
-  const source = ensureArray(state[entity]);
-  const seen = new Map();
-  const kept = [];
-  let removed = 0;
-  for (const item of source) {
-    if (entity === 'documents' && isJournalSyncTransportDocument(item)) { kept.push(item); continue; }
-    const fp = simpleSyncFingerprint(item);
-    if (!fp || !seen.has(fp)) { seen.set(fp, item); kept.push(item); continue; }
-    removed++;
-  }
-  if (removed) {
-    state[entity] = kept;
-    const repository = getEntityRepository(entity);
-    if (repository) repository.save(kept); else deosDataService.save(entity, kept);
-  }
-  return removed;
-}
-
-// V5.30N4K — réalignement du contexte workspace entre l’UI et le service Auth.
-// Le diagnostic Supabase a confirmé que deos_current_workspace_id() fonctionne
-// correctement avec le JWT utilisateur. Le défaut observé venait donc d’un
-// décalage client possible : deosRemoteRuntime conservait le workspace affiché
-// alors que DeosAuthService.currentWorkspace pouvait avoir été remis à null par
-// un rafraîchissement Auth asynchrone. L’adapter lit le service Auth, pas l’UI.
-function alignRemoteAuthWorkspaceContext() {
-  if (!deosRemoteAuthService) return false;
-  const runtimeWorkspace = deosRemoteRuntime?.workspace || null;
-  const serviceWorkspace = deosRemoteAuthService.currentWorkspace || null;
-
-  // Si le runtime possède un workspace valide mais pas le service Auth,
-  // restaurer explicitement le contexte utilisé par SupabaseRemoteAdapter.
-  if (runtimeWorkspace?.id && !serviceWorkspace?.id) {
-    deosRemoteAuthService.currentWorkspace = { ...runtimeWorkspace };
-    if (deosRemoteRuntime?.site?.id) deosRemoteAuthService.currentSite = { ...deosRemoteRuntime.site };
-    if (deosRemoteRuntime?.role) deosRemoteAuthService.currentRole = String(deosRemoteRuntime.role);
-  }
-
-  // À l’inverse, si le service Auth possède le contexte mais pas le runtime,
-  // réaligner l’affichage sans relancer une reconstruction distante.
-  if (!deosRemoteRuntime?.workspace?.id && deosRemoteAuthService.currentWorkspace?.id) {
-    deosRemoteRuntime.workspace = { ...deosRemoteAuthService.currentWorkspace };
-    deosRemoteRuntime.site = deosRemoteAuthService.currentSite ? { ...deosRemoteAuthService.currentSite } : deosRemoteRuntime.site;
-    deosRemoteRuntime.role = deosRemoteAuthService.currentRole || deosRemoteRuntime.role;
-  }
-
-  // En cas de divergence d’ID, le workspace affiché/explicitement sélectionné
-  // par DEOS est la référence pour cette session à workspace unique.
-  if (deosRemoteRuntime?.workspace?.id && deosRemoteAuthService.currentWorkspace?.id
-      && String(deosRemoteRuntime.workspace.id) !== String(deosRemoteAuthService.currentWorkspace.id)) {
-    deosRemoteAuthService.currentWorkspace = { ...deosRemoteRuntime.workspace };
-    if (deosRemoteRuntime?.site?.id) deosRemoteAuthService.currentSite = { ...deosRemoteRuntime.site };
-    if (deosRemoteRuntime?.role) deosRemoteAuthService.currentRole = String(deosRemoteRuntime.role);
-  }
-
-  ensureRecoveredRemoteAdapter();
-  return Boolean(deosRemoteAuthService.currentWorkspace?.id);
-}
-window.alignRemoteAuthWorkspaceContext = alignRemoteAuthWorkspaceContext;
-
 function multiDeviceConnected() {
-  alignRemoteAuthWorkspaceContext();
   return Boolean(
     navigator.onLine !== false
     && !deosRemoteRuntime.temporaryLocal
@@ -24280,27 +23843,19 @@ function multiDeviceEntityRuntime(entity) {
 async function syncAllMultiDeviceNow(options = {}) {
   const silent = Boolean(options.silent);
   if (deosMultiDeviceSyncRuntime.syncing) return deosMultiDeviceSyncRuntime;
-  if (!multiDeviceConnected()) await ensureMultiDeviceRemoteReady({ source: options.source || "multi-device" });
-  alignRemoteAuthWorkspaceContext();
   if (!multiDeviceConnected()) {
-    const authWorkspaceId = String(deosRemoteAuthService?.currentWorkspace?.id || "");
-    const runtimeWorkspaceId = String(deosRemoteRuntime?.workspace?.id || "");
-    deosMultiDeviceSyncRuntime.lastError = navigator.onLine === false
-      ? "Hors ligne."
-      : (deosRemoteRuntime.lastError || `Connexion au workspace requise — contexte Auth=${authWorkspaceId || "--"}, UI=${runtimeWorkspaceId || "--"}.`);
+    deosMultiDeviceSyncRuntime.lastError = navigator.onLine === false ? "Hors ligne." : "Connexion au workspace requise.";
     if (!silent && currentView === "settings") renderSettings(deosMultiDeviceSyncRuntime.lastError);
     return deosMultiDeviceSyncRuntime;
   }
-  dedupeSimpleEntityLocally("decisions");
-  dedupeSimpleEntityLocally("documents");
   enableAllMultiDevicePilots();
   deosMultiDeviceSyncRuntime.syncing = true;
   deosMultiDeviceSyncRuntime.lastError = "";
   const results = {};
   const tasks = [
     ["links", () => linksHybridRepository.syncNow({ silent: true, source: options.source || "multi-device" })],
-    ["actions", () => n4eSyncWithExactDuplicateRecovery("actions", () => actionsHybridRepository.syncNow({ silent: true, source: options.source || "multi-device" }))],
-    ["projects", () => n4eSyncWithExactDuplicateRecovery("projects", () => projectsHybridRepository.syncNow({ silent: true, source: options.source || "multi-device" }))],
+    ["actions", () => actionsHybridRepository.syncNow({ silent: true, source: options.source || "multi-device" })],
+    ["projects", () => projectsHybridRepository.syncNow({ silent: true, source: options.source || "multi-device" })],
     ["folders", () => foldersHybridRepository.syncNow({ silent: true, source: options.source || "multi-device" })],
     ["managers", () => managersHybridRepository.syncNow({ silent: true, source: options.source || "multi-device" })],
     ["decisions", () => deosDecisionsSyncController.syncNow({ silent: true, source: options.source || "multi-device" })],
@@ -24338,14 +23893,11 @@ async function syncAllMultiDeviceNow(options = {}) {
 window.syncAllMultiDeviceNow = syncAllMultiDeviceNow;
 
 function scheduleMultiDeviceAutoSync(source = "auto") {
-  if (navigator.onLine === false) return;
+  if (!multiDeviceConnected()) return;
   const now = Date.now();
   if (now - deosMultiDeviceSyncRuntime.lastAutoAttemptAt < 12000) return;
   deosMultiDeviceSyncRuntime.lastAutoAttemptAt = now;
-  window.setTimeout(async () => {
-    if (!multiDeviceConnected()) await ensureMultiDeviceRemoteReady({ source });
-    if (multiDeviceConnected()) await syncAllMultiDeviceNow({ silent: true, source });
-  }, 500);
+  window.setTimeout(() => syncAllMultiDeviceNow({ silent: true, source }), 500);
 }
 
 // V5.30L — debounce dédié aux écritures métier. Contrairement au contrôle
@@ -24353,14 +23905,13 @@ function scheduleMultiDeviceAutoSync(source = "auto") {
 let deosMultiDeviceWriteSyncTimer = null;
 function scheduleMultiDeviceWriteSync(entity = "change") {
   if (typeof window === "undefined") return;
-  if (navigator.onLine === false) return;
+  if (!multiDeviceConnected()) return;
   // Une persistance effectuée pendant une synchro distante ne doit pas
   // réamorcer une boucle de synchronisation.
   if (deosMultiDeviceSyncRuntime.syncing) return;
   if (deosMultiDeviceWriteSyncTimer) window.clearTimeout(deosMultiDeviceWriteSyncTimer);
   deosMultiDeviceWriteSyncTimer = window.setTimeout(async () => {
     deosMultiDeviceWriteSyncTimer = null;
-    if (!multiDeviceConnected()) await ensureMultiDeviceRemoteReady({ source: `write:${entity}` });
     if (!multiDeviceConnected() || deosMultiDeviceSyncRuntime.syncing) return;
     await syncAllMultiDeviceNow({ silent: true, source: `write:${entity}` });
   }, 1200);
@@ -24377,19 +23928,9 @@ function bindMultiDeviceSyncListeners() {
 
 function initializeMultiDeviceSyncForAuthenticatedSession(options = {}) {
   bindMultiDeviceSyncListeners();
-  if (multiDeviceConnected()) {
-    enableAllMultiDevicePilots();
-    if (!options.skipSync) scheduleMultiDeviceAutoSync(options.source || "startup");
-    return;
-  }
-  if (navigator.onLine === false) return;
-  window.setTimeout(async () => {
-    const ready = await ensureMultiDeviceRemoteReady({ source: options.source || "startup" });
-    if (!ready) return;
-    enableAllMultiDevicePilots();
-    if (!options.skipSync) scheduleMultiDeviceAutoSync(options.source || "startup-recovered");
-    if (currentView === "settings") renderSettings();
-  }, 0);
+  if (!multiDeviceConnected()) return;
+  enableAllMultiDevicePilots();
+  if (!options.skipSync) scheduleMultiDeviceAutoSync(options.source || "startup");
 }
 
 function multiDeviceSyncSummary() {
@@ -24410,7 +23951,7 @@ function renderMultiDeviceSyncSettingsCardHtml() {
   const connected = multiDeviceConnected();
   const summary = multiDeviceSyncSummary();
   const labelMap = { links:"Liens", actions:"Actions", projects:"Projets", folders:"Dossiers", managers:"Managers", decisions:"Décisions", documents:"Documents" };
-  return `<div id="multiDeviceSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation multi-appareils</h2><p class="muted">V5.30Q1 · un seul workspace pour retrouver automatiquement les objets métier principaux sur PC, iPad et autres navigateurs, y compris Priorités / To-Do via Documents.</p></div><span class="remote-mode-badge ${connected ? (summary.conflicts ? "red" : "green") : "orange"}">${connected ? (summary.conflicts ? `${summary.conflicts} conflit(s)` : "Cloud connecté") : "Connexion requise"}</span></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Workspace</strong><span>${esc(deosRemoteRuntime.workspace?.name || "--")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchro globale</strong><span>${esc(deosMultiDeviceSyncRuntime.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Conflits</strong><span>${summary.conflicts}</span></div><div class="settings-calendar-summary-item"><strong>Erreurs</strong><span>${summary.errors}</span></div></div><div class="row-actions"><button class="action" type="button" onclick="syncAllMultiDeviceNow({silent:false,source:'manual'})" ${navigator.onLine !== false && !deosMultiDeviceSyncRuntime.syncing ? "" : "disabled"}>${deosMultiDeviceSyncRuntime.syncing ? "Synchronisation…" : connected ? "Synchroniser maintenant" : "Reconnecter et synchroniser"}</button></div>${deosMultiDeviceSyncRuntime.lastError ? `<p class="remote-error-box">${esc(deosMultiDeviceSyncRuntime.lastError)}</p>` : ""}</section><section class="settings-card-block"><h3>Objets synchronisés</h3><div class="settings-calendar-summary">${summary.rows.map(r => `<div class="settings-calendar-summary-item"><strong>${esc(labelMap[r.entity] || r.entity)}</strong><span>${r.conflicts ? `${r.conflicts} conflit(s)` : r.error ? "Erreur" : "Actif"}</span></div>`).join("")}</div><p class="muted">Le stockage local reste conservé. En cas de modifications concurrentes, les moteurs existants signalent un conflit au lieu d'écraser silencieusement les données.</p></section></div></div>`;
+  return `<div id="multiDeviceSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation multi-appareils</h2><p class="muted">V5.30Q1 · un seul workspace pour retrouver automatiquement les objets métier principaux sur PC, iPad et autres navigateurs, y compris Priorités / To-Do via Documents.</p></div><span class="remote-mode-badge ${connected ? (summary.conflicts ? "red" : "green") : "orange"}">${connected ? (summary.conflicts ? `${summary.conflicts} conflit(s)` : "Cloud connecté") : "Connexion requise"}</span></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Workspace</strong><span>${esc(deosRemoteRuntime.workspace?.name || "--")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchro globale</strong><span>${esc(deosMultiDeviceSyncRuntime.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Conflits</strong><span>${summary.conflicts}</span></div><div class="settings-calendar-summary-item"><strong>Erreurs</strong><span>${summary.errors}</span></div></div><div class="row-actions"><button class="action" type="button" onclick="syncAllMultiDeviceNow({silent:false,source:'manual'})" ${connected && !deosMultiDeviceSyncRuntime.syncing ? "" : "disabled"}>${deosMultiDeviceSyncRuntime.syncing ? "Synchronisation…" : "Synchroniser maintenant"}</button></div>${deosMultiDeviceSyncRuntime.lastError ? `<p class="remote-error-box">${esc(deosMultiDeviceSyncRuntime.lastError)}</p>` : ""}</section><section class="settings-card-block"><h3>Objets synchronisés</h3><div class="settings-calendar-summary">${summary.rows.map(r => `<div class="settings-calendar-summary-item"><strong>${esc(labelMap[r.entity] || r.entity)}</strong><span>${r.conflicts ? `${r.conflicts} conflit(s)` : r.error ? "Erreur" : "Actif"}</span></div>`).join("")}</div><p class="muted">Le stockage local reste conservé. En cas de modifications concurrentes, les moteurs existants signalent un conflit au lieu d'écraser silencieusement les données.</p></section></div></div>`;
 }
 
 function mountMultiDeviceSyncSettingsCard() {
@@ -24882,9 +24423,6 @@ async function remoteFastHydrateContext(session) {
   if (!client || !user) return deosRemoteAuthService?.getStateSnapshot?.() || {};
 
   remoteFastSetSession(session);
-  const preferenceKey = String(deosRemoteAuthService.workspacePreferenceKey || "deos_remote_workspace_preference");
-  const preferredWorkspaceId = String(localStorage.getItem(preferenceKey) || "").trim();
-  const diagnostics = [];
 
   try {
     const [profileResponse, membershipResponse] = await withRemoteTimeout(
@@ -24892,146 +24430,59 @@ async function remoteFastHydrateContext(session) {
         client.from("profiles").select("id, display_name, created_at, updated_at").eq("id", user.id).maybeSingle(),
         client.from("workspace_members").select("workspace_id, role, created_at").eq("user_id", user.id).order("created_at", { ascending: true })
       ]),
-      7000,
+      6000,
       "REMOTE_CONTEXT_CORE_TIMEOUT",
       "Contexte utilisateur trop lent."
     );
 
-    if (profileResponse?.error) diagnostics.push(`profiles: ${profileResponse.error.message || profileResponse.error.code || 'erreur'}`);
-    else deosRemoteAuthService.profile = profileResponse?.data || null;
-
-    if (membershipResponse?.error) diagnostics.push(`workspace_members: ${membershipResponse.error.message || membershipResponse.error.code || 'erreur'}`);
+    if (!profileResponse?.error) deosRemoteAuthService.profile = profileResponse?.data || null;
     const memberships = Array.isArray(membershipResponse?.data) ? membershipResponse.data : [];
-    const membershipByWorkspace = new Map(memberships.map(item => [String(item.workspace_id), item]));
 
-    // N4J — stratégie 1 : IDs issus des memberships + préférence locale connue.
-    const candidateIds = [];
-    if (preferredWorkspaceId) candidateIds.push(preferredWorkspaceId);
-    for (const item of memberships) {
-      const id = String(item?.workspace_id || '').trim();
-      if (id && !candidateIds.includes(id)) candidateIds.push(id);
-    }
+    const preferenceKey = String(deosRemoteAuthService.workspacePreferenceKey || "deos_remote_workspace_preference");
+    const preferredWorkspaceId = String(localStorage.getItem(preferenceKey) || "");
+    const selectedMembership = memberships.find(item => String(item.workspace_id) === preferredWorkspaceId) || memberships[0] || null;
 
-    let workspaces = [];
-    if (candidateIds.length) {
-      const response = await withRemoteTimeout(
-        client.from("workspaces").select("id, name, created_by, created_at, updated_at").in("id", candidateIds),
-        7000,
-        "REMOTE_CONTEXT_WORKSPACES_TIMEOUT",
-        "Lecture des workspaces trop lente."
-      );
-      if (response?.error) diagnostics.push(`workspaces(ids): ${response.error.message || response.error.code || 'erreur'}`);
-      else workspaces = Array.isArray(response?.data) ? response.data : [];
-    }
-
-    // N4J — stratégie 2 : si le membership est absent/inaccessible, retrouver les
-    // workspaces créés par l'utilisateur. Ceci évite un écran "--" lorsque la session
-    // Supabase est valide mais le chargement de workspace_members a échoué.
-    if (!workspaces.length) {
-      const ownedResponse = await withRemoteTimeout(
-        client.from("workspaces").select("id, name, created_by, created_at, updated_at").eq("created_by", user.id).order("created_at", { ascending: true }),
-        7000,
-        "REMOTE_CONTEXT_OWNED_TIMEOUT",
-        "Recherche de votre workspace trop lente."
-      );
-      if (ownedResponse?.error) diagnostics.push(`workspaces(owner): ${ownedResponse.error.message || ownedResponse.error.code || 'erreur'}`);
-      else workspaces = Array.isArray(ownedResponse?.data) ? ownedResponse.data : [];
-    }
-
-    // N4J — stratégie 3 : si une préférence locale existe, tenter une lecture directe.
-    if (!workspaces.length && preferredWorkspaceId) {
-      const directResponse = await withRemoteTimeout(
-        client.from("workspaces").select("id, name, created_by, created_at, updated_at").eq("id", preferredWorkspaceId).maybeSingle(),
-        7000,
-        "REMOTE_CONTEXT_PREFERRED_TIMEOUT",
-        "Lecture du workspace mémorisé trop lente."
-      );
-      if (directResponse?.error) diagnostics.push(`workspace(preference): ${directResponse.error.message || directResponse.error.code || 'erreur'}`);
-      else if (directResponse?.data) workspaces = [directResponse.data];
-    }
-
-    if (!workspaces.length) {
+    if (!selectedMembership) {
       deosRemoteAuthService.currentWorkspace = null;
       deosRemoteAuthService.currentSite = null;
       deosRemoteAuthService.currentRole = "";
       deosRemoteAuthService.availableWorkspaces = [];
-      deosRemoteAuthService.requiresWorkspaceSelection = false;
-      const detail = diagnostics.length ? diagnostics.join(" | ") : "aucun workspace visible pour ce compte";
-      const err = new Error(`Workspace introuvable — ${detail}`);
-      err.code = "WORKSPACE_NOT_FOUND";
-      throw err;
+      return deosRemoteAuthService.getStateSnapshot?.() || {};
     }
 
-    // Charger le premier site de chaque workspace afin d'alimenter la sélection si besoin.
-    const available = [];
-    for (const workspace of workspaces) {
-      let site = null;
-      try {
-        const sitesResponse = await withRemoteTimeout(
-          client.from("sites").select("id, workspace_id, name, code, created_at, updated_at").eq("workspace_id", workspace.id).order("created_at", { ascending: true }).limit(1),
-          6000,
-          "REMOTE_CONTEXT_SITE_TIMEOUT",
-          "Chargement du site trop lent."
-        );
-        if (sitesResponse?.error) diagnostics.push(`sites(${workspace.id}): ${sitesResponse.error.message || sitesResponse.error.code || 'erreur'}`);
-        else site = Array.isArray(sitesResponse?.data) ? sitesResponse.data[0] || null : null;
-      } catch (siteError) {
-        diagnostics.push(`sites(${workspace.id}): ${siteError?.message || siteError}`);
-      }
-      const membership = membershipByWorkspace.get(String(workspace.id));
-      const role = membership?.role || (String(workspace.created_by) === String(user.id) ? "owner" : "member");
-      available.push({ workspaceId: workspace.id, workspaceName: workspace.name || "Workspace", siteName: site?.name || "", role, _workspace: workspace, _site: site });
+    const workspaceId = selectedMembership.workspace_id;
+    const [workspaceResponse, sitesResponse] = await withRemoteTimeout(
+      Promise.all([
+        client.from("workspaces").select("id, name, created_by, created_at, updated_at").eq("id", workspaceId).maybeSingle(),
+        client.from("sites").select("id, workspace_id, name, code, created_at, updated_at").eq("workspace_id", workspaceId).order("created_at", { ascending: true }).limit(1)
+      ]),
+      6000,
+      "REMOTE_CONTEXT_WORKSPACE_TIMEOUT",
+      "Chargement du workspace trop lent."
+    );
+
+    const workspace = workspaceResponse?.error ? null : (workspaceResponse?.data || null);
+    const site = sitesResponse?.error ? null : (Array.isArray(sitesResponse?.data) ? sitesResponse.data[0] || null : null);
+
+    deosRemoteAuthService.currentWorkspace = workspace;
+    deosRemoteAuthService.currentSite = site;
+    deosRemoteAuthService.currentRole = selectedMembership.role || "";
+    deosRemoteAuthService.availableWorkspaces = workspace ? [{
+      workspaceId: workspace.id,
+      workspaceName: workspace.name || "Workspace",
+      siteName: site?.name || "",
+      role: selectedMembership.role || ""
+    }] : [];
+
+    if (workspace?.id) {
+      try { localStorage.setItem(preferenceKey, String(workspace.id)); } catch (_) {}
     }
-
-    // Priorité à la préférence locale, sinon au premier workspace retrouvé.
-    const selected = available.find(item => String(item.workspaceId) === preferredWorkspaceId) || available[0];
-    deosRemoteAuthService.currentWorkspace = selected?._workspace || null;
-    deosRemoteAuthService.currentSite = selected?._site || null;
-    deosRemoteAuthService.currentRole = selected?.role || "";
-    deosRemoteAuthService.availableWorkspaces = available.map(({_workspace, _site, ...item}) => item);
-    deosRemoteAuthService.requiresWorkspaceSelection = available.length > 1 && !preferredWorkspaceId;
-
-    if (selected?.workspaceId) {
-      try { localStorage.setItem(preferenceKey, String(selected.workspaceId)); } catch (_) {}
-    }
-
-    const snapshot = deosRemoteAuthService.getStateSnapshot?.() || {};
-    return {
-      ...snapshot,
-      initialized: true,
-      authenticated: true,
-      connectionStatus: "authenticated",
-      user,
-      profile: deosRemoteAuthService.profile || null,
-      workspace: deosRemoteAuthService.currentWorkspace,
-      site: deosRemoteAuthService.currentSite,
-      role: deosRemoteAuthService.currentRole,
-      availableWorkspaces: deosRemoteAuthService.availableWorkspaces,
-      requiresWorkspaceSelection: Boolean(deosRemoteAuthService.requiresWorkspaceSelection),
-      lastError: null
-    };
   } catch (error) {
-    // N4J : ne plus masquer l'erreur. La session reste authentifiée, mais l'UI doit
-    // afficher précisément pourquoi le workspace n'a pas pu être reconstruit.
-    console.warn("[DEOS N4J] Reconstruction du workspace impossible :", error?.message || error);
-    deosRemoteAuthService.currentWorkspace = null;
-    deosRemoteAuthService.currentSite = null;
-    deosRemoteAuthService.currentRole = "";
-    deosRemoteAuthService.availableWorkspaces = deosRemoteAuthService.availableWorkspaces || [];
-    const snapshot = deosRemoteAuthService.getStateSnapshot?.() || {};
-    return {
-      ...snapshot,
-      initialized: true,
-      authenticated: true,
-      connectionStatus: "authenticated",
-      user,
-      workspace: null,
-      site: null,
-      role: "",
-      availableWorkspaces: deosRemoteAuthService.availableWorkspaces,
-      lastError: { code: error?.code || "WORKSPACE_RECOVERY_FAILED", message: error?.message || String(error) }
-    };
+    // L'authentification reste valide même si le contexte métier est lent.
+    console.warn("[DEOS Q2] Contexte distant partiel :", error?.message || error);
   }
+
+  return deosRemoteAuthService.getStateSnapshot?.() || {};
 }
 
 function bindRecoveredRemoteAuthSubscription() {
