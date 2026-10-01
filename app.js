@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-BASELINE2-TEST";
+const DEOS_VERSION = "V5.30-BASELINE3-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -25180,6 +25180,89 @@ async function initializeRemoteServices(options = {}) {
       debug: config.debug,
       storageKey: "sb-deos-test-auth"
     });
+
+    // BASELINE3 — remplacer AVANT initialize() le refreshContext historique,
+    // qui dépend de plusieurs lectures directes et peut laisser la session authentifiée
+    // sans workspace. La RPC serveur deos_current_workspace_id est la source de vérité.
+    deosRemoteAuthService.refreshContext = async function baseline3RefreshContext() {
+      const client = this.getClient?.() || this.client || null;
+      const user = this.user || this.session?.user || null;
+      if (!client || !user) {
+        this.profile = null;
+        this.currentWorkspace = null;
+        this.currentSite = null;
+        this.currentRole = "";
+        this.availableWorkspaces = [];
+        return this.getStateSnapshot();
+      }
+
+      const rpc = await withRemoteTimeout(
+        client.rpc("deos_current_workspace_id"),
+        12000,
+        "REMOTE_CONTEXT_RPC_TIMEOUT",
+        "Recherche du workspace trop lente."
+      );
+      if (rpc?.error) throw { code: rpc.error.code || "WORKSPACE_RPC_FAILED", message: rpc.error.message || "Workspace distant introuvable." };
+      const workspaceId = String(rpc?.data || "").trim();
+      if (!workspaceId) {
+        this.currentWorkspace = null;
+        this.currentSite = null;
+        this.currentRole = "";
+        this.availableWorkspaces = [];
+        return this.getStateSnapshot();
+      }
+
+      let workspace = null;
+      let site = null;
+      let role = "";
+      try {
+        const wr = await withRemoteTimeout(
+          client.from("workspaces").select("id, name, created_by, created_at, updated_at").eq("id", workspaceId).maybeSingle(),
+          8000,
+          "REMOTE_WORKSPACE_TIMEOUT",
+          "Chargement du workspace trop lent."
+        );
+        if (!wr?.error) workspace = wr?.data || null;
+      } catch (_) {}
+      if (!workspace) workspace = { id: workspaceId, name: "DEOS Ludovic Aoust", created_by: user.id };
+
+      try {
+        const sr = await withRemoteTimeout(
+          client.from("sites").select("id, workspace_id, name, code, created_at, updated_at").eq("workspace_id", workspaceId).order("created_at", { ascending: true }).limit(1),
+          8000,
+          "REMOTE_SITE_TIMEOUT",
+          "Chargement du site trop lent."
+        );
+        if (!sr?.error && Array.isArray(sr?.data)) site = sr.data[0] || null;
+      } catch (_) {}
+      if (!site) site = { id: "site-fallback", workspace_id: workspaceId, name: identity.siteName || "Saint-Gilles", code: "" };
+
+      try {
+        const rr = await withRemoteTimeout(
+          client.rpc("deos_workspace_role", { p_workspace_id: workspaceId }),
+          8000,
+          "REMOTE_ROLE_TIMEOUT",
+          "Chargement du rôle trop lent."
+        );
+        if (!rr?.error) role = String(rr?.data || "").trim();
+      } catch (_) {}
+      if (!role) role = String(workspace?.created_by || "") === String(user.id || "") ? "owner" : "member";
+
+      this.currentWorkspace = workspace;
+      this.currentSite = site;
+      this.currentRole = role;
+      this.availableWorkspaces = [{
+        workspaceId: workspace.id,
+        workspaceName: workspace.name || "DEOS Ludovic Aoust",
+        siteId: site.id || "",
+        siteName: site.name || "Saint-Gilles",
+        siteCode: site.code || "",
+        role
+      }];
+      try { this.setWorkspacePreference?.(workspace.id); } catch (_) {}
+      return this.getStateSnapshot();
+    };
+
     const summary = await withRemoteTimeout(
       deosRemoteAuthService.initialize(),
       DEOS_REMOTE_INIT_TIMEOUT_MS,
