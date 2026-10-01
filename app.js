@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-CONSOLIDATED-TEST";
+const DEOS_VERSION = "V5.30-BASELINE-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -24023,83 +24023,6 @@ let deosMultiDeviceSyncRuntime = {
   lastAutoAttemptAt: 0
 };
 
-
-// -----------------------------------------------------------------------------
-// V5.30N4I — Auto-réparation du contexte multi-appareils
-// Cas visé : session Supabase encore valide mais runtime/workspace perdu ou resté
-// en mode local temporaire après un démarrage lent / retour réseau / Safari iPad.
-// -----------------------------------------------------------------------------
-let deosMultiDeviceRecoveryPromise = null;
-async function ensureMultiDeviceRemoteReady(options = {}) {
-  if (navigator.onLine === false) return false;
-  if (multiDeviceConnected()) return true;
-  if (deosMultiDeviceRecoveryPromise) return deosMultiDeviceRecoveryPromise;
-  deosMultiDeviceRecoveryPromise = (async () => {
-    try {
-      if (!deosRemoteAuthService) {
-        await initializeRemoteServices({ silent: true });
-      }
-      if (!deosRemoteAuthService) return false;
-      let session = deosRemoteAuthService.session || null;
-      const client = deosRemoteAuthService.getClient?.() || deosRemoteAuthService.client || null;
-      if (!session?.user && client?.auth?.getSession) {
-        const result = await withRemoteTimeout(client.auth.getSession(), 7000, 'MULTIDEVICE_SESSION_TIMEOUT', 'Session distante trop lente.');
-        session = result?.data?.session || null;
-      }
-      if (!session?.user) return false;
-      remoteFastSetSession(session);
-      const snapshot = await remoteFastHydrateContext(session);
-      updateRemoteRuntime(snapshot || deosRemoteAuthService.getStateSnapshot?.() || {});
-      ensureRecoveredRemoteAdapter();
-      if (deosRemoteAuthService.currentWorkspace && !deosRemoteRuntime.workspace) {
-        deosRemoteRuntime.workspace = deosRemoteAuthService.currentWorkspace;
-        deosRemoteRuntime.site = deosRemoteAuthService.currentSite || deosRemoteRuntime.site;
-        deosRemoteRuntime.role = deosRemoteAuthService.currentRole || deosRemoteRuntime.role;
-      }
-      deosRemoteRuntime.connectionStatus = 'authenticated';
-      deosRemoteRuntime.temporaryLocal = false;
-      if (deosRemoteRuntime.workspace) {
-        deosRemoteRuntime.lastError = '';
-        deosRemoteRuntime.lastErrorCode = '';
-      } else if (!deosRemoteRuntime.lastError) {
-        deosRemoteRuntime.lastError = 'Session valide, mais aucun workspace n’a pu être chargé.';
-        deosRemoteRuntime.lastErrorCode = 'WORKSPACE_RECOVERY_FAILED';
-      }
-      if (deosRemoteRuntime.workspace && deosRemoteAdapter) enableAllMultiDevicePilots();
-      applyRemoteEnvironmentBadge();
-      renderRemoteUserContext();
-      return multiDeviceConnected();
-    } catch (error) {
-      deosMultiDeviceSyncRuntime.lastError = error?.message || String(error);
-      return false;
-    } finally {
-      deosMultiDeviceRecoveryPromise = null;
-    }
-  })();
-  return deosMultiDeviceRecoveryPromise;
-}
-window.ensureMultiDeviceRemoteReady = ensureMultiDeviceRemoteReady;
-
-function dedupeSimpleEntityLocally(entity) {
-  if (!['decisions','documents'].includes(entity)) return 0;
-  const source = ensureArray(state[entity]);
-  const seen = new Map();
-  const kept = [];
-  let removed = 0;
-  for (const item of source) {
-    if (entity === 'documents' && isJournalSyncTransportDocument(item)) { kept.push(item); continue; }
-    const fp = simpleSyncFingerprint(item);
-    if (!fp || !seen.has(fp)) { seen.set(fp, item); kept.push(item); continue; }
-    removed++;
-  }
-  if (removed) {
-    state[entity] = kept;
-    const repository = getEntityRepository(entity);
-    if (repository) repository.save(kept); else deosDataService.save(entity, kept);
-  }
-  return removed;
-}
-
 function multiDeviceConnected() {
   return Boolean(
     navigator.onLine !== false
@@ -24147,14 +24070,11 @@ function multiDeviceEntityRuntime(entity) {
 async function syncAllMultiDeviceNow(options = {}) {
   const silent = Boolean(options.silent);
   if (deosMultiDeviceSyncRuntime.syncing) return deosMultiDeviceSyncRuntime;
-  if (!multiDeviceConnected()) await ensureMultiDeviceRemoteReady({ source: options.source || "multi-device" });
   if (!multiDeviceConnected()) {
-    deosMultiDeviceSyncRuntime.lastError = navigator.onLine === false ? "Hors ligne." : (deosRemoteRuntime.lastError || "Connexion au workspace requise — tentative de restauration automatique effectuée.");
+    deosMultiDeviceSyncRuntime.lastError = navigator.onLine === false ? "Hors ligne." : "Connexion au workspace requise.";
     if (!silent && currentView === "settings") renderSettings(deosMultiDeviceSyncRuntime.lastError);
     return deosMultiDeviceSyncRuntime;
   }
-  dedupeSimpleEntityLocally("decisions");
-  dedupeSimpleEntityLocally("documents");
   enableAllMultiDevicePilots();
   deosMultiDeviceSyncRuntime.syncing = true;
   deosMultiDeviceSyncRuntime.lastError = "";
@@ -24200,14 +24120,11 @@ async function syncAllMultiDeviceNow(options = {}) {
 window.syncAllMultiDeviceNow = syncAllMultiDeviceNow;
 
 function scheduleMultiDeviceAutoSync(source = "auto") {
-  if (navigator.onLine === false) return;
+  if (!multiDeviceConnected()) return;
   const now = Date.now();
   if (now - deosMultiDeviceSyncRuntime.lastAutoAttemptAt < 12000) return;
   deosMultiDeviceSyncRuntime.lastAutoAttemptAt = now;
-  window.setTimeout(async () => {
-    if (!multiDeviceConnected()) await ensureMultiDeviceRemoteReady({ source });
-    if (multiDeviceConnected()) await syncAllMultiDeviceNow({ silent: true, source });
-  }, 500);
+  window.setTimeout(() => syncAllMultiDeviceNow({ silent: true, source }), 500);
 }
 
 // V5.30L — debounce dédié aux écritures métier. Contrairement au contrôle
@@ -24215,14 +24132,13 @@ function scheduleMultiDeviceAutoSync(source = "auto") {
 let deosMultiDeviceWriteSyncTimer = null;
 function scheduleMultiDeviceWriteSync(entity = "change") {
   if (typeof window === "undefined") return;
-  if (navigator.onLine === false) return;
+  if (!multiDeviceConnected()) return;
   // Une persistance effectuée pendant une synchro distante ne doit pas
   // réamorcer une boucle de synchronisation.
   if (deosMultiDeviceSyncRuntime.syncing) return;
   if (deosMultiDeviceWriteSyncTimer) window.clearTimeout(deosMultiDeviceWriteSyncTimer);
   deosMultiDeviceWriteSyncTimer = window.setTimeout(async () => {
     deosMultiDeviceWriteSyncTimer = null;
-    if (!multiDeviceConnected()) await ensureMultiDeviceRemoteReady({ source: `write:${entity}` });
     if (!multiDeviceConnected() || deosMultiDeviceSyncRuntime.syncing) return;
     await syncAllMultiDeviceNow({ silent: true, source: `write:${entity}` });
   }, 1200);
@@ -24239,19 +24155,9 @@ function bindMultiDeviceSyncListeners() {
 
 function initializeMultiDeviceSyncForAuthenticatedSession(options = {}) {
   bindMultiDeviceSyncListeners();
-  if (multiDeviceConnected()) {
-    enableAllMultiDevicePilots();
-    if (!options.skipSync) scheduleMultiDeviceAutoSync(options.source || "startup");
-    return;
-  }
-  if (navigator.onLine === false) return;
-  window.setTimeout(async () => {
-    const ready = await ensureMultiDeviceRemoteReady({ source: options.source || "startup" });
-    if (!ready) return;
-    enableAllMultiDevicePilots();
-    if (!options.skipSync) scheduleMultiDeviceAutoSync(options.source || "startup-recovered");
-    if (currentView === "settings") renderSettings();
-  }, 0);
+  if (!multiDeviceConnected()) return;
+  enableAllMultiDevicePilots();
+  if (!options.skipSync) scheduleMultiDeviceAutoSync(options.source || "startup");
 }
 
 function multiDeviceSyncSummary() {
@@ -24272,7 +24178,7 @@ function renderMultiDeviceSyncSettingsCardHtml() {
   const connected = multiDeviceConnected();
   const summary = multiDeviceSyncSummary();
   const labelMap = { links:"Liens", actions:"Actions", projects:"Projets", folders:"Dossiers", managers:"Managers", decisions:"Décisions", documents:"Documents" };
-  return `<div id="multiDeviceSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation multi-appareils</h2><p class="muted">V5.30Q1 · un seul workspace pour retrouver automatiquement les objets métier principaux sur PC, iPad et autres navigateurs, y compris Priorités / To-Do via Documents.</p></div><span class="remote-mode-badge ${connected ? (summary.conflicts ? "red" : "green") : "orange"}">${connected ? (summary.conflicts ? `${summary.conflicts} conflit(s)` : "Cloud connecté") : "Connexion requise"}</span></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Workspace</strong><span>${esc(deosRemoteRuntime.workspace?.name || "--")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchro globale</strong><span>${esc(deosMultiDeviceSyncRuntime.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Conflits</strong><span>${summary.conflicts}</span></div><div class="settings-calendar-summary-item"><strong>Erreurs</strong><span>${summary.errors}</span></div></div><div class="row-actions"><button class="action" type="button" onclick="syncAllMultiDeviceNow({silent:false,source:'manual'})" ${navigator.onLine !== false && !deosMultiDeviceSyncRuntime.syncing ? "" : "disabled"}>${deosMultiDeviceSyncRuntime.syncing ? "Synchronisation…" : connected ? "Synchroniser maintenant" : "Reconnecter et synchroniser"}</button></div>${deosMultiDeviceSyncRuntime.lastError ? `<p class="remote-error-box">${esc(deosMultiDeviceSyncRuntime.lastError)}</p>` : ""}</section><section class="settings-card-block"><h3>Objets synchronisés</h3><div class="settings-calendar-summary">${summary.rows.map(r => `<div class="settings-calendar-summary-item"><strong>${esc(labelMap[r.entity] || r.entity)}</strong><span>${r.conflicts ? `${r.conflicts} conflit(s)` : r.error ? "Erreur" : "Actif"}</span></div>`).join("")}</div><p class="muted">Le stockage local reste conservé. En cas de modifications concurrentes, les moteurs existants signalent un conflit au lieu d'écraser silencieusement les données.</p></section></div></div>`;
+  return `<div id="multiDeviceSyncSettingsCard" class="card settings-card settings-remote-card"><div class="settings-card-heading"><div><h2>Synchronisation multi-appareils</h2><p class="muted">V5.30Q1 · un seul workspace pour retrouver automatiquement les objets métier principaux sur PC, iPad et autres navigateurs, y compris Priorités / To-Do via Documents.</p></div><span class="remote-mode-badge ${connected ? (summary.conflicts ? "red" : "green") : "orange"}">${connected ? (summary.conflicts ? `${summary.conflicts} conflit(s)` : "Cloud connecté") : "Connexion requise"}</span></div><div class="settings-card-grid"><section class="settings-card-block"><h3>État</h3><div class="settings-calendar-summary"><div class="settings-calendar-summary-item"><strong>Workspace</strong><span>${esc(deosRemoteRuntime.workspace?.name || "--")}</span></div><div class="settings-calendar-summary-item"><strong>Dernière synchro globale</strong><span>${esc(deosMultiDeviceSyncRuntime.lastSyncAt || "Jamais")}</span></div><div class="settings-calendar-summary-item"><strong>Conflits</strong><span>${summary.conflicts}</span></div><div class="settings-calendar-summary-item"><strong>Erreurs</strong><span>${summary.errors}</span></div></div><div class="row-actions"><button class="action" type="button" onclick="syncAllMultiDeviceNow({silent:false,source:'manual'})" ${connected && !deosMultiDeviceSyncRuntime.syncing ? "" : "disabled"}>${deosMultiDeviceSyncRuntime.syncing ? "Synchronisation…" : "Synchroniser maintenant"}</button></div>${deosMultiDeviceSyncRuntime.lastError ? `<p class="remote-error-box">${esc(deosMultiDeviceSyncRuntime.lastError)}</p>` : ""}</section><section class="settings-card-block"><h3>Objets synchronisés</h3><div class="settings-calendar-summary">${summary.rows.map(r => `<div class="settings-calendar-summary-item"><strong>${esc(labelMap[r.entity] || r.entity)}</strong><span>${r.conflicts ? `${r.conflicts} conflit(s)` : r.error ? "Erreur" : "Actif"}</span></div>`).join("")}</div><p class="muted">Le stockage local reste conservé. En cas de modifications concurrentes, les moteurs existants signalent un conflit au lieu d'écraser silencieusement les données.</p></section></div></div>`;
 }
 
 function mountMultiDeviceSyncSettingsCard() {
@@ -24743,143 +24649,77 @@ async function remoteFastHydrateContext(session) {
   const user = session?.user || deosRemoteAuthService?.user || null;
   if (!client || !user) return deosRemoteAuthService?.getStateSnapshot?.() || {};
 
+  // BASELINE — reconstruction du contexte par la même logique serveur que les RPC métier.
+  // Objectif : ne plus dépendre uniquement des lectures directes workspace_members qui peuvent
+  // être lentes ou soumises aux politiques RLS alors que la session Supabase est valide.
   remoteFastSetSession(session);
   const preferenceKey = String(deosRemoteAuthService.workspacePreferenceKey || "deos_remote_workspace_preference");
-  const preferredWorkspaceId = String(localStorage.getItem(preferenceKey) || "").trim();
   const diagnostics = [];
+  let workspaceId = "";
+  let membershipRole = "";
 
+  // 1) Source de vérité prioritaire : RPC validée côté Supabase.
   try {
-    const [profileResponse, membershipResponse] = await withRemoteTimeout(
-      Promise.all([
-        client.from("profiles").select("id, display_name, created_at, updated_at").eq("id", user.id).maybeSingle(),
-        client.from("workspace_members").select("workspace_id, role, created_at").eq("user_id", user.id).order("created_at", { ascending: true })
-      ]),
-      7000,
-      "REMOTE_CONTEXT_CORE_TIMEOUT",
-      "Contexte utilisateur trop lent."
+    const rpcResponse = await withRemoteTimeout(
+      client.rpc("deos_current_workspace_id"),
+      15000,
+      "REMOTE_CONTEXT_RPC_TIMEOUT",
+      "Recherche du workspace trop lente."
     );
-
-    if (profileResponse?.error) diagnostics.push(`profiles: ${profileResponse.error.message || profileResponse.error.code || 'erreur'}`);
-    else deosRemoteAuthService.profile = profileResponse?.data || null;
-
-    if (membershipResponse?.error) diagnostics.push(`workspace_members: ${membershipResponse.error.message || membershipResponse.error.code || 'erreur'}`);
-    const memberships = Array.isArray(membershipResponse?.data) ? membershipResponse.data : [];
-    const membershipByWorkspace = new Map(memberships.map(item => [String(item.workspace_id), item]));
-
-    // N4J — stratégie 1 : IDs issus des memberships + préférence locale connue.
-    const candidateIds = [];
-    if (preferredWorkspaceId) candidateIds.push(preferredWorkspaceId);
-    for (const item of memberships) {
-      const id = String(item?.workspace_id || '').trim();
-      if (id && !candidateIds.includes(id)) candidateIds.push(id);
-    }
-
-    let workspaces = [];
-    if (candidateIds.length) {
-      const response = await withRemoteTimeout(
-        client.from("workspaces").select("id, name, created_by, created_at, updated_at").in("id", candidateIds),
-        7000,
-        "REMOTE_CONTEXT_WORKSPACES_TIMEOUT",
-        "Lecture des workspaces trop lente."
-      );
-      if (response?.error) diagnostics.push(`workspaces(ids): ${response.error.message || response.error.code || 'erreur'}`);
-      else workspaces = Array.isArray(response?.data) ? response.data : [];
-    }
-
-    // N4J — stratégie 2 : si le membership est absent/inaccessible, retrouver les
-    // workspaces créés par l'utilisateur. Ceci évite un écran "--" lorsque la session
-    // Supabase est valide mais le chargement de workspace_members a échoué.
-    if (!workspaces.length) {
-      const ownedResponse = await withRemoteTimeout(
-        client.from("workspaces").select("id, name, created_by, created_at, updated_at").eq("created_by", user.id).order("created_at", { ascending: true }),
-        7000,
-        "REMOTE_CONTEXT_OWNED_TIMEOUT",
-        "Recherche de votre workspace trop lente."
-      );
-      if (ownedResponse?.error) diagnostics.push(`workspaces(owner): ${ownedResponse.error.message || ownedResponse.error.code || 'erreur'}`);
-      else workspaces = Array.isArray(ownedResponse?.data) ? ownedResponse.data : [];
-    }
-
-    // N4J — stratégie 3 : si une préférence locale existe, tenter une lecture directe.
-    if (!workspaces.length && preferredWorkspaceId) {
-      const directResponse = await withRemoteTimeout(
-        client.from("workspaces").select("id, name, created_by, created_at, updated_at").eq("id", preferredWorkspaceId).maybeSingle(),
-        7000,
-        "REMOTE_CONTEXT_PREFERRED_TIMEOUT",
-        "Lecture du workspace mémorisé trop lente."
-      );
-      if (directResponse?.error) diagnostics.push(`workspace(preference): ${directResponse.error.message || directResponse.error.code || 'erreur'}`);
-      else if (directResponse?.data) workspaces = [directResponse.data];
-    }
-
-    if (!workspaces.length) {
-      deosRemoteAuthService.currentWorkspace = null;
-      deosRemoteAuthService.currentSite = null;
-      deosRemoteAuthService.currentRole = "";
-      deosRemoteAuthService.availableWorkspaces = [];
-      deosRemoteAuthService.requiresWorkspaceSelection = false;
-      const detail = diagnostics.length ? diagnostics.join(" | ") : "aucun workspace visible pour ce compte";
-      const err = new Error(`Workspace introuvable — ${detail}`);
-      err.code = "WORKSPACE_NOT_FOUND";
-      throw err;
-    }
-
-    // Charger le premier site de chaque workspace afin d'alimenter la sélection si besoin.
-    const available = [];
-    for (const workspace of workspaces) {
-      let site = null;
-      try {
-        const sitesResponse = await withRemoteTimeout(
-          client.from("sites").select("id, workspace_id, name, code, created_at, updated_at").eq("workspace_id", workspace.id).order("created_at", { ascending: true }).limit(1),
-          6000,
-          "REMOTE_CONTEXT_SITE_TIMEOUT",
-          "Chargement du site trop lent."
-        );
-        if (sitesResponse?.error) diagnostics.push(`sites(${workspace.id}): ${sitesResponse.error.message || sitesResponse.error.code || 'erreur'}`);
-        else site = Array.isArray(sitesResponse?.data) ? sitesResponse.data[0] || null : null;
-      } catch (siteError) {
-        diagnostics.push(`sites(${workspace.id}): ${siteError?.message || siteError}`);
-      }
-      const membership = membershipByWorkspace.get(String(workspace.id));
-      const role = membership?.role || (String(workspace.created_by) === String(user.id) ? "owner" : "member");
-      available.push({ workspaceId: workspace.id, workspaceName: workspace.name || "Workspace", siteName: site?.name || "", role, _workspace: workspace, _site: site });
-    }
-
-    // Priorité à la préférence locale, sinon au premier workspace retrouvé.
-    const selected = available.find(item => String(item.workspaceId) === preferredWorkspaceId) || available[0];
-    deosRemoteAuthService.currentWorkspace = selected?._workspace || null;
-    deosRemoteAuthService.currentSite = selected?._site || null;
-    deosRemoteAuthService.currentRole = selected?.role || "";
-    deosRemoteAuthService.availableWorkspaces = available.map(({_workspace, _site, ...item}) => item);
-    deosRemoteAuthService.requiresWorkspaceSelection = available.length > 1 && !preferredWorkspaceId;
-
-    if (selected?.workspaceId) {
-      try { localStorage.setItem(preferenceKey, String(selected.workspaceId)); } catch (_) {}
-    }
-
-    const snapshot = deosRemoteAuthService.getStateSnapshot?.() || {};
-    return {
-      ...snapshot,
-      initialized: true,
-      authenticated: true,
-      connectionStatus: "authenticated",
-      user,
-      profile: deosRemoteAuthService.profile || null,
-      workspace: deosRemoteAuthService.currentWorkspace,
-      site: deosRemoteAuthService.currentSite,
-      role: deosRemoteAuthService.currentRole,
-      availableWorkspaces: deosRemoteAuthService.availableWorkspaces,
-      requiresWorkspaceSelection: Boolean(deosRemoteAuthService.requiresWorkspaceSelection),
-      lastError: null
-    };
+    if (rpcResponse?.error) diagnostics.push(`deos_current_workspace_id: ${rpcResponse.error.message || rpcResponse.error.code || "erreur"}`);
+    else workspaceId = String(rpcResponse?.data || "").trim();
   } catch (error) {
-    // N4J : ne plus masquer l'erreur. La session reste authentifiée, mais l'UI doit
-    // afficher précisément pourquoi le workspace n'a pas pu être reconstruit.
-    console.warn("[DEOS N4J] Reconstruction du workspace impossible :", error?.message || error);
+    diagnostics.push(`deos_current_workspace_id: ${error?.message || error}`);
+  }
+
+  // 2) Repli non destructif : membership direct si la RPC ne renvoie rien.
+  if (!workspaceId) {
+    try {
+      const membershipResponse = await withRemoteTimeout(
+        client.from("workspace_members").select("workspace_id, role, created_at").eq("user_id", user.id).order("created_at", { ascending: true }),
+        15000,
+        "REMOTE_CONTEXT_MEMBERSHIP_TIMEOUT",
+        "Lecture des rattachements trop lente."
+      );
+      if (membershipResponse?.error) diagnostics.push(`workspace_members: ${membershipResponse.error.message || membershipResponse.error.code || "erreur"}`);
+      const memberships = Array.isArray(membershipResponse?.data) ? membershipResponse.data : [];
+      const preferredWorkspaceId = String(localStorage.getItem(preferenceKey) || "").trim();
+      const selectedMembership = memberships.find(item => String(item.workspace_id) === preferredWorkspaceId) || memberships[0] || null;
+      if (selectedMembership) {
+        workspaceId = String(selectedMembership.workspace_id || "").trim();
+        membershipRole = String(selectedMembership.role || "").trim();
+      }
+    } catch (error) {
+      diagnostics.push(`workspace_members: ${error?.message || error}`);
+    }
+  }
+
+  // 3) Dernier repli : workspace créé par l'utilisateur.
+  if (!workspaceId) {
+    try {
+      const ownedResponse = await withRemoteTimeout(
+        client.from("workspaces").select("id, name, created_by, created_at, updated_at").eq("created_by", user.id).order("created_at", { ascending: true }).limit(1),
+        15000,
+        "REMOTE_CONTEXT_OWNER_TIMEOUT",
+        "Recherche du workspace utilisateur trop lente."
+      );
+      if (ownedResponse?.error) diagnostics.push(`workspaces(owner): ${ownedResponse.error.message || ownedResponse.error.code || "erreur"}`);
+      const owned = Array.isArray(ownedResponse?.data) ? ownedResponse.data[0] || null : null;
+      if (owned?.id) {
+        workspaceId = String(owned.id);
+        membershipRole = "owner";
+      }
+    } catch (error) {
+      diagnostics.push(`workspaces(owner): ${error?.message || error}`);
+    }
+  }
+
+  if (!workspaceId) {
     deosRemoteAuthService.currentWorkspace = null;
     deosRemoteAuthService.currentSite = null;
     deosRemoteAuthService.currentRole = "";
-    deosRemoteAuthService.availableWorkspaces = deosRemoteAuthService.availableWorkspaces || [];
+    deosRemoteAuthService.availableWorkspaces = [];
+    const detail = diagnostics.filter(Boolean).join(" | ") || "aucun workspace visible pour ce compte";
     const snapshot = deosRemoteAuthService.getStateSnapshot?.() || {};
     return {
       ...snapshot,
@@ -24890,10 +24730,108 @@ async function remoteFastHydrateContext(session) {
       workspace: null,
       site: null,
       role: "",
-      availableWorkspaces: deosRemoteAuthService.availableWorkspaces,
-      lastError: { code: error?.code || "WORKSPACE_RECOVERY_FAILED", message: error?.message || String(error) }
+      availableWorkspaces: [],
+      requiresWorkspaceSelection: false,
+      lastError: { code: "WORKSPACE_RECOVERY_FAILED", message: `Workspace introuvable — ${detail}` }
     };
   }
+
+  // 4) Charger workspace, site et rôle. Le profil est volontairement optionnel :
+  // une lecture de profil lente ne doit jamais empêcher DEOS d'être connecté.
+  let workspace = null;
+  let site = null;
+  let role = membershipRole;
+
+  try {
+    const workspaceResponse = await withRemoteTimeout(
+      client.from("workspaces").select("id, name, created_by, created_at, updated_at").eq("id", workspaceId).maybeSingle(),
+      15000,
+      "REMOTE_CONTEXT_WORKSPACE_TIMEOUT",
+      "Chargement du workspace trop lent."
+    );
+    if (workspaceResponse?.error) diagnostics.push(`workspace: ${workspaceResponse.error.message || workspaceResponse.error.code || "erreur"}`);
+    else workspace = workspaceResponse?.data || null;
+  } catch (error) {
+    diagnostics.push(`workspace: ${error?.message || error}`);
+  }
+
+  // Si la ligne workspace est momentanément lente mais que la RPC a donné un ID valide,
+  // conserver un objet minimal permet au mode connecté de rester cohérent puis d'être enrichi.
+  if (!workspace) {
+    workspace = { id: workspaceId, name: "DEOS Ludovic Aoust", created_by: user.id };
+  }
+
+  try {
+    const sitesResponse = await withRemoteTimeout(
+      client.from("sites").select("id, workspace_id, name, code, created_at, updated_at").eq("workspace_id", workspaceId).order("created_at", { ascending: true }).limit(1),
+      15000,
+      "REMOTE_CONTEXT_SITE_TIMEOUT",
+      "Chargement du site trop lent."
+    );
+    if (sitesResponse?.error) diagnostics.push(`sites: ${sitesResponse.error.message || sitesResponse.error.code || "erreur"}`);
+    else site = Array.isArray(sitesResponse?.data) ? sitesResponse.data[0] || null : null;
+  } catch (error) {
+    diagnostics.push(`sites: ${error?.message || error}`);
+  }
+
+  if (!site) {
+    site = { id: "local-site-fallback", workspace_id: workspaceId, name: identity.siteName || "Saint-Gilles", code: "" };
+  }
+
+  if (!role) {
+    try {
+      const roleResponse = await withRemoteTimeout(
+        client.rpc("deos_workspace_role", { p_workspace_id: workspaceId }),
+        12000,
+        "REMOTE_CONTEXT_ROLE_TIMEOUT",
+        "Chargement du rôle trop lent."
+      );
+      if (roleResponse?.error) diagnostics.push(`deos_workspace_role: ${roleResponse.error.message || roleResponse.error.code || "erreur"}`);
+      else role = String(roleResponse?.data || "").trim();
+    } catch (error) {
+      diagnostics.push(`deos_workspace_role: ${error?.message || error}`);
+    }
+  }
+  if (!role) role = String(workspace?.created_by) === String(user.id) ? "owner" : "member";
+
+  // Profil non bloquant.
+  try {
+    const profileResponse = await withRemoteTimeout(
+      client.from("profiles").select("id, display_name, created_at, updated_at").eq("id", user.id).maybeSingle(),
+      8000,
+      "REMOTE_PROFILE_TIMEOUT",
+      "Profil distant trop lent."
+    );
+    if (!profileResponse?.error) deosRemoteAuthService.profile = profileResponse?.data || null;
+  } catch (_) {}
+
+  deosRemoteAuthService.currentWorkspace = workspace;
+  deosRemoteAuthService.currentSite = site;
+  deosRemoteAuthService.currentRole = role;
+  deosRemoteAuthService.availableWorkspaces = [{
+    workspaceId: workspace.id,
+    workspaceName: workspace.name || "Workspace",
+    siteName: site?.name || "",
+    role
+  }];
+  deosRemoteAuthService.requiresWorkspaceSelection = false;
+  try { localStorage.setItem(preferenceKey, String(workspace.id)); } catch (_) {}
+
+  const snapshot = deosRemoteAuthService.getStateSnapshot?.() || {};
+  return {
+    ...snapshot,
+    initialized: true,
+    authenticated: true,
+    connectionStatus: "authenticated",
+    user,
+    profile: deosRemoteAuthService.profile || null,
+    workspace,
+    site,
+    role,
+    availableWorkspaces: deosRemoteAuthService.availableWorkspaces,
+    requiresWorkspaceSelection: false,
+    lastError: null
+  };
 }
 
 function bindRecoveredRemoteAuthSubscription() {
@@ -24932,7 +24870,7 @@ async function recoverRemoteAfterInitTimeout() {
   try {
     const sessionResult = await withRemoteTimeout(
       client.auth.getSession(),
-      5000,
+      15000,
       "REMOTE_FAST_SESSION_TIMEOUT",
       "Lecture de session trop lente."
     );
