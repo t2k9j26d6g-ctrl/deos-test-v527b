@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D2-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D3-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -1052,6 +1052,7 @@ const DEOS_JOURNAL_SYNC_DOC_PREFIX = "deos-system-journal-sync-v3-";
 const DEOS_JOURNAL_SYNC_LEGACY_IDS = new Set(["deos-system-journal-sync", "deos-system-journal-sync-v2"]);
 const DEOS_JOURNAL_SYNC_SOURCE = "DEOS_JOURNAL_SYNC";
 const DEOS_JOURNAL_SYNC_DEVICE_KEY = "deos_journal_sync_device_id";
+const DEOS_JOURNAL_SYNC_DELETED_KEY = "deos_journal_sync_deleted_v1";
 let deosJournalSyncApplyingRemote = false;
 let deosJournalSyncTimer = null;
 
@@ -1073,6 +1074,48 @@ function journalSyncDeviceId() {
 
 function journalSyncOwnDocumentId() {
   return `${DEOS_JOURNAL_SYNC_DOC_PREFIX}${journalSyncDeviceId()}`;
+}
+
+function loadJournalDeletedTombstones() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(DEOS_JOURNAL_SYNC_DELETED_KEY) || "[]");
+    if (!Array.isArray(parsed)) return [];
+    const latest = new Map();
+    parsed.forEach(entry => {
+      const id = String(entry?.id || "").trim();
+      const deletedAt = String(entry?.deletedAt || "").trim();
+      const stamp = Date.parse(deletedAt);
+      if (!id || !Number.isFinite(stamp)) return;
+      const previous = latest.get(id);
+      if (!previous || stamp > Date.parse(previous.deletedAt || 0)) latest.set(id, { id, deletedAt });
+    });
+    return [...latest.values()];
+  } catch (_) {
+    return [];
+  }
+}
+
+function saveJournalDeletedTombstones(entries) {
+  try {
+    const latest = new Map();
+    ensureArray(entries).forEach(entry => {
+      const id = String(entry?.id || "").trim();
+      const deletedAt = String(entry?.deletedAt || "").trim();
+      const stamp = Date.parse(deletedAt);
+      if (!id || !Number.isFinite(stamp)) return;
+      const previous = latest.get(id);
+      if (!previous || stamp > Date.parse(previous.deletedAt || 0)) latest.set(id, { id, deletedAt });
+    });
+    localStorage.setItem(DEOS_JOURNAL_SYNC_DELETED_KEY, JSON.stringify([...latest.values()]));
+  } catch (_) {}
+}
+
+function recordJournalDeletion(id, deletedAt = new Date().toISOString()) {
+  const key = String(id || "").trim();
+  if (!key) return;
+  const tombstones = loadJournalDeletedTombstones();
+  tombstones.push({ id: key, deletedAt });
+  saveJournalDeletedTombstones(tombstones);
 }
 
 function isJournalSyncTransportDocument(item) {
@@ -1098,7 +1141,8 @@ function journalSyncPayloadFromDocument(doc) {
     updatedAt: String(content.updatedAt || doc.updatedAt || ""),
     deviceId: String(content.deviceId || ""),
     device: String(content.device || ""),
-    journal: content.journal
+    journal: content.journal,
+    deleted: ensureArray(content.deleted).map(entry => ({ id: String(entry?.id || ""), deletedAt: String(entry?.deletedAt || "") })).filter(entry => entry.id && Number.isFinite(Date.parse(entry.deletedAt)))
   };
 }
 
@@ -1107,11 +1151,14 @@ function stageJournalSyncTransport() {
   if (!Array.isArray(state.documents) || !Array.isArray(state.journal)) return false;
   const nowIso = new Date().toISOString();
   const payload = state.journal.map(item => normalizeEntity("journal", item));
+  const deleted = loadJournalDeletedTombstones();
   const ownId = journalSyncOwnDocumentId();
   const index = state.documents.findIndex(doc => String(doc?.id || doc?.clientId || "") === ownId);
   const existing = index >= 0 ? state.documents[index] : null;
   const existingPayload = journalSyncPayloadFromDocument(existing);
-  if (existingPayload && JSON.stringify(existingPayload.journal) === JSON.stringify(payload)) return false;
+  if (existingPayload
+      && JSON.stringify(existingPayload.journal) === JSON.stringify(payload)
+      && JSON.stringify(existingPayload.deleted || []) === JSON.stringify(deleted)) return false;
   const next = normalizeEntity("documents", {
     ...(existing || {}),
     id: ownId,
@@ -1133,11 +1180,12 @@ function stageJournalSyncTransport() {
     sourceId: ownId,
     hiddenSystem: true,
     content: JSON.stringify({
-      schema: 3,
+      schema: 4,
       updatedAt: nowIso,
       deviceId: journalSyncDeviceId(),
       device: typeof detectLinksSyncDeviceLabel === "function" ? detectLinksSyncDeviceLabel() : "Navigateur",
-      journal: payload
+      journal: payload,
+      deleted
     })
   });
   if (index >= 0) state.documents[index] = next; else state.documents.unshift(next);
@@ -1158,9 +1206,33 @@ function applyJournalSyncTransportFromDocuments(options = {}) {
 
   const current = normalizeCollection("journal", state.journal || []);
   const byKey = new Map();
+  const deletedByKey = new Map();
+
+  const absorbDeleted = entries => ensureArray(entries).forEach(entry => {
+    const id = String(entry?.id || "").trim();
+    const deletedAt = String(entry?.deletedAt || "").trim();
+    const stamp = Date.parse(deletedAt);
+    if (!id || !Number.isFinite(stamp)) return;
+    const previous = deletedByKey.get(id);
+    if (!previous || stamp > Date.parse(previous.deletedAt || 0)) deletedByKey.set(id, { id, deletedAt });
+  });
+
+  absorbDeleted(loadJournalDeletedTombstones());
+  transportDocs
+    .map(doc => ({ doc, payload: journalSyncPayloadFromDocument(doc) }))
+    .filter(x => x.payload)
+    .forEach(({ payload }) => absorbDeleted(payload.deleted));
+
+  const canKeep = item => {
+    const id = String(item?.id || "").trim();
+    if (!id) return false;
+    const tombstone = deletedByKey.get(id);
+    return !tombstone || journalItemStamp(item) > Date.parse(tombstone.deletedAt || 0);
+  };
+
   current.forEach(item => {
     const id = String(item?.id || "").trim();
-    if (id) byKey.set(id, item);
+    if (id && canKeep(item)) byKey.set(id, item);
   });
 
   transportDocs
@@ -1170,12 +1242,13 @@ function applyJournalSyncTransportFromDocuments(options = {}) {
     .forEach(({ payload }) => {
       normalizeCollection("journal", payload.journal).forEach(item => {
         const id = String(item?.id || "").trim();
-        if (!id) return;
+        if (!id || !canKeep(item)) return;
         const local = byKey.get(id);
         if (!local || journalItemStamp(item) >= journalItemStamp(local)) byKey.set(id, item);
       });
     });
 
+  saveJournalDeletedTombstones([...deletedByKey.values()]);
   const merged = [...byKey.values()].map(item => normalizeEntity("journal", item));
   merged.sort((a, b) => journalItemStamp(b) - journalItemStamp(a));
   if (JSON.stringify(current) === JSON.stringify(merged)) return false;
@@ -10121,6 +10194,7 @@ function deleteJournal(id) {
   const i = indexById("journal", id);
   if (i < 0 || !confirm("Supprimer cette entrée ?")) return;
   const t = state.journal[i].title;
+  recordJournalDeletion(id);
   state.journal.splice(i, 1);
   persist("journal");
   addActivity("🗑️ Journal supprimé", t);
