@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-BASELINE3-TEST";
+const DEOS_VERSION = "V5.30-BASELINE-FIX-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -24814,7 +24814,6 @@ async function remoteFastHydrateContext(session) {
     siteName: site?.name || "",
     role
   }];
-  deosRemoteAuthService.requiresWorkspaceSelection = false;
   try { localStorage.setItem(preferenceKey, String(workspace.id)); } catch (_) {}
 
   const snapshot = deosRemoteAuthService.getStateSnapshot?.() || {};
