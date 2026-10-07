@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D3-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D4-RDPPRINT-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -17293,11 +17293,169 @@ function copyReportText() {
   alert("Compte rendu copié.");
 }
 
+function rdpPrintParseMetricLine(line = "") {
+  const raw = String(line || "").replace(/^\s*-\s*/, "").trim();
+  const colon = raw.indexOf(":");
+  if (colon < 0) return null;
+  const label = raw.slice(0, colon).trim();
+  const rest = raw.slice(colon + 1).trim();
+  if (!label || !rest) return null;
+  const cells = { label, actual: "", budget: "", historical: "", gap: "", status: "", source: "", scope: "", other: [] };
+  rest.split("|").map(x => x.trim()).filter(Boolean).forEach((part, index) => {
+    const normalized = part.replace(/\s+/g, " ");
+    if (/^(réel|real)\b/i.test(normalized)) cells.actual = normalized.replace(/^(réel|real)\s*/i, "").trim();
+    else if (/^budget\b/i.test(normalized)) cells.budget = normalized.replace(/^budget\s*/i, "").trim();
+    else if (/^historique\b/i.test(normalized)) cells.historical = normalized.replace(/^historique\s*/i, "").trim();
+    else if (/^écart\b/i.test(normalized)) cells.gap = normalized.replace(/^écart(?:\s+budget|\s+historique)?\s*/i, "").trim();
+    else if (/^statut\b/i.test(normalized)) cells.status = normalized.replace(/^statut\s*/i, "").trim();
+    else if (/^source\b/i.test(normalized)) cells.source = normalized.replace(/^source\s*/i, "").trim();
+    else if (/^(périmètre|perimetre)\b/i.test(normalized)) cells.scope = normalized.replace(/^(périmètre|perimetre)\s*/i, "").trim();
+    else if (index === 0 && !cells.actual) cells.actual = normalized;
+    else cells.other.push(normalized);
+  });
+  return cells;
+}
+
+function rdpPrintStatusClass(status = "") {
+  const value = String(status || "").toLowerCase();
+  if (/critique|défavorable|alerte|sous budget/.test(value)) return "rdp-status-red";
+  if (/maîtrisé|maitrise|favorable|surperformance/.test(value)) return "rdp-status-green";
+  return "rdp-status-amber";
+}
+
+function rdpPrintMetricTable(lines = []) {
+  const rows = lines.map(rdpPrintParseMetricLine).filter(Boolean);
+  if (!rows.length) return "";
+  return `<div class="rdp-table-wrap"><table class="rdp-table"><thead><tr><th>Indicateur</th><th>Réalisé</th><th>Budget</th><th>Historique</th><th>Écart</th><th>Statut</th></tr></thead><tbody>${rows.map(row => `<tr><td class="rdp-row-label">${esc(row.label)}</td><td>${esc(row.actual || "—")}</td><td>${esc(row.budget || "—")}</td><td>${esc(row.historical || "—")}</td><td>${esc(row.gap || "—")}</td><td>${row.status ? `<span class="rdp-status ${rdpPrintStatusClass(row.status)}">${esc(row.status)}</span>` : "—"}</td></tr>`).join("")}</tbody></table></div>`;
+}
+
+function rdpPrintKeyValueGrid(lines = []) {
+  const entries = [];
+  const remaining = [];
+  lines.forEach(line => {
+    const value = String(line || "").trim();
+    if (!value) return;
+    const colon = value.indexOf(":");
+    if (colon > 0 && !value.startsWith("-") && colon < 42) {
+      entries.push([value.slice(0, colon).trim(), value.slice(colon + 1).trim()]);
+    } else remaining.push(value);
+  });
+  const html = entries.length ? `<div class="rdp-meta-grid">${entries.map(([k,v]) => `<div class="rdp-meta-item"><span>${esc(k)}</span><strong>${esc(v || "—")}</strong></div>`).join("")}</div>` : "";
+  return { html, remaining };
+}
+
+function rdpPrintGenericBody(body = "") {
+  const lines = String(body || "").split(/\r?\n/);
+  let html = "";
+  let bullets = [];
+  const flushBullets = () => {
+    if (!bullets.length) return;
+    html += `<ul class="rdp-list">${bullets.map(item => `<li>${esc(item)}</li>`).join("")}</ul>`;
+    bullets = [];
+  };
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    if (!trimmed) { flushBullets(); return; }
+    if (/^-\s+/.test(trimmed)) { bullets.push(trimmed.replace(/^-\s+/, "")); return; }
+    flushBullets();
+    if (/^[A-ZÀ-Ÿ0-9][A-ZÀ-Ÿ0-9 '\/\-–—&()]{4,}$/.test(trimmed) && trimmed.length < 90) {
+      html += `<h3 class="rdp-subtitle">${esc(trimmed)}</h3>`;
+    } else if (/^(Règle|Référence|Lecture|Périmètre|Objectif|Confidentialité|Précaution|Point de contrôle)/i.test(trimmed)) {
+      html += `<div class="rdp-note">${esc(trimmed)}</div>`;
+    } else {
+      html += `<p>${esc(trimmed)}</p>`;
+    }
+  });
+  flushBullets();
+  return html;
+}
+
+function rdpPrintExecutiveBody(body = "") {
+  const lines = String(body || "").split(/\r?\n/);
+  let html = "";
+  let currentTitle = "";
+  let currentLines = [];
+  const flush = () => {
+    if (!currentTitle && !currentLines.length) return;
+    const title = currentTitle || "Synthèse";
+    const tone = /ÉCARTS CRITIQUES|ARBITRAGES|RISQUE/i.test(title) ? "rdp-callout-alert" : /FAITS MAÎTRISÉS|POINTS FORTS/i.test(title) ? "rdp-callout-good" : "rdp-callout-info";
+    html += `<div class="rdp-callout ${tone}"><strong>${esc(title)}</strong>${currentLines.length ? `<div>${rdpPrintGenericBody(currentLines.join("\n"))}</div>` : ""}</div>`;
+    currentTitle = ""; currentLines = [];
+  };
+  lines.forEach(line => {
+    const trimmed = line.trim();
+    if (/^[A-ZÀ-Ÿ0-9][A-ZÀ-Ÿ0-9 '\/\-–—&()]{4,}$/.test(trimmed) && trimmed.length < 90) {
+      flush(); currentTitle = trimmed; return;
+    }
+    if (!trimmed && currentLines.length) { flush(); return; }
+    if (trimmed) currentLines.push(trimmed);
+  });
+  flush();
+  return html || rdpPrintGenericBody(body);
+}
+
+function rdpPrintSectionHtml(section, index) {
+  const title = section?.title || `Section ${index + 1}`;
+  const body = String(section?.body || "");
+  const lines = body.split(/\r?\n/);
+  let bodyHtml = "";
+
+  if (/Cadre de la revue/i.test(title)) {
+    const meta = rdpPrintKeyValueGrid(lines);
+    bodyHtml = meta.html + (meta.remaining.length ? rdpPrintGenericBody(meta.remaining.join("\n")) : "");
+  } else if (/Synthèse exécutive/i.test(title)) {
+    bodyHtml = rdpPrintExecutiveBody(body);
+  } else if (/Tableau de bord Direction/i.test(title)) {
+    bodyHtml = rdpPrintMetricTable(lines.filter(line => /^\s*-/.test(line))) || rdpPrintGenericBody(body);
+  } else if (/Productivités par secteur et IPO/i.test(title)) {
+    const firstBlock = [];
+    const rest = [];
+    let inFirst = true;
+    lines.forEach(line => {
+      if (inFirst && /^\s*-/.test(line)) firstBlock.push(line);
+      else { if (line.trim()) inFirst = false; rest.push(line); }
+    });
+    bodyHtml = rdpPrintMetricTable(firstBlock) + rdpPrintGenericBody(rest.join("\n"));
+  } else {
+    bodyHtml = rdpPrintGenericBody(body);
+  }
+
+  return `<section class="rdp-section"><h2>${esc(title)}</h2>${bodyHtml}</section>`;
+}
+
+function rdpPrintDocumentHtml() {
+  reportReadCurrent();
+  const source = reportWizard?.sourceType === "performance" ? byId("performance", reportWizard.sourceId) : null;
+  const period = source ? perfPeriodLabel(source) : "";
+  const title = reportWizard?.title || `Revue de performance mensuelle${period ? " - " + period : ""} - Saint-Gilles`;
+  const preparedBy = reportWizard?.author || identityName();
+  const sections = ensureArray(reportWizard?.sections);
+  const coverMeta = `<div class="rdp-cover-meta"><div><span>Préparé par</span><strong>${esc(preparedBy)}</strong></div><div><span>Date</span><strong>${esc(new Date().toLocaleDateString("fr-FR"))}</strong></div><div><span>Période analysée</span><strong>${esc(period || "À compléter")}</strong></div></div>`;
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${esc(title)}</title><style>
+    @page{size:A4 portrait;margin:15mm 13mm 16mm 13mm}
+    *{box-sizing:border-box}html,body{margin:0;padding:0;background:#fff;color:#101828;font-family:Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{font-size:10.4pt;line-height:1.38}.rdp-document{max-width:184mm;margin:0 auto}.rdp-page-header{display:flex;justify-content:flex-end;font-size:8.5pt;font-weight:700;color:#0b4f84;letter-spacing:.02em;border-bottom:1px solid #d9e2ec;padding:0 0 4mm;margin-bottom:7mm}
+    .rdp-cover{padding:2mm 0 8mm;border-bottom:2px solid #0b4f84;margin-bottom:8mm}.rdp-kicker{font-size:9pt;font-weight:800;color:#0b4f84;letter-spacing:.06em}.rdp-cover h1{margin:5mm 0 2mm;color:#0b4f84;font-size:24pt;line-height:1.08}.rdp-cover-sub{font-size:11pt;color:#475569;margin:0 0 7mm}.rdp-cover-meta{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8mm;border-top:1px solid #dbe3ec;padding-top:5mm}.rdp-cover-meta span{display:block;color:#64748b;font-size:8.5pt;margin-bottom:1mm}.rdp-cover-meta strong{font-size:10pt}
+    .rdp-section{break-inside:auto;margin:0 0 8mm}.rdp-section h2{color:#0b4f84;font-size:17pt;line-height:1.15;margin:0 0 4mm;padding-top:1mm;break-after:avoid}.rdp-section p{margin:2.2mm 0}.rdp-subtitle{color:#0b4f84;font-size:11pt;margin:4mm 0 2mm;break-after:avoid}.rdp-list{margin:2mm 0 3mm;padding-left:5mm}.rdp-list li{margin:1mm 0}
+    .rdp-meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:2.2mm 5mm;margin-bottom:4mm}.rdp-meta-item{border:1px solid #d8e0ea;background:#f8fafc;padding:2.7mm 3mm;break-inside:avoid}.rdp-meta-item span{display:block;color:#64748b;font-size:8pt;margin-bottom:.8mm}.rdp-meta-item strong{display:block;font-size:9.5pt}
+    .rdp-callout{border:1px solid #d6e2ef;padding:3.5mm 4mm;margin:3mm 0;break-inside:avoid}.rdp-callout>strong{display:block;color:#0b4f84;font-size:9.2pt;margin-bottom:1.5mm}.rdp-callout p{margin:1mm 0}.rdp-callout-info{background:#eaf3fb}.rdp-callout-good{background:#eef8f1;border-color:#cae8d1}.rdp-callout-alert{background:#fff1e8;border-color:#f1cfb8}.rdp-note{background:#eaf3fb;border-left:4px solid #0b4f84;padding:2.5mm 3mm;margin:3mm 0;break-inside:avoid}
+    .rdp-table-wrap{overflow:visible;margin:3mm 0 4mm}.rdp-table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8.4pt}.rdp-table th{background:#0b4f84;color:white;padding:2.2mm 1.5mm;border:1px solid #22384d;text-align:center;font-weight:700}.rdp-table td{padding:2.1mm 1.5mm;border:1px solid #6b7280;text-align:center;vertical-align:middle;word-wrap:break-word}.rdp-table tbody tr:nth-child(even){background:#f6f7f9}.rdp-table .rdp-row-label{text-align:left;font-weight:700;width:24%}.rdp-status{display:inline-block;padding:1mm 1.8mm;border-radius:10mm;font-size:7.7pt;font-weight:700}.rdp-status-red{background:#fee2e2;color:#991b1b}.rdp-status-green{background:#dcfce7;color:#166534}.rdp-status-amber{background:#ffedd5;color:#9a3412}
+    .rdp-footer{margin-top:10mm;border-top:1px solid #d9e2ec;padding-top:3mm;display:flex;justify-content:space-between;color:#64748b;font-size:8pt}.rdp-section,.rdp-table tr,.rdp-meta-item,.rdp-callout,.rdp-note{page-break-inside:avoid}
+    @media print{.rdp-document{max-width:none}.rdp-page-header{position:relative}.rdp-footer{position:relative}}
+  </style></head><body><main class="rdp-document"><div class="rdp-page-header">CARREFOUR SUPPLY CHAIN&nbsp;&nbsp;|&nbsp;&nbsp;SAINT-GILLES</div><header class="rdp-cover"><div class="rdp-kicker">CARREFOUR SUPPLY CHAIN | SAINT-GILLES</div><h1>REVUE DE PERFORMANCE MENSUELLE</h1><p class="rdp-cover-sub">Dossier de préparation Direction — ${esc(period || "Saint-Gilles")}</p>${coverMeta}</header>${sections.map(rdpPrintSectionHtml).join("")}<footer class="rdp-footer"><span>Revue de performance mensuelle — dossier de préparation</span><span>Document de travail — modifiable et imprimable</span></footer></main><script>window.addEventListener('load',()=>setTimeout(()=>window.print(),250));<\/script></body></html>`;
+}
+
 function printReportText() {
-  const text = reportPreviewText();
+  const isMonthlyRdp = reportWizard?.template === "Revue de performance" && reportWizard?.sourceType === "performance";
   const win = window.open("", "_blank");
   if (!win) return window.print();
-  win.document.write(`<html><head><title>Compte rendu ${esc(identity.appName)}</title><style>body{font-family:Arial,sans-serif;color:#0f172a;line-height:1.5;padding:32px}h1{font-size:24px}pre{white-space:pre-wrap;font-family:inherit}footer{margin-top:32px;color:#64748b;border-top:1px solid #e2e8f0;padding-top:12px}</style></head><body><h1>${esc(reportWizard.title || "Compte rendu " + identity.appName)}</h1><pre>${esc(text)}</pre><footer>${esc(identitySignature())}</footer><script>window.print()</script></body></html>`);
+  if (isMonthlyRdp) {
+    win.document.write(rdpPrintDocumentHtml());
+    win.document.close();
+    return;
+  }
+  const text = reportPreviewText();
+  win.document.write(`<html><head><title>Compte rendu ${esc(identity.appName)}</title><style>body{font-family:Arial,sans-serif;color:#0f172a;line-height:1.5;padding:32px}h1{font-size:24px}pre{white-space:pre-wrap;font-family:inherit}footer{margin-top:32px;color:#64748b;border-top:1px solid #e2e8f0;padding-top:12px}</style></head><body><h1>${esc(reportWizard.title || "Compte rendu " + identity.appName)}</h1><pre>${esc(text)}</pre><footer>${esc(identitySignature())}</footer><script>window.print()<\/script></body></html>`);
   win.document.close();
 }
 
