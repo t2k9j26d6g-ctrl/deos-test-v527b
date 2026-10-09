@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D4-RDPPRINT-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D5-RDPDATA-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -10315,6 +10315,15 @@ const performanceImportTargetCatalog = [
   { id: "hours.sundays", label: "Dimanches / fériés du mois", path: "hours", destinationField: "sundays", type: "existing", unit: "h", aliases: ["dimanches feries", "dimanches / fériés", "dimanches fériés cumul", "hrs dim"] },
   { id: "gpo.hours_gap_budget", label: "Écart heures vs Budget", path: "complementary.gpo.hours.total.budget_gap", type: "complementary", unit: "heures", aliases: ["ecart heures vs budget", "écart heures vs budget"] },
   { id: "gpo.hours_gap_historical", label: "Écart heures vs Historique", path: "complementary.gpo.hours.total.historical_gap", type: "complementary", unit: "heures", aliases: ["ecart heures vs historique", "écart heures vs historique"] },
+  { id: "gpo.impact_direct_preparation", label: "Impact heures directes Préparation vs budget", path: "complementary.gpo.impact_direct_preparation", type: "complementary", unit: "h", aliases: ["impact heures directes préparation"] },
+  { id: "gpo.impact_direct_reception", label: "Impact heures directes Réception vs budget", path: "complementary.gpo.impact_direct_reception", type: "complementary", unit: "h", aliases: ["impact heures directes réception"] },
+  { id: "gpo.impact_direct_manutention", label: "Impact heures directes Manutention vs budget", path: "complementary.gpo.impact_direct_manutention", type: "complementary", unit: "h", aliases: ["impact heures directes manutention"] },
+  { id: "gpo.impact_direct_chargement", label: "Impact heures directes Chargement vs budget", path: "complementary.gpo.impact_direct_chargement", type: "complementary", unit: "h", aliases: ["impact heures directes chargement"] },
+  { id: "gpo.impact_indirect_preparation", label: "Passage heures indirectes Préparation vs budget", path: "complementary.gpo.impact_indirect_preparation", type: "complementary", unit: "h", aliases: ["passage indirectes préparation"] },
+  { id: "gpo.impact_indirect_reception", label: "Passage heures indirectes Réception vs budget", path: "complementary.gpo.impact_indirect_reception", type: "complementary", unit: "h", aliases: ["passage indirectes réception"] },
+  { id: "gpo.impact_indirect_manutention", label: "Passage heures indirectes Manutention vs budget", path: "complementary.gpo.impact_indirect_manutention", type: "complementary", unit: "h", aliases: ["passage indirectes manutention"] },
+  { id: "gpo.impact_indirect_chargement", label: "Passage heures indirectes Chargement vs budget", path: "complementary.gpo.impact_indirect_chargement", type: "complementary", unit: "h", aliases: ["passage indirectes chargement"] },
+  { id: "gpo.impact_indirect_structure", label: "Passage heures indirectes Structure vs budget", path: "complementary.gpo.impact_indirect_structure", type: "complementary", unit: "h", aliases: ["passage indirectes structure"] },
   { id: "absenteeism.total", label: "Absentéisme total", path: "absenteeism.total.actual", type: "existing", unit: "pourcentage", aliases: ["absenteisme total", "absentéisme total", "taux d absence"] },
   { id: "absenteeism.maladie", label: "Absentéisme maladie", path: "absenteeism.details.Maladie.actual", type: "existing", unit: "pourcentage", aliases: ["maladie", "absence maladie"] },
   { id: "absenteeism.accident_travail", label: "Absentéisme accidents du travail", path: "absenteeism.details.Accidents du travail.actual", type: "existing", unit: "pourcentage", aliases: ["accidents du travail", "accident du travail", "at"] },
@@ -10367,6 +10376,7 @@ const performanceSummaryMetricDefinitions = [
   { metricKey: "absenteeism.total", label: "Absentéisme", family: "pilotage_direction", unit: "%", targetPath: "absenteeism.total.actual", metricPath: "absenteeism.total", aliases: ["absentéisme total"] },
   { metricKey: "economy.cout_total_par_colis", label: "Coût colis total", family: "pilotage_direction", unit: "€/colis", targetPath: "complementary.zgemed.economy.cout_total_par_colis", metricPath: "", aliases: ["cout total par colis", "coût total par colis", "cout colis total", "coût colis total"] },
   { metricKey: "economy.cout_exploitation_par_colis", label: "Coût colis exploitation (Exploit)", family: "pilotage_direction", unit: "€/colis", targetPath: "complementary.zgemed.economy.cout_exploitation_par_colis", metricPath: "", aliases: ["cout exploitation par colis", "coût exploitation par colis", "cout colis exploitation", "coût colis exploitation"] },
+  { metricKey: "economy.cout_fixe_par_colis", label: "Coût fixe par colis", family: "pilotage_direction", unit: "€/colis", targetPath: "complementary.zgemed.economy.cout_fixe_par_colis", metricPath: "", aliases: ["cout fixe par colis", "coût fixe par colis", "cout colis total fixes"] },
   { metricKey: "ipo.variable", label: "IPO variable", family: "activite", unit: IPO_UNIT, targetPath: "ipo.variable.actual", metricPath: "ipo.variable", aliases: ["ipo variable"] },
   { metricKey: "activity.colis_total", label: "Colis", family: "activite", unit: "colis", targetPath: "activity.actual", metricPath: "activity", aliases: ["colis"] },
   { metricKey: "activity.uo_reception", label: "Palettes réceptionnées", family: "activite", unit: "UO", targetPath: "complementary.ga.activity_uo_reception", metricPath: "", aliases: ["uo reception", "palettes réceptionnées"] },
@@ -13352,6 +13362,16 @@ function extractGpoSaintGillesLayout(page) {
     out.productivity_reception = gpoLayoutTriple(page, [[270, 217], [293, 236], [316, 204]], { xTolerance: 24, yTolerance: 15, min: 5, max: 50 });
     out.productivity_manutention = gpoLayoutTriple(page, [[359, 224], [382, 219], [405, 209]], { xTolerance: 24, yTolerance: 15, min: 5, max: 50 });
     out.productivity_chargement = gpoLayoutTriple(page, [[449, 224], [472, 239], [495, 209]], { xTolerance: 24, yTolerance: 15, min: 5, max: 60 });
+    // Écarts d'heures de la page "Performance mensuelle" du GPO (page imprimée 154 sur le modèle 2026).
+    out.impact_direct_preparation = { actual: gpoLayoutNearestNumber(page, 272, 302, { xTolerance: 28, yTolerance: 24, min: -10000, max: 10000 }) };
+    out.impact_direct_reception = { actual: gpoLayoutNearestNumber(page, 358, 356, { xTolerance: 28, yTolerance: 24, min: -10000, max: 10000 }) };
+    out.impact_direct_manutention = { actual: gpoLayoutNearestNumber(page, 445, 372, { xTolerance: 30, yTolerance: 26, min: -10000, max: 10000 }) };
+    out.impact_direct_chargement = { actual: gpoLayoutNearestNumber(page, 532, 359, { xTolerance: 30, yTolerance: 26, min: -10000, max: 10000 }) };
+    out.impact_indirect_preparation = { actual: gpoLayoutNearestNumber(page, 272, 456, { xTolerance: 30, yTolerance: 28, min: -10000, max: 10000 }) };
+    out.impact_indirect_reception = { actual: gpoLayoutNearestNumber(page, 359, 439, { xTolerance: 30, yTolerance: 28, min: -10000, max: 10000 }) };
+    out.impact_indirect_manutention = { actual: gpoLayoutNearestNumber(page, 449, 434, { xTolerance: 30, yTolerance: 28, min: -10000, max: 10000 }) };
+    out.impact_indirect_chargement = { actual: gpoLayoutNearestNumber(page, 533, 426, { xTolerance: 30, yTolerance: 28, min: -10000, max: 10000 }) };
+    out.impact_indirect_structure = { actual: gpoLayoutNearestNumber(page, 620, 416, { xTolerance: 30, yTolerance: 28, min: -10000, max: 10000 }) };
   }
   if (/Evolution HEURES/i.test(text)) {
     out.hours_total = gpoLayoutTriple(page, [[660, 166], [676, 181], [692, 147]], { xTolerance: 28, yTolerance: 16, min: 10000, max: 1000000 });
@@ -13408,7 +13428,16 @@ function extractGpoIndicators(pages, period) {
     absenteeism_conges: { metricKey: "absenteeism.conges", label: "Absentéisme congés", targetId: "absenteeism.conges", category: "Absentéisme", unit: "pourcentage" },
     absenteeism_autres: { metricKey: "absenteeism.autres", label: "Absentéisme autres", targetId: "absenteeism.autres", category: "Absentéisme", unit: "pourcentage" },
     hours_gap_budget: { metricKey: "hours.total.budget_gap", label: "Écart heures vs Budget", targetId: "gpo.hours_gap_budget", category: "Heures", unit: "heures" },
-    hours_gap_historical: { metricKey: "hours.total.historical_gap", label: "Écart heures vs Historique", targetId: "gpo.hours_gap_historical", category: "Heures", unit: "heures" }
+    hours_gap_historical: { metricKey: "hours.total.historical_gap", label: "Écart heures vs Historique", targetId: "gpo.hours_gap_historical", category: "Heures", unit: "heures" },
+    impact_direct_preparation: { metricKey: "gpo.impact_direct_preparation", label: "Impact heures directes Préparation vs budget", targetId: "gpo.impact_direct_preparation", category: "Heures", unit: "h" },
+    impact_direct_reception: { metricKey: "gpo.impact_direct_reception", label: "Impact heures directes Réception vs budget", targetId: "gpo.impact_direct_reception", category: "Heures", unit: "h" },
+    impact_direct_manutention: { metricKey: "gpo.impact_direct_manutention", label: "Impact heures directes Manutention vs budget", targetId: "gpo.impact_direct_manutention", category: "Heures", unit: "h" },
+    impact_direct_chargement: { metricKey: "gpo.impact_direct_chargement", label: "Impact heures directes Chargement vs budget", targetId: "gpo.impact_direct_chargement", category: "Heures", unit: "h" },
+    impact_indirect_preparation: { metricKey: "gpo.impact_indirect_preparation", label: "Passage heures indirectes Préparation vs budget", targetId: "gpo.impact_indirect_preparation", category: "Heures", unit: "h" },
+    impact_indirect_reception: { metricKey: "gpo.impact_indirect_reception", label: "Passage heures indirectes Réception vs budget", targetId: "gpo.impact_indirect_reception", category: "Heures", unit: "h" },
+    impact_indirect_manutention: { metricKey: "gpo.impact_indirect_manutention", label: "Passage heures indirectes Manutention vs budget", targetId: "gpo.impact_indirect_manutention", category: "Heures", unit: "h" },
+    impact_indirect_chargement: { metricKey: "gpo.impact_indirect_chargement", label: "Passage heures indirectes Chargement vs budget", targetId: "gpo.impact_indirect_chargement", category: "Heures", unit: "h" },
+    impact_indirect_structure: { metricKey: "gpo.impact_indirect_structure", label: "Passage heures indirectes Structure vs budget", targetId: "gpo.impact_indirect_structure", category: "Heures", unit: "h" }
   };
   const pushMetric = (page, metricId, values, confidence = "moyenne", layoutBased = false) => {
     const metric = gpoMetrics[metricId];
@@ -13432,6 +13461,10 @@ function extractGpoIndicators(pages, period) {
       pushMetric(page, "productivity_reception", layout.productivity_reception || extractGpoTripleAround(extractGpoSection(text, "RÉCEPTION|RECEPTION", 180), "RÉCEPTION|RECEPTION", { preferDecimal: true }), "moyenne", Boolean(layout.productivity_reception));
       pushMetric(page, "productivity_manutention", layout.productivity_manutention || extractGpoTripleAround(extractGpoSection(text, "MANUTENTION", 180), "MANUTENTION", { preferDecimal: true }), "moyenne", Boolean(layout.productivity_manutention));
       pushMetric(page, "productivity_chargement", layout.productivity_chargement || extractGpoTripleAround(extractGpoSection(text, "CHARGEMENT", 180), "CHARGEMENT", { preferDecimal: true }), "moyenne", Boolean(layout.productivity_chargement));
+      ["impact_direct_preparation","impact_direct_reception","impact_direct_manutention","impact_direct_chargement","impact_indirect_preparation","impact_indirect_reception","impact_indirect_manutention","impact_indirect_chargement","impact_indirect_structure"].forEach(metricId => {
+        const values = layout[metricId];
+        if (values && values.actual !== "" && values.actual !== null && values.actual !== undefined) pushMetric(page, metricId, values, "moyenne", true);
+      });
       if (/TRANSIT|TRANSPORT/i.test(text)) pushMetric(page, "productivity_transit", extractGpoTripleAround(extractGpoSection(text, "TRANSIT|TRANSPORT", 180), "TRANSIT|TRANSPORT", { preferDecimal: true }), "faible");
     }
     if (/Evolution HEURES/i.test(text)) {
@@ -16625,38 +16658,26 @@ function reportPreparationVolumeReconciliation(source) {
   const zGemedVolume = perfHas(source?.activity?.actual) ? Number(source.activity.actual) : "";
 
   if (!Number.isFinite(tbagVolume) || !Number.isFinite(zGemedVolume) || zGemedVolume <= 0) {
-    return {
-      available: false,
-      comparable: false,
-      tbagVolume,
-      zGemedVolume,
-      difference: "",
-      pct: "",
-      text: "Rapprochement volumes Préparation : données insuffisantes."
-    };
+    return { available: false, comparable: false, tbagVolume, zGemedVolume, difference: "", pct: "", text: "Rapprochement volumes Préparation : données insuffisantes." };
   }
 
   const difference = zGemedVolume - tbagVolume;
   const pct = difference / zGemedVolume * 100;
 
-  // A non-trivial volume gap means the functional perimeters are not reconciled.
-  // 1% is deliberately conservative: DEOS must not manufacture a pseudo-precise hour impact.
-  const comparable = Math.abs(pct) <= 1;
-
   return {
     available: true,
-    comparable,
+    comparable: false,
     tbagVolume,
     zGemedVolume,
     difference,
     pct,
-    text: `RAPPROCHEMENT DES VOLUMES
-- Volume T-Bag : ${tbagVolume.toLocaleString("fr-FR")} colis
-- Volume Z GEMED — colis totaux préparés : ${zGemedVolume.toLocaleString("fr-FR")} colis
-- Écart de périmètre : ${Math.abs(difference).toLocaleString("fr-FR")} colis (${Math.abs(pct).toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} % du volume Z GEMED)
-- Périmètre T-Bag : Mensuel.
-- Périmètre productivité officielle GPO : Cumul à date (GPO).
-- Conclusion : ${comparable ? "périmètres fonctionnels suffisamment proches pour une lecture indicative." : "périmètres non réconciliés ; aucun impact heures Préparation ne doit être calculé."}`
+    text: `RAPPROCHEMENT DES VOLUMES — PÉRIMÈTRES DIFFÉRENTS
+- Volume T-Bag : ${tbagVolume.toLocaleString("fr-FR")} colis hétérogènes.
+- Volume Z GEMED — colis totaux préparés : ${zGemedVolume.toLocaleString("fr-FR")} colis, comprenant les colis hétérogènes ET homogènes.
+- Différence Z GEMED - T-Bag : ${Math.abs(difference).toLocaleString("fr-FR")} colis (${Math.abs(pct).toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} % du volume Z GEMED).
+- Périmètre T-Bag : analyse mensuelle de la préparation hétérogène et des populations CDI / ETT / CDD.
+- Périmètre Z GEMED : activité totale mensuelle, hétérogène + homogène.
+- Conclusion : cet écart de volume est structurel et attendu ; il ne doit plus être présenté comme une anomalie de réconciliation. Pour l'impact heures officiel, DEOS privilégie l'impact GPO lorsqu'il est disponible.`
   };
 }
 function reportPerformancePeriodSeries(metricKey, currentPeriod, limit = 12) {
@@ -16691,7 +16712,9 @@ function reportTrendDirection(metricKey) {
     "hours.indirect",
     "absenteeism.total",
     "economy.cout_total_par_colis",
-    "economy.cout_exploitation_par_colis"
+    "economy.cout_exploitation_par_colis",
+    "economy.cout_fixe_par_colis",
+    "quality.demarque_marchandises"
   ]).has(metricKey) ? "lower" : "higher";
 }
 
@@ -16808,6 +16831,47 @@ function reportPreparationImpactScopeText(volumeInfo, productivityInfo, reconcil
 }
 
 
+function reportGpoImpactActual(source, metricKey) {
+  const metric = reportComplementaryMetric(source, metricKey);
+  const value = reportMetricActual(metric);
+  return Number.isFinite(value) ? value : "";
+}
+
+function reportSectorMonthlyHours(source, costCenters = []) {
+  const wanted = new Set(ensureArray(costCenters).map(v => String(v || "").replace(/\D/g, "").padStart(5, "0")));
+  const rows = ensureArray(source?.complementaryKpis).filter(item => {
+    const cc = String(item.costCenter || "").replace(/\D/g, "").padStart(5, "0");
+    return wanted.has(cc);
+  });
+  const pick = metricKey => {
+    const values = rows.filter(item => String(item.metricKey || "") === metricKey).map(reportMetricActual).filter(Number.isFinite);
+    return values.length ? values.reduce((a, b) => a + b, 0) : "";
+  };
+  return { direct: pick("ga_detail.cost_center.direct_hours"), indirect: pick("ga_detail.cost_center.indirect_hours") };
+}
+
+function reportPerformanceHighlights(source) {
+  const year = Number(source?.year || 0), month = Number(source?.month || 0);
+  if (!year || !month) return "Aucun fait marquant automatiquement identifié pour cette période.";
+  const rows = ensureArray(state.journal).filter(item => {
+    if (item?.archived) return false;
+    const raw = String(item?.date || item?.createdAt || "");
+    const d = new Date(raw.length === 10 ? raw + "T12:00:00" : raw);
+    return !Number.isNaN(d.getTime()) && d.getFullYear() === year && d.getMonth() + 1 === month;
+  });
+  if (!rows.length) return "Aucun fait marquant automatiquement identifié dans le Journal opérationnel pour cette période.";
+  return rows.map(item => {
+    const text = `${item.title || ""} ${item.summary || item.content || ""} ${(item.tags || []).join(" ")}`.toLowerCase();
+    const score = /incident|gr[eè]ve|panne|canicule|accident|rupture|retard|litige|crise|blocage|renfort|volume|commercial|social/.test(text) ? 2 : (item.pinned ? 1 : 0);
+    return { item, score };
+  }).sort((a,b)=>b.score-a.score || String(a.item.date || "").localeCompare(String(b.item.date || ""))).slice(0,8)
+    .map(({item}) => {
+      const date = item.date ? ` (${item.date})` : "";
+      const detail = String(item.summary || item.content || item.facts || "").trim();
+      return `- ${item.title || "Fait marquant"}${date}${detail ? " : " + detail.slice(0,220) : ""}`;
+    }).join("\n");
+}
+
 function reportPerformanceMonthlySections(source, ctx, actions, decisions, documents) {
   const periodKey = performancePeriodKey(source) || canonicalPerformancePeriod(sourceTypePeriod(source)) || "";
   const directionRows = periodKey ? performanceSummaryBuildRows(periodKey) : [];
@@ -16817,14 +16881,17 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     if (!row) return "Donnée non disponible";
     return `${performanceSummaryFormatValue(row.value, row.unit, row.metricKey)} | Budget ${performanceSummaryFormatValue(row.budget, row.unit, row.metricKey)} | Historique ${performanceSummaryFormatValue(row.historical, row.unit, row.metricKey)} | Écart ${performanceSummaryFormatDelta(row.gap, row.unit, row.metricKey)} | Statut ${row.statusLabel || "À compléter"} | Source ${row.sourceLabel || performanceSourceLabel(row.source)} · ${reportScopeLabel(row.periodType)}`;
   };
-  const metricLine = (label, metric, unit = "") => {
+  const metricLine = (label, metric, unit = "", metricKey = "") => {
+    const summaryRow = metricKey ? rowByKey(metricKey) : null;
+    if (summaryRow && perfHas(summaryRow.value)) return `- ${label} : ${fmtRow(summaryRow)}`;
     if (!metric) return `- ${label} : Donnée source non disponible`;
     const hasAny = [metric.actual, metric.budget, metric.historical].some(perfHas);
     if (!hasAny) return `- ${label} : Donnée source non disponible`;
     const actual = perfHas(metric.actual) ? `${perfFmt(metric.actual)}${unit ? " " + unit : ""}` : "Donnée source non disponible";
     const budget = perfHas(metric.budget) ? `${perfFmt(metric.budget)}${unit ? " " + unit : ""}` : "Donnée source non disponible";
     const historical = perfHas(metric.historical) ? `${perfFmt(metric.historical)}${unit ? " " + unit : ""}` : "Donnée source non disponible";
-    return `- ${label} : Réel ${actual} | Budget ${budget} | Historique ${historical}`;
+    const gap = perfHas(metric.actual) && perfHas(metric.budget) ? Number(metric.actual) - Number(metric.budget) : "";
+    return `- ${label} : Réel ${actual} | Budget ${budget} | Historique ${historical} | Écart ${perfHas(gap) ? perfFmt(gap) + (unit ? " " + unit : "") : "Donnée non disponible"} | Statut À qualifier`;
   };
   const prep = source.productivity?.["Préparation"] || {};
   const reception = source.productivity?.["Réception"] || {};
@@ -16844,6 +16911,7 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
   const resultOpMetric = reportComplementaryMetric(source, "economy.resultat_operationnel");
   const ebitMetric = reportComplementaryMetric(source, "economy.ebit");
   const demarqueMetric = reportComplementaryMetric(source, "quality.demarque_marchandises");
+  const fixedCostMetric = reportComplementaryMetric(source, "economy.cout_fixe_par_colis");
 
   const prepImpactVolume = reportPreparationVolumeForImpact(source);
   const receptionUo = reportSectorUo(source, periodKey, "reception");
@@ -16852,6 +16920,26 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
   const uoReception = receptionUo.value;
   const uoManutention = manutentionUo.value;
   const uoChargement = chargementUo.value;
+
+  const sectorMonthlyHours = {
+    preparation: reportSectorMonthlyHours(source, ["04300"]),
+    reception: reportSectorMonthlyHours(source, ["04200"]),
+    manutention: reportSectorMonthlyHours(source, ["04400"]),
+    chargement: reportSectorMonthlyHours(source, ["04500"])
+  };
+  const gpoDirectImpacts = {
+    preparation: reportGpoImpactActual(source, "gpo.impact_direct_preparation"),
+    reception: reportGpoImpactActual(source, "gpo.impact_direct_reception"),
+    manutention: reportGpoImpactActual(source, "gpo.impact_direct_manutention"),
+    chargement: reportGpoImpactActual(source, "gpo.impact_direct_chargement")
+  };
+  const gpoIndirectImpacts = {
+    preparation: reportGpoImpactActual(source, "gpo.impact_indirect_preparation"),
+    reception: reportGpoImpactActual(source, "gpo.impact_indirect_reception"),
+    manutention: reportGpoImpactActual(source, "gpo.impact_indirect_manutention"),
+    chargement: reportGpoImpactActual(source, "gpo.impact_indirect_chargement"),
+    structure: reportGpoImpactActual(source, "gpo.impact_indirect_structure")
+  };
 
   const prepPreferred = getPreferredPerformanceValue("productivity.preparation", periodKey);
   const receptionPreferred = getPreferredPerformanceValue("productivity.reception", periodKey);
@@ -16887,7 +16975,9 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     ["Heures indirectes", "hours.indirect"],
     ["Absentéisme", "absenteeism.total"],
     ["Coût colis total", "economy.cout_total_par_colis"],
-    ["Coût colis exploitation (Exploit)", "economy.cout_exploitation_par_colis"]
+    ["Coût colis exploitation (Exploit)", "economy.cout_exploitation_par_colis"],
+    ["Coût fixe par colis", "economy.cout_fixe_par_colis"],
+    ["Démarque marchandises", "quality.demarque_marchandises"]
   ].map(([label, key]) => `- ${label} : ${fmtRow(rowByKey(key))}`).join("\n");
 
   const strengths = directionRows.filter(r => r.statusLabel === "Maîtrisé").map(r => `- ${r.label} : ${performanceSummaryFormatValue(r.value, r.unit, r.metricKey)}`).join("\n") || "À compléter";
@@ -16900,7 +16990,12 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     },
     {
       title: "2. Synthèse exécutive",
-      body: reportPerformanceExecutiveSynthesis(source, directionRows)
+      body: `${reportPerformanceExecutiveSynthesis(source, directionRows)}
+
+FAITS MARQUANTS DU MOIS — présélection Journal opérationnel
+${reportPerformanceHighlights(source)}
+
+Règle : un fait marquant contextualise la performance ; il n'est considéré comme une cause que si le lien est démontré.`
     },
     {
       title: "3. Tableau de bord Direction",
@@ -16908,26 +17003,63 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     },
     {
       title: "4. Productivités par secteur et IPO",
-      body: `${metricLine("Préparation", prep, "colis/h")}\n${metricLine("Réception", reception, "palettes/h")}\n${metricLine("Manutention", manut, "palettes/h")}\n${metricLine("Chargement", chargement, "palettes/h")}\n${metricLine("Transit", transit, "palettes/h")}\n\nRéférence productivités officielles GPO : ${reportScopeLabel(prepPreferred.periodType)}. Les volumes Z GEMED / T-Bag restent mensuels.\n\nIPO total : ${fmtRow(rowByKey("ipo.total"))}\nIPO variable : Réel ${perfFmt(source.ipo?.variable?.actual)} | Budget ${perfFmt(source.ipo?.variable?.budget)} | Historique ${perfFmt(source.ipo?.variable?.historical)}\n\nImpacts en heures par secteur :
-- Préparation : ${reportPreparationImpactCompatible(prepImpactVolume, prepPreferred, prepVolumeReconciliation) ? reportFmtSignedHours(impactPrepAuto) + " vs budget" : "Non calculable — " + reportPreparationImpactScopeText(prepImpactVolume, prepPreferred, prepVolumeReconciliation)}
-- Réception : ${reportImpactScopeCompatible(receptionUo, receptionPreferred) ? reportFmtSignedHours(impactReceptionAuto) + " vs budget" : "Non calculable — " + reportImpactScopeText(receptionUo, receptionPreferred)}
-- Manutention : ${reportImpactScopeCompatible(manutentionUo, manutentionPreferred) ? reportFmtSignedHours(impactManutAuto) + " vs budget" : "Non calculable — " + reportImpactScopeText(manutentionUo, manutentionPreferred)}
-- Chargement : ${reportImpactScopeCompatible(chargementUo, chargementPreferred) ? reportFmtSignedHours(impactChargementAuto) + " vs budget" : "Non calculable — " + reportImpactScopeText(chargementUo, chargementPreferred)}
+      body: `${metricLine("Préparation", prep, "colis/h", "productivity.preparation")}
+${metricLine("Réception", reception, "palettes/h", "productivity.reception")}
+${metricLine("Manutention", manut, "palettes/h", "productivity.manutention")}
+${metricLine("Chargement", chargement, "palettes/h", "productivity.chargement")}
+${metricLine("Transit", transit, "palettes/h", "productivity.transit")}
+
+Référence productivités officielles GPO : ${reportScopeLabel(prepPreferred.periodType)}. Les volumes Z GEMED / T-Bag restent mensuels.
+
+IPO total : ${fmtRow(rowByKey("ipo.total"))}
+IPO variable : ${fmtRow(rowByKey("ipo.variable"))}
+
+Impacts en heures DIRECTES par secteur — priorité à la valeur GPO page « Performance mensuelle » lorsqu'elle est importée :
+- Préparation : ${Number.isFinite(gpoDirectImpacts.preparation) ? reportFmtSignedHours(gpoDirectImpacts.preparation) + " vs budget · source GPO" : "Donnée GPO non disponible"}
+- Réception : ${Number.isFinite(gpoDirectImpacts.reception) ? reportFmtSignedHours(gpoDirectImpacts.reception) + " vs budget · source GPO" : (reportImpactScopeCompatible(receptionUo, receptionPreferred) ? reportFmtSignedHours(impactReceptionAuto) + " vs budget · calcul DEOS" : "Donnée GPO non disponible")}
+- Manutention : ${Number.isFinite(gpoDirectImpacts.manutention) ? reportFmtSignedHours(gpoDirectImpacts.manutention) + " vs budget · source GPO" : (reportImpactScopeCompatible(manutentionUo, manutentionPreferred) ? reportFmtSignedHours(impactManutAuto) + " vs budget · calcul DEOS" : "Donnée GPO non disponible")}
+- Chargement : ${Number.isFinite(gpoDirectImpacts.chargement) ? reportFmtSignedHours(gpoDirectImpacts.chargement) + " vs budget · source GPO" : (reportImpactScopeCompatible(chargementUo, chargementPreferred) ? reportFmtSignedHours(impactChargementAuto) + " vs budget · calcul DEOS" : "Donnée GPO non disponible")}
+
+Passage heures INDIRECTES vs budget — source GPO lorsque disponible :
+- Préparation : ${Number.isFinite(gpoIndirectImpacts.preparation) ? reportFmtSignedHours(gpoIndirectImpacts.preparation) : "Donnée GPO non disponible"}
+- Réception : ${Number.isFinite(gpoIndirectImpacts.reception) ? reportFmtSignedHours(gpoIndirectImpacts.reception) : "Donnée GPO non disponible"}
+- Manutention : ${Number.isFinite(gpoIndirectImpacts.manutention) ? reportFmtSignedHours(gpoIndirectImpacts.manutention) : "Donnée GPO non disponible"}
+- Chargement : ${Number.isFinite(gpoIndirectImpacts.chargement) ? reportFmtSignedHours(gpoIndirectImpacts.chargement) : "Donnée GPO non disponible"}
+- Structure : ${Number.isFinite(gpoIndirectImpacts.structure) ? reportFmtSignedHours(gpoIndirectImpacts.structure) : "Donnée GPO non disponible"}
 
 Volumes de calcul disponibles :
-- Préparation : ${Number.isFinite(Number(prepImpactVolume.value)) && Number(prepImpactVolume.value) > 0 ? Number(prepImpactVolume.value).toLocaleString("fr-FR") + " colis · " + reportScopeLabel(prepImpactVolume.periodType) : "Donnée source non disponible"}
+- Préparation : ${perfHas(source?.activity?.actual) ? Number(source.activity.actual).toLocaleString("fr-FR") + " colis totaux Z GEMED (hétérogènes + homogènes)" : "Donnée source non disponible"}
 - Réception : ${Number.isFinite(Number(uoReception)) && Number(uoReception) > 0 ? Number(uoReception).toLocaleString("fr-FR") + " palettes · " + reportScopeLabel(receptionUo.periodType) : "Donnée source non disponible"}
 - Manutention : ${Number.isFinite(Number(uoManutention)) && Number(uoManutention) > 0 ? Number(uoManutention).toLocaleString("fr-FR") + " palettes · " + reportScopeLabel(manutentionUo.periodType) : "Donnée source non disponible"}
 - Chargement : ${Number.isFinite(Number(uoChargement)) && Number(uoChargement) > 0 ? Number(uoChargement).toLocaleString("fr-FR") + " supports · " + reportScopeLabel(chargementUo.periodType) : "Donnée source non disponible"}
 
-Règle : aucun impact horaire n'est calculé lorsque le volume et la productivité ne portent pas sur le même périmètre temporel.`
+Règle : les impacts GPO sont prioritaires. DEOS ne recalcule un impact que lorsque les volumes et productivités sont explicitement comparables.`
     },
     {
       title: "5. Activité, heures et capacité",
-      body: `${metricLine("Activité / colis", source.activity, "colis")}\n${metricLine("Heures totales", source.hours?.total, "h")}\n${metricLine("Heures directes", source.hours?.direct, "h")}\n${metricLine("Heures indirectes", source.hours?.indirect, "h")}\n\nPérimètre heures GPO : ${reportScopeLabel(hoursTotalPreferred.periodType)}. Ces heures ne doivent pas être lues comme les seules heures du mois.\nPoids des heures indirectes : ${reportFmtPercent1(indirectHoursShareAuto)}.\n\nÉcarts heures vs budget — ${reportScopeLabel(hoursTotalPreferred.periodType)} :
+      body: `${metricLine("Activité / colis", source.activity, "colis", "activity.colis_total")}
+${metricLine("Heures totales", source.hours?.total, "h", "hours.total")}
+${metricLine("Heures directes", source.hours?.direct, "h", "hours.direct")}
+${metricLine("Heures indirectes", source.hours?.indirect, "h", "hours.indirect")}
+
+Périmètre heures GPO : ${reportScopeLabel(hoursTotalPreferred.periodType)}. Les Budget / Historique des heures indirectes sont repris via le résolveur de source GPO.
+Poids des heures indirectes : ${reportFmtPercent1(indirectHoursShareAuto)}.
+
+DÉTAIL MENSUEL PAR SECTEUR — volume / heures directes / heures indirectes
+- Préparation : ${perfHas(source?.activity?.actual) ? Number(source.activity.actual).toLocaleString("fr-FR") + " colis totaux Z GEMED (hétérogènes + homogènes)" : "volume non disponible"} | Heures directes ${Number.isFinite(sectorMonthlyHours.preparation.direct) ? perfFmt(sectorMonthlyHours.preparation.direct) + " h" : "non disponibles"} | Heures indirectes ${Number.isFinite(sectorMonthlyHours.preparation.indirect) ? perfFmt(sectorMonthlyHours.preparation.indirect) + " h" : "non disponibles"}
+- Réception : ${Number.isFinite(Number(uoReception)) ? Number(uoReception).toLocaleString("fr-FR") + " palettes" : "volume non disponible"} | Heures directes ${Number.isFinite(sectorMonthlyHours.reception.direct) ? perfFmt(sectorMonthlyHours.reception.direct) + " h" : "non disponibles"} | Heures indirectes ${Number.isFinite(sectorMonthlyHours.reception.indirect) ? perfFmt(sectorMonthlyHours.reception.indirect) + " h" : "non disponibles"}
+- Manutention : ${Number.isFinite(Number(uoManutention)) ? Number(uoManutention).toLocaleString("fr-FR") + " palettes" : "volume non disponible"} | Heures directes ${Number.isFinite(sectorMonthlyHours.manutention.direct) ? perfFmt(sectorMonthlyHours.manutention.direct) + " h" : "non disponibles"} | Heures indirectes ${Number.isFinite(sectorMonthlyHours.manutention.indirect) ? perfFmt(sectorMonthlyHours.manutention.indirect) + " h" : "non disponibles"}
+- Chargement : ${Number.isFinite(Number(uoChargement)) ? Number(uoChargement).toLocaleString("fr-FR") + " supports" : "volume non disponible"} | Heures directes ${Number.isFinite(sectorMonthlyHours.chargement.direct) ? perfFmt(sectorMonthlyHours.chargement.direct) + " h" : "non disponibles"} | Heures indirectes ${Number.isFinite(sectorMonthlyHours.chargement.indirect) ? perfFmt(sectorMonthlyHours.chargement.indirect) + " h" : "non disponibles"}
+
+Note : les heures sectorielles mensuelles utilisent les données GA détail agrégées par centre de coûts lorsqu'elles sont disponibles : Préparation 04300, Réception 04200, Manutention/Cariste 04400, Chargement 04500. Aucune donnée nominative n'est utilisée.
+
+Écarts heures vs budget — ${reportScopeLabel(hoursTotalPreferred.periodType)} :
 - Heures totales : ${reportFmtSignedHours(totalHoursGap)}
 - Heures directes : ${reportFmtSignedHours(directHoursGap)}
-- Heures indirectes : ${reportFmtSignedHours(indirectHoursGap)}\n\nCapacité / charge M+1 : À préparer (volume attendu, risques de saturation, recours ETT, jours atypiques, opérations commerciales, contraintes transport).\nLecture hebdomadaire / rupture de tendance : voir section 10 et compléter uniquement si un événement opérationnel doit être contextualisé.`
+- Heures indirectes : ${reportFmtSignedHours(indirectHoursGap)}
+
+Capacité / charge M+1 : À préparer (volume attendu, risques de saturation, recours ETT, jours atypiques, opérations commerciales, contraintes transport).
+Lecture hebdomadaire / rupture de tendance : voir section 10 et compléter uniquement si un événement opérationnel doit être contextualisé.`
     },
     {
       title: "6. Préparation — performance main-d'œuvre",
