@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D13-RDP-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D14-RDP-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -10779,8 +10779,16 @@ function enforcePerformanceSourceAuthority(row = {}) {
 }
 function performanceMetricFamilyPriorityKey(metricDef = {}) {
   const key = String(metricDef.metricKey || "").toLowerCase();
+  // D14 — la famille visuelle « pilotage_direction » ne doit jamais masquer
+  // la famille métier du KPI. La source officielle se déduit d'abord du metricKey.
   if (key.startsWith("ipo.")) return "ipo";
   if (key.startsWith("productivity.")) return "productivites_officielles";
+  if (key.startsWith("activity.")) return "activite";
+  if (key.startsWith("hours.")) return "heures";
+  if (key.startsWith("absenteeism.")) return "absenteisme";
+  if (key.startsWith("economy.") || key.startsWith("quality.demarque_marchandises")) return "economie_qualite";
+  if (key.startsWith("tbag.")) return "preparation_detaillee";
+  if (key.startsWith("ga_detail.")) return "affectations_dispersion";
   if (metricDef.family === "activite") return "activite";
   if (metricDef.family === "heures") return "heures";
   if (metricDef.family === "absenteisme") return "absenteisme";
@@ -10808,6 +10816,18 @@ function performanceMatchesMetricDef(row = {}, metricDef = {}) {
   const aliases = [metricDef.label, ...(metricDef.aliases || [])].map(normalizePerformanceLabel).filter(Boolean);
   if (metricDef.targetPath && rowPath && (rowPath === metricDef.targetPath || `${rowPath}.actual` === metricDef.targetPath)) return true;
   if (metricDef.metricKey && rowMetricKey && rowMetricKey === String(metricDef.metricKey).toLowerCase()) return true;
+
+  // D14 — dès qu'une ligne possède une destination ou un metricKey explicite,
+  // on interdit le fallback flou par libellé vers un autre KPI. C'est ce qui
+  // faisait prendre « Impact heures directes Réception » (-111 h) pour la
+  // productivité Réception, ou un cumul Z GEMED pour l'activité mensuelle.
+  const defKeyExact = String(metricDef.metricKey || "").toLowerCase();
+  if (rowMetricKey) {
+    const equivalent = (defKeyExact === "activity.colis_total" && rowMetricKey === "activity.colis_totaux_prepares")
+      || (defKeyExact === "quality.demarque_marchandises_direction" && rowMetricKey === "quality.demarque_marchandises");
+    if (!equivalent) return false;
+  }
+  if (rowPath && metricDef.targetPath && !(rowPath === metricDef.targetPath || `${rowPath}.actual` === metricDef.targetPath)) return false;
 
   // V5.30 D7 — cloisonnement strict des impacts d’heures GPO (page « Performance mensuelle »).
   // Les KPI complémentaires gpo.impact_* sont des écarts sectoriels, jamais des niveaux
@@ -10858,16 +10878,23 @@ function performancePrimaryValueForMetric(periodRecord, metricDef) {
   const valueField = metricDef.valueField || "actual";
   const value = metric[valueField];
   if (!perfHas(value)) return null;
+  // D14 — les champs canoniques de Performance sont déjà protégés à l'import
+  // par l'autorité de source. Après compaction du journal d'import, ils restent
+  // donc la référence durable. On leur restitue la source officielle attendue
+  // au lieu de les dégrader artificiellement en « Saisie DEOS ».
+  const priorityKey = performanceMetricFamilyPriorityKey(metricDef);
+  const officialSource = (performanceSourcePriorityByFamily[priorityKey] || [])[0] || "DEOS";
   return {
     value,
     budget: perfHas(metric.budget) ? metric.budget : "",
     historical: perfHas(metric.historical) ? metric.historical : "",
     unit: metricDef.unit || "",
-    source: "DEOS",
-    sourceLabel: "Saisie DEOS",
-    confidence: "moyenne",
+    source: officialSource,
+    sourceLabel: performanceSourceLabel(officialSource),
+    confidence: officialSource === "DEOS" ? "moyenne" : "élevée",
     sourceRef: metric.comment || "",
-    periodType: "monthly"
+    periodType: officialSource === "GPO" ? "cumulative" : "monthly",
+    persistedCanonical: true
   };
 }
 
