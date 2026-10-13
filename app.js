@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D6-RDPDATA-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D7-RDPDATA-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -10808,6 +10808,13 @@ function performanceMatchesMetricDef(row = {}, metricDef = {}) {
   const aliases = [metricDef.label, ...(metricDef.aliases || [])].map(normalizePerformanceLabel).filter(Boolean);
   if (metricDef.targetPath && rowPath && (rowPath === metricDef.targetPath || `${rowPath}.actual` === metricDef.targetPath)) return true;
   if (metricDef.metricKey && rowMetricKey && rowMetricKey === String(metricDef.metricKey).toLowerCase()) return true;
+
+  // V5.30 D7 — cloisonnement strict des impacts d’heures GPO (page « Performance mensuelle »).
+  // Les KPI complémentaires gpo.impact_* sont des écarts sectoriels, jamais des niveaux
+  // d'heures. Ils ne doivent donc pas matcher par libellé « heures directes/indirectes ».
+  const defKeyStrict = String(metricDef.metricKey || "").toLowerCase();
+  if ((defKeyStrict === "hours.direct" || defKeyStrict === "hours.indirect")
+      && rowMetricKey.startsWith("gpo.impact_")) return false;
   // V5.30Q5F : "Activité principale / Colis" doit correspondre uniquement
   // à COLIS TOTAUX PREPARES, jamais à colis hétérogènes/homogènes/contrôlés.
   if (String(metricDef.metricKey || "").toLowerCase() === "activity.colis_total"
