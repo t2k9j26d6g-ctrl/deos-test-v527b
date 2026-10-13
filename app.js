@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D5-RDPDATA-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D6-RDPDATA-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -10377,6 +10377,7 @@ const performanceSummaryMetricDefinitions = [
   { metricKey: "economy.cout_total_par_colis", label: "Coût colis total", family: "pilotage_direction", unit: "€/colis", targetPath: "complementary.zgemed.economy.cout_total_par_colis", metricPath: "", aliases: ["cout total par colis", "coût total par colis", "cout colis total", "coût colis total"] },
   { metricKey: "economy.cout_exploitation_par_colis", label: "Coût colis exploitation (Exploit)", family: "pilotage_direction", unit: "€/colis", targetPath: "complementary.zgemed.economy.cout_exploitation_par_colis", metricPath: "", aliases: ["cout exploitation par colis", "coût exploitation par colis", "cout colis exploitation", "coût colis exploitation"] },
   { metricKey: "economy.cout_fixe_par_colis", label: "Coût fixe par colis", family: "pilotage_direction", unit: "€/colis", targetPath: "complementary.zgemed.economy.cout_fixe_par_colis", metricPath: "", aliases: ["cout fixe par colis", "coût fixe par colis", "cout colis total fixes"] },
+  { metricKey: "quality.demarque_marchandises_direction", label: "Démarque marchandises", family: "pilotage_direction", unit: "k€", targetPath: "complementary.zgemed.quality_demarque_marchandises", metricPath: "", aliases: ["démarque marchandises", "demarque marchandises"] },
   { metricKey: "ipo.variable", label: "IPO variable", family: "activite", unit: IPO_UNIT, targetPath: "ipo.variable.actual", metricPath: "ipo.variable", aliases: ["ipo variable"] },
   { metricKey: "activity.colis_total", label: "Colis", family: "activite", unit: "colis", targetPath: "activity.actual", metricPath: "activity", aliases: ["colis"] },
   { metricKey: "activity.uo_reception", label: "Palettes réceptionnées", family: "activite", unit: "UO", targetPath: "complementary.ga.activity_uo_reception", metricPath: "", aliases: ["uo reception", "palettes réceptionnées"] },
@@ -10911,6 +10912,38 @@ function performanceMetricCandidates(metricDef, period, periodRecord, importRows
   return unique;
 }
 
+function performanceResolveGpoIndirectHours(period, periodRecord, importRows) {
+  const indirectDef = performanceSummaryMetricDefinitions.find(def => def.metricKey === "hours.indirect");
+  const totalDef = performanceSummaryMetricDefinitions.find(def => def.metricKey === "hours.total");
+  const directDef = performanceSummaryMetricDefinitions.find(def => def.metricKey === "hours.direct");
+  if (!indirectDef || !totalDef || !directDef) return null;
+
+  const indirectCandidates = performanceMetricCandidates(indirectDef, period, periodRecord, importRows);
+  const gpoIndirect = indirectCandidates.find(c => c.source === "GPO") || null;
+  if (gpoIndirect && perfHas(gpoIndirect.value)) return gpoIndirect;
+
+  const totalGpo = performanceMetricCandidates(totalDef, period, periodRecord, importRows)
+    .find(c => c.source === "GPO" && perfHas(c.value));
+  const directGpo = performanceMetricCandidates(directDef, period, periodRecord, importRows)
+    .find(c => c.source === "GPO" && perfHas(c.value));
+  const total = totalGpo ? Number(totalGpo.value) : NaN;
+  const direct = directGpo ? Number(directGpo.value) : NaN;
+  if (!Number.isFinite(total) || !Number.isFinite(direct)) return gpoIndirect;
+
+  return {
+    value: total - direct,
+    budget: gpoIndirect?.budget ?? "",
+    historical: gpoIndirect?.historical ?? "",
+    unit: gpoIndirect?.unit || "h",
+    source: "GPO",
+    sourceLabel: "GPO",
+    confidence: "élevée",
+    sourceRef: gpoIndirect?.sourceRef || "Calcul GPO : heures totales - heures directes",
+    periodType: "cumulative",
+    derived: true
+  };
+}
+
 function getPreferredPerformanceValue(metricKey, period) {
   const metricDef = performanceSummaryMetricDefinitions.find(def => def.metricKey === metricKey);
   if (!metricDef) {
@@ -10932,8 +10965,9 @@ function getPreferredPerformanceValue(metricKey, period) {
   const candidates = performanceMetricCandidates(metricDef, period, periodRecord, importRows);
   const priorityKey = performanceMetricFamilyPriorityKey(metricDef);
   const priority = performanceSourcePriorityByFamily[priorityKey] || [];
-  let selected = null;
+  let selected = metricKey === "hours.indirect" ? performanceResolveGpoIndirectHours(period, periodRecord, importRows) : null;
   for (const sourceKey of priority) {
+    if (selected) break;
     selected = candidates.find(candidate => candidate.source === sourceKey && perfHas(candidate.value));
     if (selected) break;
   }
@@ -11009,7 +11043,7 @@ function performanceSummaryFormatValue(value, unit, metricKey = "") {
     const ratioValue = numeric >= 0 && numeric <= 1 ? numeric * 100 : numeric;
     return `${ratioValue.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })} %`;
   }
-  const isUnitCost = metricKey === "economy.cout_total_par_colis" || metricKey === "economy.cout_exploitation_par_colis";
+  const isUnitCost = metricKey === "economy.cout_total_par_colis" || metricKey === "economy.cout_exploitation_par_colis" || metricKey === "economy.cout_fixe_par_colis";
   const digits = isUnitCost ? 3 : (/hours|heures|\bh\b/.test(normalizedUnit) ? 2 : (metricKey.startsWith("ipo.") ? 2 : 1));
   const formatted = numeric.toLocaleString("fr-FR", {
     minimumFractionDigits: isUnitCost ? 3 : 0,
@@ -11035,16 +11069,17 @@ function performanceSummaryBuildRows(period) {
   return performanceSummaryMetricDefinitions.map(def => {
     const preferred = getPreferredPerformanceValue(def.metricKey, period);
     const status = performanceSummaryMetricStatus(def.metricKey, period, preferred);
-    const unitCostMetric = def.metricKey === "economy.cout_total_par_colis" || def.metricKey === "economy.cout_exploitation_par_colis";
+    const unitCostMetric = def.metricKey === "economy.cout_total_par_colis" || def.metricKey === "economy.cout_exploitation_par_colis" || def.metricKey === "economy.cout_fixe_par_colis";
+    const managerialAbsMetric = unitCostMetric || def.metricKey === "quality.demarque_marchandises_direction";
     const rawValue = perfHas(preferred.value) ? Number(preferred.value) : "";
     const rawBudget = perfHas(preferred.budget) ? Number(preferred.budget) : "";
     const rawHistorical = perfHas(preferred.historical) ? Number(preferred.historical) : "";
     // V5.30Q5F : Z GEMED stocke les charges avec un signe comptable négatif.
     // Pour le pilotage, les coûts unitaires sont affichés en valeur positive,
     // sans modifier la donnée source enregistrée.
-    const value = Number.isFinite(rawValue) ? (unitCostMetric ? Math.abs(rawValue) : rawValue) : "";
-    const budget = Number.isFinite(rawBudget) ? (unitCostMetric ? Math.abs(rawBudget) : rawBudget) : "";
-    const historical = Number.isFinite(rawHistorical) ? (unitCostMetric ? Math.abs(rawHistorical) : rawHistorical) : "";
+    const value = Number.isFinite(rawValue) ? (managerialAbsMetric ? Math.abs(rawValue) : rawValue) : "";
+    const budget = Number.isFinite(rawBudget) ? (managerialAbsMetric ? Math.abs(rawBudget) : rawBudget) : "";
+    const historical = Number.isFinite(rawHistorical) ? (managerialAbsMetric ? Math.abs(rawHistorical) : rawHistorical) : "";
     const gap = (Number.isFinite(value) && Number.isFinite(budget)) ? value - budget : "";
     const trend = (Number.isFinite(value) && Number.isFinite(historical)) ? value - historical : "";
 
@@ -11057,7 +11092,9 @@ function performanceSummaryBuildRows(period) {
       "hours.indirect": "lower",
       "absenteeism.total": "lower",
       "economy.cout_total_par_colis": "lower",
-      "economy.cout_exploitation_par_colis": "lower"
+      "economy.cout_exploitation_par_colis": "lower",
+      "economy.cout_fixe_par_colis": "lower",
+      "quality.demarque_marchandises_direction": "lower"
     };
     let directionStatusLabel = status.label;
     let directionStatusTone = status.tone;
@@ -11484,12 +11521,12 @@ function performanceWarningsBadgesV519(row) {
 }
 
 function performanceDirectionCards(period) {
-  const cardOrder = ["ipo.total", "activity.colis_total", "productivity.preparation", "hours.indirect", "absenteeism.total", "economy.cout_total_par_colis", "economy.cout_exploitation_par_colis"];
+  const cardOrder = ["ipo.total", "activity.colis_total", "productivity.preparation", "hours.indirect", "absenteeism.total", "economy.cout_total_par_colis", "economy.cout_exploitation_par_colis", "economy.cout_fixe_par_colis", "quality.demarque_marchandises_direction"];
   const rows = performanceSummaryRowsFiltered(period).filter(row => cardOrder.includes(row.metricKey));
-  const ordered = cardOrder.map(key => rows.find(row => row.metricKey === key)).filter(Boolean).slice(0, 7);
+  const ordered = cardOrder.map(key => rows.find(row => row.metricKey === key)).filter(Boolean).slice(0, 9);
   if (!ordered.length) return `<div class="empty">Aucune carte Direction disponible avec les filtres en cours.</div>`;
   const cards = ordered.map(row => {
-    const isUnitCostCard = row.metricKey === "economy.cout_total_par_colis" || row.metricKey === "economy.cout_exploitation_par_colis";
+    const isUnitCostCard = row.metricKey === "economy.cout_total_par_colis" || row.metricKey === "economy.cout_exploitation_par_colis" || row.metricKey === "economy.cout_fixe_par_colis";
     const spanStyle = isUnitCostCard ? "grid-column: span 3;" : "grid-column: span 2;";
     return `
     <article class="performance-summary-direction-card" style="${spanStyle}">
@@ -16280,7 +16317,9 @@ function reportPerformanceDirectionRowsOnly(rows = []) {
     "hours.indirect",
     "absenteeism.total",
     "economy.cout_total_par_colis",
-    "economy.cout_exploitation_par_colis"
+    "economy.cout_exploitation_par_colis",
+    "economy.cout_fixe_par_colis",
+    "quality.demarque_marchandises_direction"
   ]);
   const seen = new Set();
   return rows.filter(r => {
@@ -16977,7 +17016,7 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     ["Coût colis total", "economy.cout_total_par_colis"],
     ["Coût colis exploitation (Exploit)", "economy.cout_exploitation_par_colis"],
     ["Coût fixe par colis", "economy.cout_fixe_par_colis"],
-    ["Démarque marchandises", "quality.demarque_marchandises"]
+    ["Démarque marchandises", "quality.demarque_marchandises_direction"]
   ].map(([label, key]) => `- ${label} : ${fmtRow(rowByKey(key))}`).join("\n");
 
   const strengths = directionRows.filter(r => r.statusLabel === "Maîtrisé").map(r => `- ${r.label} : ${performanceSummaryFormatValue(r.value, r.unit, r.metricKey)}`).join("\n") || "À compléter";
@@ -17075,7 +17114,7 @@ Lecture hebdomadaire / rupture de tendance : voir section 10 et compléter uniqu
     },
     {
       title: "9. Économie, qualité et coûts unitaires",
-      body: `Coût colis total : ${fmtRow(rowByKey("economy.cout_total_par_colis"))}\nCoût colis exploitation (Exploit) : ${fmtRow(rowByKey("economy.cout_exploitation_par_colis"))}\nGains & Pertes : Réel ${Number.isFinite(qualityTotalActual) ? perfFmt(qualityTotalActual) : "Donnée source non disponible"} | Budget ${Number.isFinite(qualityTotalBudget) ? perfFmt(qualityTotalBudget) : "Donnée source non disponible"} | Historique ${Number.isFinite(qualityTotalHistorical) ? perfFmt(qualityTotalHistorical) : "Donnée source non disponible"}${(!Number.isFinite(qualityTotalActual) || !Number.isFinite(qualityTotalBudget)) ? " — comparaison non évaluable" : ""}\nRésultat opérationnel (Z GEMED mensuel) : ${reportMetricTriplet(resultOpMetric, "k€")}\nEBIT (Z GEMED mensuel) : ${reportMetricTriplet(ebitMetric, "k€")}\nDémarque marchandises (Z GEMED mensuel) : ${reportMetricTriplet(demarqueMetric, "k€")}\n\nPareto à préparer : litiges, casse, non-livrés, périmés, contrôle stock, dons et autres postes significatifs.\n\nLecture attendue : chiffrer l'écart mensuel et cumul, identifier les 2 ou 3 postes expliquant l'essentiel de la dérive et rattacher chaque poste à un responsable / plan d'action.`
+      body: `Coût colis total : ${fmtRow(rowByKey("economy.cout_total_par_colis"))}\nCoût colis exploitation (Exploit) : ${fmtRow(rowByKey("economy.cout_exploitation_par_colis"))}\nCoût fixe par colis : ${fmtRow(rowByKey("economy.cout_fixe_par_colis"))}\nGains & Pertes : Réel ${Number.isFinite(qualityTotalActual) ? perfFmt(qualityTotalActual) : "Donnée source non disponible"} | Budget ${Number.isFinite(qualityTotalBudget) ? perfFmt(qualityTotalBudget) : "Donnée source non disponible"} | Historique ${Number.isFinite(qualityTotalHistorical) ? perfFmt(qualityTotalHistorical) : "Donnée source non disponible"}${(!Number.isFinite(qualityTotalActual) || !Number.isFinite(qualityTotalBudget)) ? " — comparaison non évaluable" : ""}\nRésultat opérationnel (Z GEMED mensuel) : ${reportMetricTriplet(resultOpMetric, "k€")}\nEBIT (Z GEMED mensuel) : ${reportMetricTriplet(ebitMetric, "k€")}\nDémarque marchandises (Z GEMED mensuel) : ${reportMetricTriplet(demarqueMetric, "k€")}\n\nPareto à préparer : litiges, casse, non-livrés, périmés, contrôle stock, dons et autres postes significatifs.\n\nLecture attendue : chiffrer l'écart mensuel et cumul, identifier les 2 ou 3 postes expliquant l'essentiel de la dérive et rattacher chaque poste à un responsable / plan d'action.`
     },
     {
       title: "10. Historique, profondeur de données et projection",
@@ -17114,7 +17153,7 @@ Ces éléments prospectifs ne sont pas inventés par DEOS : ils doivent être re
     },
     {
       title: "14. Fiabilité des données et points à valider",
-      body: `Sources de référence : GPO / Guide de performance, Z GEMED, T-Bag, CGTAB, GA / Suivi GA, Litiges / GC-GE selon disponibilité.\n\nPoints de contrôle avant présentation :\n- réconcilier les périmètres lorsqu'une même notion diffère entre sources ;\n- distinguer mensuel et cumul ;\n- vérifier les unités ;\n- documenter les valeurs atypiques ;\n- ne pas additionner des impacts financiers calculés sur des périmètres qui se recouvrent ;\n- signaler explicitement toute donnée manquante ou non fiabilisée ;\n- ne jamais calculer un impact en heures avec un volume provenant d'un périmètre différent de la productivité analysée ;\n- réconcilier explicitement le volume Préparation T-Bag avec le volume Z GEMED / GPO avant de considérer l'impact heures Préparation comme définitif ;\n- distinguer "Donnée source non disponible" (absence réelle de donnée) et "À compléter" (contenu managérial à préparer) ;
+      body: `Sources de référence : GPO / Guide de performance, Z GEMED, T-Bag, CGTAB, GA / Suivi GA, Litiges / GC-GE selon disponibilité.\n\nPoints de contrôle avant présentation :\n- réconcilier les périmètres lorsqu'une même notion diffère entre sources ;\n- distinguer mensuel et cumul ;\n- vérifier les unités ;\n- documenter les valeurs atypiques ;\n- ne pas additionner des impacts financiers calculés sur des périmètres qui se recouvrent ;\n- signaler explicitement toute donnée manquante ou non fiabilisée ;\n- ne jamais calculer un impact en heures avec un volume provenant d'un périmètre différent de la productivité analysée ;\n- ne pas traiter comme une anomalie l'écart de volume Préparation T-Bag / Z GEMED : T-Bag couvre les colis hétérogènes, Z GEMED couvre les colis hétérogènes + homogènes ;\n- distinguer "Donnée source non disponible" (absence réelle de donnée) et "À compléter" (contenu managérial à préparer) ;
 - ne jamais comparer ou convertir en impact horaire une donnée mensuelle avec une productivité cumulée à date ;
 - considérer dans DEOS : GPO = cumul à date ; Z GEMED / T-Bag = mensuel, sauf métadonnée explicite contraire ;
 - ne conclure à une tendance qu'avec au moins 3 périodes homogènes chargées ;
