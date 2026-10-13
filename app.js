@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D7-RDPDATA-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D8-RDPDATA-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -13397,6 +13397,71 @@ function gpoMetricConfidence(metricKey, values, layoutBased = false) {
   return { label: performanceImportConfidenceMeta(score).label, score, selected: true, action: "" };
 }
 
+
+function gpoTextSignedNumberAt(line, startIndex, endIndex) {
+  const segment = String(line || "").slice(Math.max(0, startIndex), Math.max(startIndex + 1, endIndex));
+  const matches = [...segment.matchAll(/([+-])\s*(\d{1,4})(?!\s*%)/g)];
+  if (!matches.length) return "";
+  const m = matches[0];
+  const n = Number(m[2]);
+  if (!Number.isFinite(n)) return "";
+  return m[1] === "-" ? -n : n;
+}
+
+function gpoTextPerformanceImpacts(page) {
+  const text = String(page?.layoutText || page?.text || "");
+  if (!/Performance mensuelle/i.test(text)) return {};
+  const lines = text.split(/\r?\n/);
+  const labelsLineIndex = lines.findIndex(line => /PRÉPARATION|PREPARATION/.test(line) && /RÉCEPTION|RECEPTION/.test(line) && /MANUTENTION/.test(line) && /CHARGEMENT/.test(line));
+  if (labelsLineIndex < 0) return {};
+  const labelsLine = lines[labelsLineIndex];
+  const cols = {
+    preparation: Math.max(labelsLine.indexOf("PRÉPARATION"), labelsLine.indexOf("PREPARATION")),
+    reception: Math.max(labelsLine.indexOf("RÉCEPTION"), labelsLine.indexOf("RECEPTION")),
+    manutention: labelsLine.indexOf("MANUTENTION"),
+    chargement: labelsLine.indexOf("CHARGEMENT"),
+    structure: labelsLine.indexOf("STRUCTURE")
+  };
+  const validCols = Object.values(cols).filter(v => v >= 0).sort((a,b)=>a-b);
+  if (validCols.length < 4) return {};
+  const boundsFor = key => {
+    const x = cols[key];
+    if (x < 0) return [0,0];
+    const sorted = validCols;
+    const idx = sorted.indexOf(x);
+    const left = idx <= 0 ? Math.max(0, x - 12) : Math.floor((sorted[idx-1] + x) / 2);
+    const right = idx < 0 || idx >= sorted.length - 1 ? x + 26 : Math.floor((x + sorted[idx+1]) / 2);
+    return [left, right];
+  };
+  const directStart = lines.findIndex(line => /Écart|Ecart/.test(line) && /DIRECTES/.test(line));
+  const indirectStart = lines.findIndex(line => /Passage/.test(line));
+  const hindEnd = lines.findIndex((line, i) => i > indirectStart && /H IND B/.test(line));
+  const scan = (start, end, key) => {
+    const [left,right] = boundsFor(key);
+    if (right <= left) return "";
+    for (let i = Math.max(0,start); i < Math.min(lines.length,end); i++) {
+      const value = gpoTextSignedNumberAt(lines[i], left, right);
+      if (value !== "") return value;
+    }
+    return "";
+  };
+  const out = {};
+  if (directStart >= 0 && indirectStart > directStart) {
+    ["preparation","reception","manutention","chargement"].forEach(key => {
+      const v = scan(directStart, indirectStart, key);
+      if (v !== "") out[`impact_direct_${key}`] = { actual: v };
+    });
+  }
+  if (indirectStart >= 0) {
+    const end = hindEnd > indirectStart ? hindEnd + 4 : Math.min(lines.length, indirectStart + 14);
+    ["preparation","reception","manutention","chargement","structure"].forEach(key => {
+      const v = scan(indirectStart, end, key);
+      if (v !== "") out[`impact_indirect_${key}`] = { actual: v };
+    });
+  }
+  return out;
+}
+
 function extractGpoSaintGillesLayout(page) {
   const text = String(page?.layoutText || page?.text || "");
   if (!ensureArray(page?.layoutItems).length) return null;
@@ -13498,6 +13563,10 @@ function extractGpoIndicators(pages, period) {
   pages.forEach(page => {
     const text = page.text;
     const layout = extractGpoSaintGillesLayout(page) || {};
+    const textImpacts = gpoTextPerformanceImpacts(page);
+    Object.entries(textImpacts).forEach(([key, values]) => {
+      if (!layout[key] || layout[key].actual === "" || layout[key].actual === null || layout[key].actual === undefined) layout[key] = values;
+    });
     if (/Passage IPO total/i.test(text)) pushMetric(page, "ipo_total", extractGpoIpoValues(extractGpoSection(text, "Passage\\s+IPO\\s+total", 1800)), "élevée");
     if (/Passage IPO Variable/i.test(text)) pushMetric(page, "ipo_variable", extractGpoIpoValues(extractGpoSection(text, "Passage\\s+IPO\\s+Variable", 1800)), "élevée");
     if (/Performance mensuelle/i.test(text)) {
