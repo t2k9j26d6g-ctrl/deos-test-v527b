@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D9-STORAGE-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D10-RDP-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -17042,9 +17042,40 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     if (!row) return "Donnée non disponible";
     return `${performanceSummaryFormatValue(row.value, row.unit, row.metricKey)} | Budget ${performanceSummaryFormatValue(row.budget, row.unit, row.metricKey)} | Historique ${performanceSummaryFormatValue(row.historical, row.unit, row.metricKey)} | Écart ${performanceSummaryFormatDelta(row.gap, row.unit, row.metricKey)} | Statut ${row.statusLabel || "À compléter"} | Source ${row.sourceLabel || performanceSourceLabel(row.source)} · ${reportScopeLabel(row.periodType)}`;
   };
-  const metricLine = (label, metric, unit = "", metricKey = "") => {
+  const reportMetricSense = metricKey => {
+    if (/^ipo\./.test(metricKey) || /^productivity\./.test(metricKey) || metricKey === "activity.colis_total") return "higher";
+    if (metricKey === "hours.indirect" || metricKey === "absenteeism.total") return "lower";
+    return "";
+  };
+  const reportMetricStatus = (metricKey, actual, budget) => {
+    const sense = reportMetricSense(metricKey);
+    const a = Number(actual), b = Number(budget);
+    if (!sense || !Number.isFinite(a) || !Number.isFinite(b) || b === 0) return "À qualifier";
+    const pct = ((a - b) / Math.abs(b)) * 100;
+    const favorable = sense === "higher" ? pct : -pct;
+    if (favorable >= 0) return "Maîtrisé";
+    if (favorable >= -3) return "À suivre";
+    return "Critique";
+  };
+  const fmtPreferred = (metricKey, fallbackMetric = null, fallbackUnit = "") => {
     const summaryRow = metricKey ? rowByKey(metricKey) : null;
-    if (summaryRow && perfHas(summaryRow.value)) return `- ${label} : ${fmtRow(summaryRow)}`;
+    if (summaryRow && perfHas(summaryRow.value)) return fmtRow(summaryRow);
+    const preferred = metricKey ? getPreferredPerformanceValue(metricKey, periodKey) : null;
+    const value = preferred && perfHas(preferred.value) ? preferred.value : fallbackMetric?.actual;
+    const budget = preferred && perfHas(preferred.budget) ? preferred.budget : fallbackMetric?.budget;
+    const historical = preferred && perfHas(preferred.historical) ? preferred.historical : fallbackMetric?.historical;
+    if (![value, budget, historical].some(perfHas)) return "Donnée non disponible";
+    const resolvedUnit = preferred?.unit || fallbackUnit || "";
+    const gap = perfHas(value) && perfHas(budget) ? Number(value) - Number(budget) : "";
+    const sourceLabel = preferred?.sourceLabel || preferred?.source || (metricKey?.startsWith("productivity.") || metricKey?.startsWith("ipo.") || metricKey?.startsWith("hours.") ? "GPO" : "Saisie DEOS");
+    const periodLabel = preferred?.periodType ? reportScopeLabel(preferred.periodType) : "Périmètre non qualifié";
+    return `${performanceSummaryFormatValue(value, resolvedUnit, metricKey)} | Budget ${performanceSummaryFormatValue(budget, resolvedUnit, metricKey)} | Historique ${performanceSummaryFormatValue(historical, resolvedUnit, metricKey)} | Écart ${performanceSummaryFormatDelta(gap, resolvedUnit, metricKey)} | Statut ${reportMetricStatus(metricKey, value, budget)} | Source ${sourceLabel} · ${periodLabel}`;
+  };
+  const metricLine = (label, metric, unit = "", metricKey = "") => {
+    if (metricKey) {
+      const preferredText = fmtPreferred(metricKey, metric, unit);
+      if (preferredText !== "Donnée non disponible") return `- ${label} : ${preferredText}`;
+    }
     if (!metric) return `- ${label} : Donnée source non disponible`;
     const hasAny = [metric.actual, metric.budget, metric.historical].some(perfHas);
     if (!hasAny) return `- ${label} : Donnée source non disponible`;
@@ -17052,7 +17083,7 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     const budget = perfHas(metric.budget) ? `${perfFmt(metric.budget)}${unit ? " " + unit : ""}` : "Donnée source non disponible";
     const historical = perfHas(metric.historical) ? `${perfFmt(metric.historical)}${unit ? " " + unit : ""}` : "Donnée source non disponible";
     const gap = perfHas(metric.actual) && perfHas(metric.budget) ? Number(metric.actual) - Number(metric.budget) : "";
-    return `- ${label} : Réel ${actual} | Budget ${budget} | Historique ${historical} | Écart ${perfHas(gap) ? perfFmt(gap) + (unit ? " " + unit : "") : "Donnée non disponible"} | Statut À qualifier`;
+    return `- ${label} : Réel ${actual} | Budget ${budget} | Historique ${historical} | Écart ${perfHas(gap) ? perfFmt(gap) + (unit ? " " + unit : "") : "Donnée non disponible"} | Statut ${reportMetricStatus(metricKey, metric.actual, metric.budget)}`;
   };
   const prep = source.productivity?.["Préparation"] || {};
   const reception = source.productivity?.["Réception"] || {};
@@ -17172,8 +17203,8 @@ ${metricLine("Transit", transit, "palettes/h", "productivity.transit")}
 
 Référence productivités officielles GPO : ${reportScopeLabel(prepPreferred.periodType)}. Les volumes Z GEMED / T-Bag restent mensuels.
 
-IPO total : ${fmtRow(rowByKey("ipo.total"))}
-IPO variable : ${fmtRow(rowByKey("ipo.variable"))}
+IPO total : ${fmtPreferred("ipo.total", source.ipo?.total, "indice")}
+IPO variable : ${fmtPreferred("ipo.variable", source.ipo?.variable, "indice")}
 
 Impacts en heures DIRECTES par secteur — priorité à la valeur GPO page « Performance mensuelle » lorsqu'elle est importée :
 - Préparation : ${Number.isFinite(gpoDirectImpacts.preparation) ? reportFmtSignedHours(gpoDirectImpacts.preparation) + " vs budget · source GPO" : "Donnée GPO non disponible"}
@@ -17203,7 +17234,7 @@ ${metricLine("Heures totales", source.hours?.total, "h", "hours.total")}
 ${metricLine("Heures directes", source.hours?.direct, "h", "hours.direct")}
 ${metricLine("Heures indirectes", source.hours?.indirect, "h", "hours.indirect")}
 
-Périmètre heures GPO : ${reportScopeLabel(hoursTotalPreferred.periodType)}. Les Budget / Historique des heures indirectes sont repris via le résolveur de source GPO.
+Périmètre heures GPO : Cumul à date (GPO). Les volumes sectoriels et les heures par centre de coûts présentés ci-dessous restent mensuels. Les Budget / Historique des heures indirectes sont repris via le résolveur de source GPO.
 Poids des heures indirectes : ${reportFmtPercent1(indirectHoursShareAuto)}.
 
 DÉTAIL MENSUEL PAR SECTEUR — volume / heures directes / heures indirectes
@@ -17214,7 +17245,7 @@ DÉTAIL MENSUEL PAR SECTEUR — volume / heures directes / heures indirectes
 
 Note : les heures sectorielles mensuelles utilisent les données GA détail agrégées par centre de coûts lorsqu'elles sont disponibles : Préparation 04300, Réception 04200, Manutention/Cariste 04400, Chargement 04500. Aucune donnée nominative n'est utilisée.
 
-Écarts heures vs budget — ${reportScopeLabel(hoursTotalPreferred.periodType)} :
+Écarts heures vs budget — Cumul à date (GPO) :
 - Heures totales : ${reportFmtSignedHours(totalHoursGap)}
 - Heures directes : ${reportFmtSignedHours(directHoursGap)}
 - Heures indirectes : ${reportFmtSignedHours(indirectHoursGap)}
