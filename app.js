@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D12-RDP-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D13-RDP-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -10892,20 +10892,50 @@ function performanceMetricCandidates(metricDef, period, periodRecord, importRows
   const candidates = [];
   importRows.filter(row => performanceMatchesMetricDef(row, metricDef)).forEach(row => {
     const value = row.actual ?? row.value;
+    const sourceKey = performanceSourceKey(row.source || row.sourceType || "Import");
     candidates.push({
       value,
       budget: row.budget ?? "",
       historical: row.historical ?? "",
       unit: row.unit || metricDef.unit || "",
-      source: performanceSourceKey(row.source || row.sourceType || "Import"),
-      sourceLabel: performanceSourceLabel(performanceSourceKey(row.source || row.sourceType || "Import")),
+      source: sourceKey,
+      sourceLabel: performanceSourceLabel(sourceKey),
       confidence: row.confidence || "moyenne",
       sourceRef: row.sourceRef || row.sourceCell || "",
-      periodType: performanceSourceKey(row.source || row.sourceType || "Import") === "GPO"
-        ? "cumulative"
-        : (row.periodType || "monthly")
+      periodType: sourceKey === "GPO" ? "cumulative" : (row.periodType || "monthly")
     });
   });
+
+  // D13 — l'historique des imports est un journal d'audit et peut être compacté.
+  // Les KPI importés durablement dans complementaryKpis doivent donc être une source
+  // de vérité autonome pour le tableau de bord Direction. Sans cela, compacter
+  // performance_imports faisait disparaître IPO, productivités et coûts de la synthèse
+  // alors que les valeurs métier étaient toujours présentes dans state.performance.
+  ensureArray(periodRecord?.complementaryKpis).forEach(item => {
+    const syntheticRow = {
+      ...item,
+      destinationPath: item.destinationPath || item.targetId || "",
+      destinationLabel: item.destinationLabel || item.label || item.indicator || "",
+      sourceType: item.source || "Import"
+    };
+    if (!performanceMatchesMetricDef(syntheticRow, metricDef)) return;
+    const value = item.actual ?? item.value;
+    if (!perfHas(value)) return;
+    const sourceKey = performanceSourceKey(item.source || "Import");
+    candidates.push({
+      value,
+      budget: item.budget ?? "",
+      historical: item.historical ?? "",
+      unit: item.unit || metricDef.unit || "",
+      source: sourceKey,
+      sourceLabel: performanceSourceLabel(sourceKey),
+      confidence: item.confidence || "élevée",
+      sourceRef: item.sourceRef || item.sourceCell || "",
+      periodType: sourceKey === "GPO" ? "cumulative" : (item.periodType || "monthly"),
+      persistedCanonical: true
+    });
+  });
+
   const primary = performancePrimaryValueForMetric(periodRecord, metricDef);
   if (primary) candidates.push(primary);
   const unique = [];
