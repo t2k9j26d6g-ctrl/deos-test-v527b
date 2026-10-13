@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D10-RDP-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D12-RDP-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -17057,18 +17057,37 @@ function reportPerformanceMonthlySections(source, ctx, actions, decisions, docum
     if (favorable >= -3) return "À suivre";
     return "Critique";
   };
+  const reportCanonicalSourceMeta = metricKey => {
+    if (/^(ipo\.|productivity\.|hours\.|absenteeism\.)/.test(String(metricKey || ""))) {
+      return { sourceLabel: "GPO", periodType: "cumulative" };
+    }
+    if (metricKey === "activity.colis_total" || /^economy\./.test(String(metricKey || "")) || /^quality\./.test(String(metricKey || ""))) {
+      return { sourceLabel: "Z GEMED", periodType: "monthly" };
+    }
+    return { sourceLabel: "Saisie DEOS", periodType: "monthly" };
+  };
   const fmtPreferred = (metricKey, fallbackMetric = null, fallbackUnit = "") => {
     const summaryRow = metricKey ? rowByKey(metricKey) : null;
-    if (summaryRow && perfHas(summaryRow.value)) return fmtRow(summaryRow);
+    if (summaryRow && perfHas(summaryRow.value)) {
+      const canonical = reportCanonicalSourceMeta(metricKey);
+      const sourceLabel = canonical.sourceLabel || summaryRow.sourceLabel || performanceSourceLabel(summaryRow.source);
+      const periodType = canonical.periodType || summaryRow.periodType || "monthly";
+      return `${performanceSummaryFormatValue(summaryRow.value, summaryRow.unit, summaryRow.metricKey)} | Budget ${performanceSummaryFormatValue(summaryRow.budget, summaryRow.unit, summaryRow.metricKey)} | Historique ${performanceSummaryFormatValue(summaryRow.historical, summaryRow.unit, summaryRow.metricKey)} | Écart ${performanceSummaryFormatDelta(summaryRow.gap, summaryRow.unit, summaryRow.metricKey)} | Statut ${summaryRow.statusLabel || reportMetricStatus(metricKey, summaryRow.value, summaryRow.budget) || "À compléter"} | Source ${sourceLabel} · ${reportScopeLabel(periodType)}`;
+    }
     const preferred = metricKey ? getPreferredPerformanceValue(metricKey, periodKey) : null;
-    const value = preferred && perfHas(preferred.value) ? preferred.value : fallbackMetric?.actual;
+    const preferredHasValue = Boolean(preferred && perfHas(preferred.value));
+    const value = preferredHasValue ? preferred.value : fallbackMetric?.actual;
     const budget = preferred && perfHas(preferred.budget) ? preferred.budget : fallbackMetric?.budget;
     const historical = preferred && perfHas(preferred.historical) ? preferred.historical : fallbackMetric?.historical;
     if (![value, budget, historical].some(perfHas)) return "Donnée non disponible";
-    const resolvedUnit = preferred?.unit || fallbackUnit || "";
+    const resolvedUnit = (preferredHasValue ? preferred?.unit : "") || fallbackUnit || preferred?.unit || "";
     const gap = perfHas(value) && perfHas(budget) ? Number(value) - Number(budget) : "";
-    const sourceLabel = preferred?.sourceLabel || preferred?.source || (metricKey?.startsWith("productivity.") || metricKey?.startsWith("ipo.") || metricKey?.startsWith("hours.") ? "GPO" : "Saisie DEOS");
-    const periodLabel = preferred?.periodType ? reportScopeLabel(preferred.periodType) : "Périmètre non qualifié";
+    const canonical = reportCanonicalSourceMeta(metricKey);
+    const preferredLabel = String(preferred?.sourceLabel || preferred?.source || "").trim();
+    const preferredUsable = preferredHasValue && preferredLabel && !/donn[ée]e .*non disponible|source inconnue/i.test(preferredLabel);
+    const sourceLabel = canonical.sourceLabel || (preferredUsable ? preferredLabel : "Saisie DEOS");
+    const periodType = canonical.periodType || (preferredHasValue ? preferred?.periodType : "") || "monthly";
+    const periodLabel = reportScopeLabel(periodType);
     return `${performanceSummaryFormatValue(value, resolvedUnit, metricKey)} | Budget ${performanceSummaryFormatValue(budget, resolvedUnit, metricKey)} | Historique ${performanceSummaryFormatValue(historical, resolvedUnit, metricKey)} | Écart ${performanceSummaryFormatDelta(gap, resolvedUnit, metricKey)} | Statut ${reportMetricStatus(metricKey, value, budget)} | Source ${sourceLabel} · ${periodLabel}`;
   };
   const metricLine = (label, metric, unit = "", metricKey = "") => {
@@ -17201,7 +17220,7 @@ ${metricLine("Manutention", manut, "palettes/h", "productivity.manutention")}
 ${metricLine("Chargement", chargement, "palettes/h", "productivity.chargement")}
 ${metricLine("Transit", transit, "palettes/h", "productivity.transit")}
 
-Référence productivités officielles GPO : ${reportScopeLabel(prepPreferred.periodType)}. Les volumes Z GEMED / T-Bag restent mensuels.
+Référence productivités officielles GPO : Cumul à date (GPO). Les volumes Z GEMED / T-Bag restent mensuels.
 
 IPO total : ${fmtPreferred("ipo.total", source.ipo?.total, "indice")}
 IPO variable : ${fmtPreferred("ipo.variable", source.ipo?.variable, "indice")}
