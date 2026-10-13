@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D8-RDPDATA-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D9-STORAGE-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -12974,16 +12974,63 @@ function compactPerformanceImportPayload(item = {}) {
   });
 }
 
-function compactPerformanceImportHistoryForStorage() {
-  state.performance_imports = ensureArray(state.performance_imports).map(compactPerformanceImportPayload);
+function compactPerformanceImportHistoryForStorage(options = {}) {
+  const keepFullRecent = Math.max(0, Number(options.keepFullRecent ?? 2));
+  const maxHistory = Math.max(5, Number(options.maxHistory ?? 30));
+  const source = ensureArray(state.performance_imports)
+    .slice()
+    .sort((a, b) => String(b.importDate || "").localeCompare(String(a.importDate || "")))
+    .slice(0, maxHistory);
+  state.performance_imports = source.map((item, index) => {
+    const compact = compactPerformanceImportPayload(item);
+    if (index >= keepFullRecent) compact.indicators = [];
+    return compact;
+  });
   persist("performance_imports");
+}
+
+function persistPerformanceImportHistoryResilient(newPayload = null) {
+  // Historique d'import = journal d'audit. Les données métier sont déjà dans state.performance.
+  // On conserve le détail des imports récents, puis uniquement les métadonnées des anciens imports.
+  if (newPayload) state.performance_imports.unshift(newPayload);
+  const attempts = [
+    { keepFullRecent: 2, maxHistory: 30 },
+    { keepFullRecent: 1, maxHistory: 20 },
+    { keepFullRecent: 0, maxHistory: 12 }
+  ];
+  let lastError = null;
+  for (const attempt of attempts) {
+    try {
+      compactPerformanceImportHistoryForStorage(attempt);
+      return true;
+    } catch (error) {
+      lastError = error;
+      const code = String(error?.code || "").toUpperCase();
+      const name = String(error?.name || error?.originalError?.name || "").toUpperCase();
+      if (!(code === "STORAGE_QUOTA_EXCEEDED" || name.includes("QUOTA"))) throw error;
+    }
+  }
+  // Ultime filet de sécurité : conserver uniquement le nouvel import en métadonnées.
+  if (newPayload) {
+    const minimal = compactPerformanceImportPayload(newPayload);
+    minimal.indicators = [];
+    state.performance_imports = [minimal];
+    try {
+      persist("performance_imports");
+      return true;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  if (lastError) throw lastError;
+  return false;
 }
 
 function performanceImportQuotaMessage(error) {
   const code = String(error?.code || "").toUpperCase();
   const name = String(error?.name || error?.originalError?.name || "").toUpperCase();
   if (code === "STORAGE_QUOTA_EXCEEDED" || name.includes("QUOTA")) {
-    return "Le stockage local du navigateur est saturé. DEOS a compacté l'historique des imports Performance, mais l'import reste trop volumineux. Exportez une sauvegarde puis contactez l'administrateur DEOS avant de supprimer des données.";
+    return "Le stockage local du navigateur est saturé malgré le nettoyage automatique de l’historique des imports. Fermez puis rouvrez DEOS et relancez l’import ; aucune suppression manuelle n’est normalement nécessaire.";
   }
   return error?.message || "La validation de l'import Performance a échoué.";
 }
@@ -13001,7 +13048,7 @@ function validatePerformanceImport() {
   try {
     // V5.21H : libère d'abord l'espace occupé par les anciennes copies redondantes
     // (files / preview / conflicts) avant d'écrire le nouvel état Performance.
-    compactPerformanceImportHistoryForStorage();
+    try { compactPerformanceImportHistoryForStorage({ keepFullRecent: 1, maxHistory: 20 }); } catch (_) {}
 
     const imported = applyPerformanceImportRows(selectedRows, first, importDate);
     persist("performance");
@@ -13027,8 +13074,7 @@ function validatePerformanceImport() {
     });
     const containsCgtab = performanceImportWizard.preview.some(row => /CGTAB/i.test(String(row.source || row.sourceType || "")));
     if (containsCgtab) payload.privacyAudit = performancePrivacyAuditForSensitiveData();
-    state.performance_imports.unshift(payload);
-    persist("performance_imports");
+    persistPerformanceImportHistoryResilient(payload);
     addActivity("Performance", "Import de données", `${payload.status} · ${payload.sourceFile}`, payload.id);
     performanceImportWizard = null;
     renderPerformance();
