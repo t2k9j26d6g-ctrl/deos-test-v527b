@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D14-RDP-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D15-PLANS-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -163,7 +163,7 @@ const identityDefaults = {
 };
 let identity = { ...identityDefaults };
 
-const entities = ["actions", "managers", "projects", "decisions", "priorities", "activity", "journal", "documents", "agenda", "folders", "performance", "meetingPreparations", "links", "performance_imports"];
+const entities = ["actions", "managers", "projects", "decisions", "priorities", "actionPlans", "activity", "journal", "documents", "agenda", "folders", "performance", "meetingPreparations", "links", "performance_imports"];
 const state = Object.fromEntries(entities.map(name => [name, []]));
 state.settings = {};
 state.externalCalendarEvents = []; // Événements Google Calendar importés (V5.5)
@@ -175,6 +175,7 @@ const DEOS_STORAGE_KEYS = Object.freeze({
   projects: "deos_projects",
   decisions: "deos_decisions",
   priorities: "deos_priorities",
+  actionPlans: "deos_action_plans",
   activity: "deos_activity",
   journal: "deos_journal",
   documents: "deos_documents",
@@ -1551,6 +1552,7 @@ function validateBackupContent(content) {
     projects: "deos_projects",
     decisions: "deos_decisions",
     priorities: "deos_priorities",
+  actionPlans: "deos_action_plans",
     activity: "deos_activity",
     journal: "deos_journal",
     documents: "deos_documents",
@@ -2089,6 +2091,33 @@ function normalizeEntity(name, item) {
     return { ...merged, tags: ensureArray(merged.tags), linkedManagers: ensureArray(merged.linkedManagers), linkedProjects: ensureArray(merged.linkedProjects), linkedActions: ensureArray(merged.linkedActions), linkedDocuments: ensureArray(merged.linkedDocuments), linkedFolders: ensureArray(merged.linkedFolders), events: ensureTimeline(merged.events), directorNotes: ensureNotes(merged.directorNotes) };
   }
   if (name === "priorities") return { owner: "", impact: "", done: false, linkedFolders: [], ...base, linkedFolders: ensureArray(base.linkedFolders) };
+  if (name === "actionPlans") {
+    const merged = {
+      name: "",
+      objective: "",
+      owner: "",
+      status: "active",
+      startDate: "",
+      endDate: "",
+      notes: "",
+      items: [],
+      createdAt: isoToday(),
+      updatedAt: isoToday(),
+      ...base
+    };
+    return {
+      ...merged,
+      items: ensureArray(merged.items).map(row => ({
+        entityType: String(row?.entityType || ""),
+        entityId: String(row?.entityId || ""),
+        owner: String(row?.owner || ""),
+        startDate: String(row?.startDate || ""),
+        dueDate: String(row?.dueDate || ""),
+        completedDate: String(row?.completedDate || ""),
+        note: String(row?.note || "")
+      })).filter(row => row.entityType && row.entityId)
+    };
+  }
   if (name === "journal") {
     const hadWorkflowState = Object.prototype.hasOwnProperty.call(base, "processed");
     const merged = { date: today(), entryType: "Note rapide", summary: base.content || "", facts: "", analysis: "", decisionsText: "", actionsText: "", linkedManagers: [], linkedProjects: [], linkedDecisions: [], linkedActions: [], linkedDocuments: [], linkedFolders: [], watchPoints: "", nextSteps: "", notes: "", events: [], tags: [], mood: "", links: "", pinned: false, archived: false, processed: hadWorkflowState ? Boolean(base.processed) : true, captureMode: "structured", sourceContext: null, createdAt: base.createdAt || new Date().toISOString(), updatedAt: base.updatedAt || new Date().toISOString(), ...base };
@@ -2208,7 +2237,7 @@ function normalizeEntity(name, item) {
     };
     return merged;
   }
-  if (name === "actions") return { link: "", owner: "", due: "", level: "orange", done: false, linkedFolders: [], linkedProjects: [], linkedDecisions: [], linkedMeetingPreparations: [], ...base, title: normalizeActionTitle(base.title), linkedFolders: ensureArray(base.linkedFolders), linkedProjects: ensureArray(base.linkedProjects), linkedDecisions: ensureArray(base.linkedDecisions), linkedMeetingPreparations: ensureArray(base.linkedMeetingPreparations) };
+  if (name === "actions") return { link: "", owner: "", startDate: "", due: "", completedAt: "", level: "orange", done: false, linkedFolders: [], linkedProjects: [], linkedDecisions: [], linkedMeetingPreparations: [], ...base, title: normalizeActionTitle(base.title), linkedFolders: ensureArray(base.linkedFolders), linkedProjects: ensureArray(base.linkedProjects), linkedDecisions: ensureArray(base.linkedDecisions), linkedMeetingPreparations: ensureArray(base.linkedMeetingPreparations) };
   if (name === "performance") return normalizePerformance(base);
   if (name === "performance_imports") {
     const merged = { importDate: new Date().toLocaleString("fr-FR"), sourceFile: "", sourceType: "", period: "", indicators: [], status: "brouillon", validatedBy: "", comments: "", files: [], preview: [], conflicts: [], ...base };
@@ -2331,9 +2360,9 @@ function setView(view) {
   currentView = view;
   if (view !== "graph" && !graphNavigationLock) graphReturnContext = null;
   document.querySelectorAll(".nav").forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
-  const titles = { cockpit: "Cockpit décisionnel", graph: "Vue graphique", folders: "Dossiers", performance: "Performance", priorities: "Priorités V5", actions: "Actions", managers: "Managers V5", projects: "Projets V5", decisions: "Décisions V5", journal: "Journal", documents: "Documents", links: "Liens utiles", activity: "Agenda / Réunions", settings: "Paramètres" };
+  const titles = { cockpit: "Cockpit décisionnel", graph: "Vue graphique", folders: "Dossiers", performance: "Performance", priorities: "Priorités V5", actionPlans: "Plans d'action", actions: "Actions", managers: "Managers V5", projects: "Projets V5", decisions: "Décisions V5", journal: "Journal", documents: "Documents", links: "Liens utiles", activity: "Agenda / Réunions", settings: "Paramètres" };
   document.getElementById("viewTitle").textContent = titles[view] || identity.appName;
-  const views = { cockpit: renderCockpit, graph: renderGraph, folders: renderFolders, performance: renderPerformance, priorities: renderPriorities, actions: renderActions, managers: renderManagers, projects: renderProjects, decisions: renderDecisions, journal: renderJournal, documents: renderDocuments, links: renderLinks, activity: renderActivity, settings: renderSettings };
+  const views = { cockpit: renderCockpit, graph: renderGraph, folders: renderFolders, performance: renderPerformance, priorities: renderPriorities, actionPlans: renderActionPlans, actions: renderActions, managers: renderManagers, projects: renderProjects, decisions: renderDecisions, journal: renderJournal, documents: renderDocuments, links: renderLinks, activity: renderActivity, settings: renderSettings };
   if (views[view]) views[view]();
 }
 
@@ -4229,7 +4258,9 @@ function actionEditModalBody(action) {
         <option value="orange" ${action.level === "orange" || !action.level ? "selected" : ""}>Important</option>
         <option value="red" ${action.level === "red" ? "selected" : ""}>Critique</option>
       </select>
+      <input id="eaStartDate" type="date" value="${esc(action.startDate || "")}" placeholder="Date de début">
       <input id="eaDue" type="date" value="${esc(action.due || "")}" placeholder="Échéance">
+      <input id="eaCompletedAt" type="date" value="${esc(action.completedAt || "")}" placeholder="Date de réalisation">
       <label class="check-row"><input id="eaDone" type="checkbox" ${action.done ? "checked" : ""}> <span>Action réalisée</span></label>
       ${hasProgressField ? `<input id="eaProgress" type="number" min="0" max="100" value="${Number(progressValue || 0)}" placeholder="Avancement">` : ""}
     </div>
@@ -4331,7 +4362,9 @@ function saveActionEdit(id) {
     owner: document.getElementById("eaOwner")?.value.trim() || "",
     level: document.getElementById("eaLevel")?.value || "orange",
     done: document.getElementById("eaDone")?.checked || false,
+    startDate: document.getElementById("eaStartDate")?.value || "",
     due: document.getElementById("eaDue")?.value || "",
+    completedAt: document.getElementById("eaCompletedAt")?.value || "",
     notes: document.getElementById("eaNotes")?.value.trim() || "",
     note: document.getElementById("eaNotes")?.value.trim() || "",
     risks: document.getElementById("eaRisks")?.value.trim() || "",
@@ -4341,6 +4374,8 @@ function saveActionEdit(id) {
     linkedProjects: normalizeLinkedIdArray(checkedValues("eaProjects")),
     linkedDecisions: normalizeLinkedIdArray(checkedValues("eaDecisions"))
   };
+  if (next.done && !next.completedAt) next.completedAt = localIsoDate();
+  if (!next.done && current.done && next.completedAt === current.completedAt) next.completedAt = "";
   if (hasProgressField) next.progress = Number(document.getElementById("eaProgress")?.value || 0);
   if (hasManagersField) {
     const managerIds = normalizeLinkedManagerIds(checkedValues("eaManagers"));
@@ -10199,6 +10234,228 @@ function deleteJournal(id) {
   persist("journal");
   addActivity("🗑️ Journal supprimé", t);
   renderJournal();
+}
+
+
+// -----------------------------------------------------------------------------
+// V5.30 D15 — Plans d'action + chronogramme
+// -----------------------------------------------------------------------------
+let actionPlanEditorId = "";
+let actionPlanDetailId = "";
+let actionPlanViewMode = "timeline";
+
+function actionPlanEntityConfig(type) {
+  return {
+    folders: { label: "Dossier", plural: "Dossiers", list: state.folders, title: row => row.name || "Dossier" },
+    projects: { label: "Projet", plural: "Projets", list: state.projects, title: row => row.name || "Projet" },
+    actions: { label: "Action", plural: "Actions", list: state.actions, title: row => row.title || "Action" },
+    decisions: { label: "Décision", plural: "Décisions", list: state.decisions, title: row => row.title || "Décision" }
+  }[type] || null;
+}
+
+function actionPlanItemDefaults(type, entity) {
+  const cfg = actionPlanEntityConfig(type);
+  if (!cfg || !entity) return { owner: "", startDate: "", dueDate: "", completedDate: "" };
+  if (type === "folders") return {
+    owner: entity.owner || "",
+    startDate: entity.startDate || entity.createdAt || "",
+    dueDate: entity.deadline || "",
+    completedDate: entity.completedAt || ""
+  };
+  if (type === "projects") return {
+    owner: entity.owner || projectOwnerName?.(entity) || "",
+    startDate: entity.launchDate || "",
+    dueDate: entity.deadline || "",
+    completedDate: entity.completedAt || ""
+  };
+  if (type === "actions") return {
+    owner: entity.owner || "",
+    startDate: entity.startDate || "",
+    dueDate: entity.due || "",
+    completedDate: entity.completedAt || (entity.done ? entity.due || localIsoDate() : "")
+  };
+  return {
+    owner: entity.owner || "",
+    startDate: entity.date || "",
+    dueDate: entity.reviewDate || entity.date || "",
+    completedDate: entity.status === "decided" ? (entity.date || "") : ""
+  };
+}
+
+function actionPlanResolveItem(row) {
+  const cfg = actionPlanEntityConfig(row?.entityType);
+  const entity = cfg?.list?.find(item => sameId(item.id, row.entityId));
+  if (!cfg || !entity) return null;
+  const defaults = actionPlanItemDefaults(row.entityType, entity);
+  return {
+    ...row,
+    entity,
+    typeLabel: cfg.label,
+    label: cfg.title(entity),
+    owner: row.owner || defaults.owner || "",
+    startDate: row.startDate || defaults.startDate || "",
+    dueDate: row.dueDate || defaults.dueDate || "",
+    completedDate: row.completedDate || defaults.completedDate || ""
+  };
+}
+
+function actionPlanStatusLabel(status) {
+  return ({ active: "En cours", paused: "En pause", completed: "Terminé", archived: "Archivé" })[status] || "En cours";
+}
+
+function actionPlanStatusBadge(status) {
+  const cls = status === "completed" ? "green" : status === "paused" ? "orange" : status === "archived" ? "muted" : "orange";
+  return `<span class="badge ${cls}">${esc(actionPlanStatusLabel(status))}</span>`;
+}
+
+function renderActionPlans() {
+  const plans = ensureArray(state.actionPlans).slice().sort((a,b) => String(b.updatedAt || b.createdAt || "").localeCompare(String(a.updatedAt || a.createdAt || "")));
+  appHtml(`<div class="card hero"><div class="row"><div><h2>Plans d'action</h2><p class="muted">Assemble les objets DEOS existants dans une feuille de route et visualise leur déroulement dans le temps.</p></div><div class="row-actions"><button class="action" onclick="editActionPlan('')">+ Nouveau plan</button></div></div></div>
+  <div class="grid two">${plans.map(plan => {
+    const items = ensureArray(plan.items).map(actionPlanResolveItem).filter(Boolean);
+    const done = items.filter(row => Boolean(row.completedDate) || row.entity?.done).length;
+    return `<div class="card clickable" onclick="openActionPlan('${esc(plan.id)}')"><div class="row"><div><h2>${esc(plan.name || "Plan d'action")}</h2><p class="muted">${esc(plan.owner || "Pilote à définir")}</p></div>${actionPlanStatusBadge(plan.status)}</div><p>${esc(plan.objective || "Objectif à préciser")}</p><span class="meta">${items.length} élément(s) · ${done} réalisé(s) · ${esc(plan.startDate || "Début à définir")} → ${esc(plan.endDate || "Fin à définir")}</span></div>`;
+  }).join("") || `<div class="card full-span empty">Aucun plan d'action. Crée le premier à partir de ta feuille de route.</div>`}</div>`);
+}
+
+function actionPlanSelectionBlock(type, selectedIds) {
+  const cfg = actionPlanEntityConfig(type);
+  if (!cfg) return "";
+  return `<div class="card"><h3>${esc(cfg.plural)}</h3>${checkboxList(`ap_${type}`, cfg.list, selectedIds, item => cfg.title(item))}</div>`;
+}
+
+function editActionPlan(id = "") {
+  const existing = id ? byId("actionPlans", id) : null;
+  actionPlanEditorId = existing?.id || "";
+  const plan = existing || normalizeEntity("actionPlans", { id: newId("actionPlan"), name: "", status: "active", items: [] });
+  const selected = type => ensureArray(plan.items).filter(row => row.entityType === type).map(row => row.entityId);
+  appHtml(`<div class="card hero"><div class="row"><div><h2>${existing ? "Modifier" : "Créer"} un plan d'action</h2><p class="muted">Coche les objets déjà présents dans DEOS. Aucun doublon n'est créé.</p></div><button class="secondary" onclick="${existing ? `openActionPlan('${esc(plan.id)}')` : "renderActionPlans()"}">Annuler</button></div></div>
+  <div class="card"><div class="form-grid"><input id="apName" class="full" value="${esc(plan.name || "")}" placeholder="Nom du plan / feuille de route"><input id="apOwner" value="${esc(plan.owner || "")}" placeholder="Pilote du plan"><select id="apStatus"><option value="active" ${plan.status === "active" ? "selected" : ""}>En cours</option><option value="paused" ${plan.status === "paused" ? "selected" : ""}>En pause</option><option value="completed" ${plan.status === "completed" ? "selected" : ""}>Terminé</option><option value="archived" ${plan.status === "archived" ? "selected" : ""}>Archivé</option></select><input id="apStart" type="date" value="${esc(plan.startDate || "")}"><input id="apEnd" type="date" value="${esc(plan.endDate || "")}"></div><textarea id="apObjective" placeholder="Objectif du plan">${esc(plan.objective || "")}</textarea><textarea id="apNotes" placeholder="Commentaires / contexte">${esc(plan.notes || "")}</textarea></div>
+  <div class="grid two">${["folders","projects","actions","decisions"].map(type => actionPlanSelectionBlock(type, selected(type))).join("")}</div>
+  <div class="card"><div class="row-actions"><button class="action" onclick="saveActionPlan('${esc(plan.id)}')">Enregistrer le plan</button><button class="secondary" onclick="${existing ? `openActionPlan('${esc(plan.id)}')` : "renderActionPlans()"}">Annuler</button></div></div>`);
+}
+
+function saveActionPlan(id) {
+  const name = document.getElementById("apName")?.value.trim() || "";
+  if (!name) { showDeosToast("Le nom du plan est obligatoire.", "error"); return false; }
+  const old = byId("actionPlans", id);
+  const oldMap = new Map(ensureArray(old?.items).map(row => [`${row.entityType}:${row.entityId}`, row]));
+  const items = [];
+  ["folders","projects","actions","decisions"].forEach(type => {
+    checkedValues(`ap_${type}`).forEach(entityId => {
+      const key = `${type}:${entityId}`;
+      const cfg = actionPlanEntityConfig(type);
+      const entity = cfg?.list?.find(item => sameId(item.id, entityId));
+      const defaults = actionPlanItemDefaults(type, entity);
+      items.push({ entityType: type, entityId, ...(oldMap.get(key) || defaults) });
+    });
+  });
+  const next = normalizeEntity("actionPlans", {
+    ...(old || {}), id,
+    name,
+    owner: document.getElementById("apOwner")?.value.trim() || "",
+    status: document.getElementById("apStatus")?.value || "active",
+    startDate: document.getElementById("apStart")?.value || "",
+    endDate: document.getElementById("apEnd")?.value || "",
+    objective: document.getElementById("apObjective")?.value.trim() || "",
+    notes: document.getElementById("apNotes")?.value.trim() || "",
+    items,
+    createdAt: old?.createdAt || isoToday(),
+    updatedAt: new Date().toISOString()
+  });
+  const idx = indexById("actionPlans", id);
+  if (idx >= 0) state.actionPlans[idx] = next; else state.actionPlans.unshift(next);
+  persist("actionPlans");
+  addActivity("🗓️ Plan d'action enregistré", next.name, `${items.length} élément(s)`, next.id);
+  openActionPlan(next.id);
+  return true;
+}
+
+function actionPlanDateMs(value) {
+  const t = Date.parse(String(value || ""));
+  return Number.isFinite(t) ? t : null;
+}
+
+function actionPlanTimelineBounds(plan, rows) {
+  const stamps = [];
+  [plan.startDate, plan.endDate].forEach(v => { const t = actionPlanDateMs(v); if (t != null) stamps.push(t); });
+  rows.forEach(row => [row.startDate, row.dueDate, row.completedDate].forEach(v => { const t = actionPlanDateMs(v); if (t != null) stamps.push(t); }));
+  const now = Date.now();
+  let min = stamps.length ? Math.min(...stamps) : now;
+  let max = stamps.length ? Math.max(...stamps) : now + 90*86400000;
+  if (max <= min) max = min + 30*86400000;
+  min -= 3*86400000; max += 3*86400000;
+  return { min, max, span: max-min };
+}
+
+function actionPlanTimelineHtml(plan, rows) {
+  if (!rows.length) return `<div class="empty">Aucun élément sélectionné.</div>`;
+  const bounds = actionPlanTimelineBounds(plan, rows);
+  const pct = value => {
+    const t = actionPlanDateMs(value); if (t == null) return null;
+    return Math.max(0, Math.min(100, ((t-bounds.min)/bounds.span)*100));
+  };
+  const tickCount = 6;
+  const ticks = Array.from({length:tickCount}, (_,i) => {
+    const t = bounds.min + (bounds.span * i/(tickCount-1));
+    const d = new Date(t);
+    return { left: i/(tickCount-1)*100, label: d.toLocaleDateString("fr-FR", { month:"short", year:"2-digit" }) };
+  });
+  return `<div class="action-plan-gantt"><div class="action-plan-gantt-head"><div>Élément</div><div class="action-plan-axis">${ticks.map(t => `<span style="left:${t.left}%">${esc(t.label)}</span>`).join("")}</div></div>${rows.map(row => {
+    const start = pct(row.startDate || row.dueDate);
+    const end = pct(row.dueDate || row.startDate);
+    const completed = pct(row.completedDate);
+    const left = start == null ? 0 : start;
+    const right = end == null ? left : Math.max(left, end);
+    const width = Math.max(1.2, right-left);
+    const isMilestone = !row.startDate || !row.dueDate || row.startDate === row.dueDate || row.entityType === "decisions";
+    const done = Boolean(row.completedDate) || row.entity?.done;
+    return `<div class="action-plan-gantt-row"><div class="action-plan-label"><strong>${esc(row.label)}</strong><small>${esc(row.typeLabel)} · ${esc(row.owner || "Responsable à définir")}</small></div><div class="action-plan-track">${ticks.map(t => `<i class="action-plan-gridline" style="left:${t.left}%"></i>`).join("")}${isMilestone ? `<span class="action-plan-milestone ${done ? "done" : ""}" style="left:${left}%" title="${esc(row.dueDate || row.startDate || "Date à définir")}">◆</span>` : `<span class="action-plan-bar ${done ? "done" : ""}" style="left:${left}%;width:${width}%" title="${esc(row.startDate || "?")} → ${esc(row.dueDate || "?")}"></span>`}${completed != null ? `<span class="action-plan-completed" style="left:${completed}%" title="Réalisé le ${esc(row.completedDate)}"></span>` : ""}</div></div>`;
+  }).join("")}</div>`;
+}
+
+function actionPlanTableHtml(plan, rows) {
+  if (!rows.length) return `<div class="empty">Aucun élément sélectionné.</div>`;
+  return `<div class="action-plan-table"><div class="action-plan-table-head"><span>Type / élément</span><span>Responsable</span><span>Début</span><span>Échéance</span><span>Réalisé le</span></div>${rows.map((row, idx) => `<div class="action-plan-table-row"><span><strong>${esc(row.typeLabel)}</strong><small>${esc(row.label)}</small></span><input id="aprow_owner_${idx}" value="${esc(row.owner || "")}" placeholder="Responsable"><input id="aprow_start_${idx}" type="date" value="${esc(row.startDate || "")}"><input id="aprow_due_${idx}" type="date" value="${esc(row.dueDate || "")}"><input id="aprow_done_${idx}" type="date" value="${esc(row.completedDate || "")}"><input type="hidden" id="aprow_type_${idx}" value="${esc(row.entityType)}"><input type="hidden" id="aprow_id_${idx}" value="${esc(row.entityId)}"></div>`).join("")}</div><div class="row-actions"><button class="action" onclick="saveActionPlanSchedule('${esc(plan.id)}',${rows.length})">Enregistrer responsables et dates</button></div>`;
+}
+
+function saveActionPlanSchedule(planId, count) {
+  const plan = byId("actionPlans", planId); if (!plan) return false;
+  const updates = new Map();
+  for (let i=0;i<count;i++) {
+    const type = document.getElementById(`aprow_type_${i}`)?.value || "";
+    const id = document.getElementById(`aprow_id_${i}`)?.value || "";
+    if (!type || !id) continue;
+    updates.set(`${type}:${id}`, {
+      owner: document.getElementById(`aprow_owner_${i}`)?.value.trim() || "",
+      startDate: document.getElementById(`aprow_start_${i}`)?.value || "",
+      dueDate: document.getElementById(`aprow_due_${i}`)?.value || "",
+      completedDate: document.getElementById(`aprow_done_${i}`)?.value || ""
+    });
+  }
+  plan.items = ensureArray(plan.items).map(row => ({ ...row, ...(updates.get(`${row.entityType}:${row.entityId}`) || {}) }));
+  plan.updatedAt = new Date().toISOString();
+  persist("actionPlans");
+  showDeosToast("Chronogramme mis à jour.", "success");
+  openActionPlan(planId);
+  return true;
+}
+
+function setActionPlanViewMode(mode) { actionPlanViewMode = mode === "table" ? "table" : "timeline"; if (actionPlanDetailId) openActionPlan(actionPlanDetailId); }
+
+function openActionPlan(id) {
+  const plan = byId("actionPlans", id); if (!plan) return renderActionPlans();
+  actionPlanDetailId = id;
+  const rows = ensureArray(plan.items).map(actionPlanResolveItem).filter(Boolean);
+  appHtml(`<div class="card hero"><div class="row"><div><button class="secondary" onclick="renderActionPlans()">← Plans d'action</button><h2>${esc(plan.name)}</h2><p>${esc(plan.objective || "Objectif à préciser")}</p><span class="meta">Pilote : ${esc(plan.owner || "À définir")} · ${esc(plan.startDate || "Début à définir")} → ${esc(plan.endDate || "Fin à définir")}</span></div><div>${actionPlanStatusBadge(plan.status)}</div></div><div class="row-actions"><button class="secondary" onclick="editActionPlan('${esc(plan.id)}')">Modifier la sélection</button><button class="secondary ${actionPlanViewMode === "timeline" ? "active-filter" : ""}" onclick="setActionPlanViewMode('timeline')">Chronogramme</button><button class="secondary ${actionPlanViewMode === "table" ? "active-filter" : ""}" onclick="setActionPlanViewMode('table')">Responsables & dates</button><button class="danger" onclick="deleteActionPlan('${esc(plan.id)}')">Supprimer le plan</button></div></div>
+  <div class="card"><h2>${actionPlanViewMode === "timeline" ? "Chronogramme" : "Pilotage des échéances"}</h2>${actionPlanViewMode === "timeline" ? actionPlanTimelineHtml(plan, rows) : actionPlanTableHtml(plan, rows)}</div>`);
+}
+
+function deleteActionPlan(id) {
+  const idx = indexById("actionPlans", id); if (idx < 0) return;
+  if (!confirm("Supprimer ce plan d'action ? Les dossiers, projets, actions et décisions resteront dans DEOS.")) return;
+  const name = state.actionPlans[idx].name;
+  state.actionPlans.splice(idx,1); persist("actionPlans"); addActivity("🗑️ Plan d'action supprimé", name); renderActionPlans();
 }
 
 const perfMonths = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
