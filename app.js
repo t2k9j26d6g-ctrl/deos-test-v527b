@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D15-PLANS-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D16-PLANS-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -10243,6 +10243,7 @@ function deleteJournal(id) {
 let actionPlanEditorId = "";
 let actionPlanDetailId = "";
 let actionPlanViewMode = "timeline";
+let actionPlanFilters = { owner: "", type: "", status: "", folder: "" };
 
 function actionPlanEntityConfig(type) {
   return {
@@ -10324,13 +10325,28 @@ function actionPlanSelectionBlock(type, selectedIds) {
   return `<div class="card"><h3>${esc(cfg.plural)}</h3>${checkboxList(`ap_${type}`, cfg.list, selectedIds, item => cfg.title(item))}</div>`;
 }
 
+function actionPlanFloatField(id, label, value = "", options = {}) {
+  const full = options.full ? " full" : "";
+  const type = options.type || "text";
+  const extra = options.extra || "";
+  return `<label class="ap-float-field${full}"><span>${esc(label)}</span><input id="${esc(id)}" type="${esc(type)}" value="${esc(value || "")}" ${extra}></label>`;
+}
+
+function actionPlanFloatSelect(id, label, value, options) {
+  return `<label class="ap-float-field"><span>${esc(label)}</span><select id="${esc(id)}">${options.map(opt => `<option value="${esc(opt.value)}" ${String(opt.value) === String(value) ? "selected" : ""}>${esc(opt.label)}</option>`).join("")}</select></label>`;
+}
+
+function actionPlanFloatTextarea(id, label, value = "") {
+  return `<label class="ap-float-textarea"><span>${esc(label)}</span><textarea id="${esc(id)}">${esc(value || "")}</textarea></label>`;
+}
+
 function editActionPlan(id = "") {
   const existing = id ? byId("actionPlans", id) : null;
   actionPlanEditorId = existing?.id || "";
   const plan = existing || normalizeEntity("actionPlans", { id: newId("actionPlan"), name: "", status: "active", items: [] });
   const selected = type => ensureArray(plan.items).filter(row => row.entityType === type).map(row => row.entityId);
   appHtml(`<div class="card hero"><div class="row"><div><h2>${existing ? "Modifier" : "Créer"} un plan d'action</h2><p class="muted">Coche les objets déjà présents dans DEOS. Aucun doublon n'est créé.</p></div><button class="secondary" onclick="${existing ? `openActionPlan('${esc(plan.id)}')` : "renderActionPlans()"}">Annuler</button></div></div>
-  <div class="card"><div class="form-grid"><input id="apName" class="full" value="${esc(plan.name || "")}" placeholder="Nom du plan / feuille de route"><input id="apOwner" value="${esc(plan.owner || "")}" placeholder="Pilote du plan"><select id="apStatus"><option value="active" ${plan.status === "active" ? "selected" : ""}>En cours</option><option value="paused" ${plan.status === "paused" ? "selected" : ""}>En pause</option><option value="completed" ${plan.status === "completed" ? "selected" : ""}>Terminé</option><option value="archived" ${plan.status === "archived" ? "selected" : ""}>Archivé</option></select><input id="apStart" type="date" value="${esc(plan.startDate || "")}"><input id="apEnd" type="date" value="${esc(plan.endDate || "")}"></div><textarea id="apObjective" placeholder="Objectif du plan">${esc(plan.objective || "")}</textarea><textarea id="apNotes" placeholder="Commentaires / contexte">${esc(plan.notes || "")}</textarea></div>
+  <div class="card"><div class="form-grid ap-plan-form">${actionPlanFloatField("apName", "Nom du plan / feuille de route", plan.name || "", { full:true })}${actionPlanFloatField("apOwner", "Pilote du plan", plan.owner || "")}${actionPlanFloatSelect("apStatus", "Statut", plan.status || "active", [{value:"active",label:"En cours"},{value:"paused",label:"En pause"},{value:"completed",label:"Terminé"},{value:"archived",label:"Archivé"}])}${actionPlanFloatField("apStart", "Début du plan", plan.startDate || "", { type:"date" })}${actionPlanFloatField("apEnd", "Fin cible", plan.endDate || "", { type:"date" })}</div>${actionPlanFloatTextarea("apObjective", "Objectif du plan", plan.objective || "")}${actionPlanFloatTextarea("apNotes", "Commentaires / contexte", plan.notes || "")}</div>
   <div class="grid two">${["folders","projects","actions","decisions"].map(type => actionPlanSelectionBlock(type, selected(type))).join("")}</div>
   <div class="card"><div class="row-actions"><button class="action" onclick="saveActionPlan('${esc(plan.id)}')">Enregistrer le plan</button><button class="secondary" onclick="${existing ? `openActionPlan('${esc(plan.id)}')` : "renderActionPlans()"}">Annuler</button></div></div>`);
 }
@@ -10376,6 +10392,66 @@ function actionPlanDateMs(value) {
   return Number.isFinite(t) ? t : null;
 }
 
+function actionPlanRowStatus(row) {
+  const done = Boolean(row.completedDate) || Boolean(row.entity?.done);
+  if (done) return "done";
+  const today = actionPlanDateMs(localIsoDate());
+  const due = actionPlanDateMs(row.dueDate);
+  const start = actionPlanDateMs(row.startDate);
+  if (due != null && today != null && due < today) return "late";
+  if (start != null && today != null && start > today) return "planned";
+  return "active";
+}
+
+function actionPlanRowStatusLabel(status) {
+  return ({ done:"Réalisé", late:"En retard", planned:"Prévu", active:"En cours" })[status] || "En cours";
+}
+
+function actionPlanRowFolderIds(row) {
+  if (!row?.entity) return [];
+  if (row.entityType === "folders") return [String(row.entity.id)];
+  const ids = new Set(normalizeLinkedIdArray(ensureArray(row.entity.linkedFolders)).map(String));
+  normalizeLinkedIdArray(ensureArray(row.entity.linkedProjects)).forEach(projectId => {
+    const project = byId("projects", projectId);
+    normalizeLinkedIdArray(ensureArray(project?.linkedFolders)).forEach(folderId => ids.add(String(folderId)));
+  });
+  return [...ids];
+}
+
+function actionPlanFilteredRows(rows) {
+  return rows.filter(row => {
+    if (actionPlanFilters.owner && String(row.owner || "") !== actionPlanFilters.owner) return false;
+    if (actionPlanFilters.type && row.entityType !== actionPlanFilters.type) return false;
+    if (actionPlanFilters.status && actionPlanRowStatus(row) !== actionPlanFilters.status) return false;
+    if (actionPlanFilters.folder && !actionPlanRowFolderIds(row).some(id => sameId(id, actionPlanFilters.folder))) return false;
+    return true;
+  });
+}
+
+function actionPlanFilterBarHtml(rows) {
+  const owners = [...new Set(rows.map(row => String(row.owner || "").trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"fr"));
+  const folderIds = [...new Set(rows.flatMap(actionPlanRowFolderIds))];
+  const folders = folderIds.map(id => byId("folders", id)).filter(Boolean).sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""),"fr"));
+  return `<div class="action-plan-filterbar">
+    <select onchange="setActionPlanFilter('owner',this.value)"><option value="">Tous les responsables</option>${owners.map(owner => `<option value="${esc(owner)}" ${actionPlanFilters.owner===owner?"selected":""}>${esc(owner)}</option>`).join("")}</select>
+    <select onchange="setActionPlanFilter('type',this.value)"><option value="">Tous les types</option>${[["folders","Dossiers"],["projects","Projets"],["actions","Actions"],["decisions","Décisions"]].map(([value,label])=>`<option value="${value}" ${actionPlanFilters.type===value?"selected":""}>${label}</option>`).join("")}</select>
+    <select onchange="setActionPlanFilter('status',this.value)"><option value="">Tous les statuts</option>${[["planned","Prévu"],["active","En cours"],["late","En retard"],["done","Réalisé"]].map(([value,label])=>`<option value="${value}" ${actionPlanFilters.status===value?"selected":""}>${label}</option>`).join("")}</select>
+    <select onchange="setActionPlanFilter('folder',this.value)" ${folders.length?"":"disabled"}><option value="">Tous les dossiers</option>${folders.map(folder=>`<option value="${esc(folder.id)}" ${sameId(actionPlanFilters.folder,folder.id)?"selected":""}>${esc(folder.name||"Dossier")}</option>`).join("")}</select>
+    <button class="secondary" onclick="resetActionPlanFilters()">Réinitialiser</button>
+  </div>`;
+}
+
+function setActionPlanFilter(key, value) {
+  if (!(key in actionPlanFilters)) return;
+  actionPlanFilters[key] = String(value || "");
+  if (actionPlanDetailId) openActionPlan(actionPlanDetailId);
+}
+
+function resetActionPlanFilters() {
+  actionPlanFilters = { owner:"", type:"", status:"", folder:"" };
+  if (actionPlanDetailId) openActionPlan(actionPlanDetailId);
+}
+
 function actionPlanTimelineBounds(plan, rows) {
   const stamps = [];
   [plan.startDate, plan.endDate].forEach(v => { const t = actionPlanDateMs(v); if (t != null) stamps.push(t); });
@@ -10389,7 +10465,7 @@ function actionPlanTimelineBounds(plan, rows) {
 }
 
 function actionPlanTimelineHtml(plan, rows) {
-  if (!rows.length) return `<div class="empty">Aucun élément sélectionné.</div>`;
+  if (!rows.length) return `<div class="empty">Aucun élément ne correspond aux filtres.</div>`;
   const bounds = actionPlanTimelineBounds(plan, rows);
   const pct = value => {
     const t = actionPlanDateMs(value); if (t == null) return null;
@@ -10401,7 +10477,9 @@ function actionPlanTimelineHtml(plan, rows) {
     const d = new Date(t);
     return { left: i/(tickCount-1)*100, label: d.toLocaleDateString("fr-FR", { month:"short", year:"2-digit" }) };
   });
-  return `<div class="action-plan-gantt"><div class="action-plan-gantt-head"><div>Élément</div><div class="action-plan-axis">${ticks.map(t => `<span style="left:${t.left}%">${esc(t.label)}</span>`).join("")}</div></div>${rows.map(row => {
+  const todayPct = pct(localIsoDate());
+  const legend = `<div class="action-plan-legend"><span><i class="planned"></i>Prévu</span><span><i class="active"></i>En cours</span><span><i class="late"></i>En retard</span><span><i class="done"></i>Réalisé</span>${todayPct != null ? `<span class="today-key"><i></i>Aujourd'hui</span>` : ""}</div>`;
+  return `${legend}<div class="action-plan-gantt"><div class="action-plan-gantt-head"><div>Élément</div><div class="action-plan-axis">${ticks.map(t => `<span style="left:${t.left}%">${esc(t.label)}</span>`).join("")}${todayPct != null ? `<b class="action-plan-today" style="left:${todayPct}%"></b>` : ""}</div></div>${rows.map(row => {
     const start = pct(row.startDate || row.dueDate);
     const end = pct(row.dueDate || row.startDate);
     const completed = pct(row.completedDate);
@@ -10409,14 +10487,14 @@ function actionPlanTimelineHtml(plan, rows) {
     const right = end == null ? left : Math.max(left, end);
     const width = Math.max(1.2, right-left);
     const isMilestone = !row.startDate || !row.dueDate || row.startDate === row.dueDate || row.entityType === "decisions";
-    const done = Boolean(row.completedDate) || row.entity?.done;
-    return `<div class="action-plan-gantt-row"><div class="action-plan-label"><strong>${esc(row.label)}</strong><small>${esc(row.typeLabel)} · ${esc(row.owner || "Responsable à définir")}</small></div><div class="action-plan-track">${ticks.map(t => `<i class="action-plan-gridline" style="left:${t.left}%"></i>`).join("")}${isMilestone ? `<span class="action-plan-milestone ${done ? "done" : ""}" style="left:${left}%" title="${esc(row.dueDate || row.startDate || "Date à définir")}">◆</span>` : `<span class="action-plan-bar ${done ? "done" : ""}" style="left:${left}%;width:${width}%" title="${esc(row.startDate || "?")} → ${esc(row.dueDate || "?")}"></span>`}${completed != null ? `<span class="action-plan-completed" style="left:${completed}%" title="Réalisé le ${esc(row.completedDate)}"></span>` : ""}</div></div>`;
+    const status = actionPlanRowStatus(row);
+    return `<div class="action-plan-gantt-row"><div class="action-plan-label"><strong>${esc(row.label)}</strong><small>${esc(row.typeLabel)} · ${esc(row.owner || "Responsable à définir")} · <em class="ap-row-status ${status}">${esc(actionPlanRowStatusLabel(status))}</em></small></div><div class="action-plan-track">${ticks.map(t => `<i class="action-plan-gridline" style="left:${t.left}%"></i>`).join("")}${todayPct != null ? `<b class="action-plan-today" style="left:${todayPct}%"></b>` : ""}${isMilestone ? `<span class="action-plan-milestone ${status}" style="left:${left}%" title="${esc(row.dueDate || row.startDate || "Date à définir")}">◆</span>` : `<span class="action-plan-bar ${status}" style="left:${left}%;width:${width}%" title="${esc(row.startDate || "?")} → ${esc(row.dueDate || "?")}"></span>`}${completed != null ? `<span class="action-plan-completed" style="left:${completed}%" title="Réalisé le ${esc(row.completedDate)}"></span>` : ""}</div></div>`;
   }).join("")}</div>`;
 }
 
 function actionPlanTableHtml(plan, rows) {
-  if (!rows.length) return `<div class="empty">Aucun élément sélectionné.</div>`;
-  return `<div class="action-plan-table"><div class="action-plan-table-head"><span>Type / élément</span><span>Responsable</span><span>Début</span><span>Échéance</span><span>Réalisé le</span></div>${rows.map((row, idx) => `<div class="action-plan-table-row"><span><strong>${esc(row.typeLabel)}</strong><small>${esc(row.label)}</small></span><input id="aprow_owner_${idx}" value="${esc(row.owner || "")}" placeholder="Responsable"><input id="aprow_start_${idx}" type="date" value="${esc(row.startDate || "")}"><input id="aprow_due_${idx}" type="date" value="${esc(row.dueDate || "")}"><input id="aprow_done_${idx}" type="date" value="${esc(row.completedDate || "")}"><input type="hidden" id="aprow_type_${idx}" value="${esc(row.entityType)}"><input type="hidden" id="aprow_id_${idx}" value="${esc(row.entityId)}"></div>`).join("")}</div><div class="row-actions"><button class="action" onclick="saveActionPlanSchedule('${esc(plan.id)}',${rows.length})">Enregistrer responsables et dates</button></div>`;
+  if (!rows.length) return `<div class="empty">Aucun élément ne correspond aux filtres.</div>`;
+  return `<div class="action-plan-table"><div class="action-plan-table-head"><span>Type / élément</span><span>Statut</span><span>Responsable</span><span>Début</span><span>Échéance</span><span>Réalisé le</span></div>${rows.map((row, idx) => { const status=actionPlanRowStatus(row); return `<div class="action-plan-table-row"><span><strong>${esc(row.typeLabel)}</strong><small>${esc(row.label)}</small></span><span><em class="ap-row-status ${status}">${esc(actionPlanRowStatusLabel(status))}</em></span><input id="aprow_owner_${idx}" value="${esc(row.owner || "")}" placeholder="Responsable"><input id="aprow_start_${idx}" type="date" value="${esc(row.startDate || "")}"><input id="aprow_due_${idx}" type="date" value="${esc(row.dueDate || "")}"><input id="aprow_done_${idx}" type="date" value="${esc(row.completedDate || "")}"><input type="hidden" id="aprow_type_${idx}" value="${esc(row.entityType)}"><input type="hidden" id="aprow_id_${idx}" value="${esc(row.entityId)}"></div>`; }).join("")}</div><div class="row-actions"><button class="action" onclick="saveActionPlanSchedule('${esc(plan.id)}',${rows.length})">Enregistrer responsables et dates</button></div>`;
 }
 
 function saveActionPlanSchedule(planId, count) {
@@ -10446,9 +10524,10 @@ function setActionPlanViewMode(mode) { actionPlanViewMode = mode === "table" ? "
 function openActionPlan(id) {
   const plan = byId("actionPlans", id); if (!plan) return renderActionPlans();
   actionPlanDetailId = id;
-  const rows = ensureArray(plan.items).map(actionPlanResolveItem).filter(Boolean);
+  const allRows = ensureArray(plan.items).map(actionPlanResolveItem).filter(Boolean);
+  const rows = actionPlanFilteredRows(allRows);
   appHtml(`<div class="card hero"><div class="row"><div><button class="secondary" onclick="renderActionPlans()">← Plans d'action</button><h2>${esc(plan.name)}</h2><p>${esc(plan.objective || "Objectif à préciser")}</p><span class="meta">Pilote : ${esc(plan.owner || "À définir")} · ${esc(plan.startDate || "Début à définir")} → ${esc(plan.endDate || "Fin à définir")}</span></div><div>${actionPlanStatusBadge(plan.status)}</div></div><div class="row-actions"><button class="secondary" onclick="editActionPlan('${esc(plan.id)}')">Modifier la sélection</button><button class="secondary ${actionPlanViewMode === "timeline" ? "active-filter" : ""}" onclick="setActionPlanViewMode('timeline')">Chronogramme</button><button class="secondary ${actionPlanViewMode === "table" ? "active-filter" : ""}" onclick="setActionPlanViewMode('table')">Responsables & dates</button><button class="danger" onclick="deleteActionPlan('${esc(plan.id)}')">Supprimer le plan</button></div></div>
-  <div class="card"><h2>${actionPlanViewMode === "timeline" ? "Chronogramme" : "Pilotage des échéances"}</h2>${actionPlanViewMode === "timeline" ? actionPlanTimelineHtml(plan, rows) : actionPlanTableHtml(plan, rows)}</div>`);
+  <div class="card"><div class="row"><div><h2>${actionPlanViewMode === "timeline" ? "Chronogramme" : "Pilotage des échéances"}</h2><p class="muted">${rows.length} affiché(s) sur ${allRows.length} élément(s)</p></div></div>${actionPlanFilterBarHtml(allRows)}${actionPlanViewMode === "timeline" ? actionPlanTimelineHtml(plan, rows) : actionPlanTableHtml(plan, rows)}</div>`);
 }
 
 function deleteActionPlan(id) {
