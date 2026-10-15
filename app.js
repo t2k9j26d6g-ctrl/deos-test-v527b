@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D20-PROJECT-SAVE-FIX-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D21-COCKPIT-DIRECTION-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -4716,6 +4716,7 @@ function getProjectsAtRisk() {
   const blockedPattern = /blocage|bloqu[ée]|retard majeur|critique/i;
   const donePattern = /fait|termin[ée]|clos|ok/i;
   return state.projects.filter(project => {
+    if (project.archived) return false;
     const riskText = String(project.risks || "").trim();
     const explicitRisk = project.status === "red" || project.priorityLevel === "red";
     const blocked = blockedPattern.test(`${project.next || ""} ${project.context || ""} ${riskText}`);
@@ -4955,10 +4956,54 @@ function completeCockpitNote(id) {
   renderCockpit();
 }
 
+// D21 — Synthèse d'orientation, calculée à partir des données existantes (lecture seule).
+// Chaque élément apparaît au maximum une fois dans cette synthèse.
+function getCockpitDirectionBuckets() {
+  const buckets = { arbitrate: [], pilot: [], follow: [] };
+  const seen = new Set();
+  const add = (bucket, entity, item, reason, due = "") => {
+    if (!item?.id || item.archived || item.archivedAt && item.archived === true) return;
+    const key = `${entity}:${item.id}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    buckets[bucket].push({ entity, id: item.id, title: String(item.title || item.name || "Sans titre"), reason, due });
+  };
+  const overdue = value => { const n = daysUntil(value); return n !== null && n < 0; };
+  // L'arbitrage correspond uniquement à une décision en attente explicite.
+  ensureArray(state.decisions).filter(d => !d.archived && isPendingDecision(d) && d.status === "review")
+    .forEach(d => add("arbitrate", "decisions", d, "Décision à arbitrer", d.reviewDate));
+  ensureArray(state.actions).filter(a => !a.done && !a.archived && overdue(a.due))
+    .forEach(a => add("pilot", "actions", a, "Action en retard", a.due));
+  ensureArray(state.projects).filter(p => !p.archived).forEach(p => {
+    const risk = String(p.risks || "").trim();
+    const blocked = /blocage|bloqu[ée]|critique/i.test(`${p.next || ""} ${p.context || ""} ${risk}`);
+    if (overdue(p.deadline) || risk || blocked || p.status === "red" || p.priorityLevel === "red") {
+      add("pilot", "projects", p, overdue(p.deadline) ? "Échéance dépassée" : risk ? "Risque déclaré" : "Projet à surveiller", p.deadline);
+    }
+  });
+  ensureArray(state.priorities).filter(p => !p.done && !p.archived).forEach(p => {
+    add(p.level === "red" ? "pilot" : "follow", "priorities", p,
+      p.level === "red" ? "Priorité critique" : "Priorité active", p.due);
+  });
+  // Les projets non critiques constituent des points de suivi, sans jamais réintroduire les archives.
+  ensureArray(state.projects).filter(p => !p.archived).forEach(p => add("follow", "projects", p, "Projet en cours", p.deadline));
+  for (const items of Object.values(buckets)) {
+    items.sort((a,b) => dateRank(a.due) - dateRank(b.due) || a.title.localeCompare(b.title, "fr"));
+  }
+  return buckets;
+}
+function cockpitDirectionBucketHtml(label, type, items) {
+  const visible = items.slice(0, 5);
+  return `<section class="deos-direction-column deos-direction-${type}"><h3>${esc(label)} <span class="deos-direction-count">${items.length}</span></h3>
+    ${visible.map(item => `<button type="button" class="deos-direction-item" onclick="openCockpitEntity('${esc(item.entity)}','${esc(item.id)}')"><strong>${esc(item.title)}</strong><small>${esc(item.reason)}${item.due ? " · " + esc(dueLabel(item.due)) : ""}</small></button>`).join("") || '<div class="empty compact-empty">Aucun sujet identifié.</div>'}
+    ${items.length > 5 ? `<p class="muted deos-direction-overflow">${items.length - 5} autre(s) sujet(s) dans DEOS</p>` : ""}</section>`;
+}
+
 function renderCockpit() {
   const now = new Date();
   const week = isoWeekNumber(now);
   const metrics = getCockpitMetrics();
+  const directionBuckets = getCockpitDirectionBuckets();
   const todayOperational = getTodayOperationalItems();
   const attentionItems = getAttentionItems();
   const activePriorities = getActivePriorities().slice(0, 5);
@@ -4989,6 +5034,15 @@ function renderCockpit() {
       ${cockpitMetricCard("Decisions a suivre", metrics.decisionsToTrack, "Statuts non appliques", "setView('decisions')")}
       ${cockpitMetricCard("Projets a risque", metrics.riskyProjects, "Risque explicite ou retard", "setView('projects')")}
       ${cockpitMetricCard("Priorites actives", metrics.activePriorities, "Priorites non terminees", "setView('priorities')")}
+    </div>
+
+    <div class="card deos-direction-card">
+      <div class="row"><h2>Vue de direction · Synthèse des sujets</h2><span class="muted">Automatique · aucune saisie supplémentaire</span></div>
+      <div class="deos-direction-grid">
+        ${cockpitDirectionBucketHtml("🔴 À arbitrer", "arbitrate", directionBuckets.arbitrate)}
+        ${cockpitDirectionBucketHtml("🟠 À piloter", "pilot", directionBuckets.pilot)}
+        ${cockpitDirectionBucketHtml("🟢 À suivre", "follow", directionBuckets.follow)}
+      </div>
     </div>
 
     <div class="card cockpit-notes cockpit-notes-top">
