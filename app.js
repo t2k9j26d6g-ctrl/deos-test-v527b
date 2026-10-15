@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D19-ARCHIVE-UX-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D20-PROJECT-SAVE-FIX-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -9430,11 +9430,31 @@ function saveProjectEdit(id) {
     linkedDecisions: normalizeLinkedIdArray(checkedValues("pepDecisions")),
     linkedManagers: normalizeLinkedManagerIds(checkedValues("pepManagers"))
   };
-  state.projects[i] = normalizeEntity("projects", next);
-  persistProjectsState();
+  const previous = state.projects[i];
+  const expected = normalizeEntity("projects", next);
+  try {
+    state.projects[i] = expected;
+    persistProjectsState();
+    const reread = saved("projects", []).find(p => sameId(p.id, id));
+    if (!reread || projectFingerprint(reread) !== projectFingerprint(expected)) {
+      throw new Error("Les modifications n'ont pas été confirmées dans le stockage local.");
+    }
+  } catch (error) {
+    state.projects[i] = previous;
+    projectEditDialog.error = `Enregistrement impossible : ${error?.message || "erreur de stockage"}`;
+    // Préserver le formulaire saisi pour éviter toute perte du travail utilisateur.
+    const errorTarget = document.querySelector(".project-edit-modal .folder-delete-error");
+    if (errorTarget) errorTarget.textContent = projectEditDialog.error;
+    else {
+      const panel = document.querySelector(".project-edit-modal .modal-head");
+      panel?.insertAdjacentHTML("afterend", `<p class="folder-delete-error">${esc(projectEditDialog.error)}</p>`);
+    }
+    return false;
+  }
   addActivity("📊 Projet modifié", state.projects[i].name, state.projects[i].next || "", id);
   closeProjectEditModal();
   openProject(id);
+  if (typeof showDeosToast === "function") showDeosToast("Projet enregistré sur cet appareil. Synchronisation distante en cours si activée.", "success", 3400);
   return true;
 }
 
@@ -22025,8 +22045,11 @@ function restoreProjectsFromSyncShadowIfNeeded(options = {}) {
 }
 
 function persistProjectsState(options = {}) {
+  // D20 : le shadow est la dernière BASE DISTANTE synchronisée, et NON une copie
+  // des modifications locales en attente. Le modifier avant le push provoquait
+  // une réconciliation pouvant annuler les changements d'un projet.
   persist("projects");
-  if (options.updateShadow !== false && projectsSyncIsEnabled()) saveProjectsSyncShadow(state.projects);
+  if (options.updateShadow === true && projectsSyncIsEnabled()) saveProjectsSyncShadow(state.projects);
 }
 function projectFingerprint(project = {}) { return JSON.stringify(canonicalProjectBusinessData(project)); }
 
@@ -22388,7 +22411,11 @@ async function syncProjectsHybridNow(options = {}) {
       setProjectSyncMeta(clientId, { remoteId: row.remoteId, remoteVersion: Number(row.version || 0), remoteUpdatedAt: row.updatedAt || "", lastSyncedAt: new Date().toISOString(), syncStatus: DEOS_LINKS_SYNC_STATUS.SYNCED, lastLocalFingerprint: projectFingerprint(byId("projects", clientId) || row.project), lastSyncError: "", conflictRemote: null, conflictFields: [] });
     }
     if (localChanged) persistProjectsState();
-    else if (projectsSyncIsEnabled()) saveProjectsSyncShadow(state.projects);
+    // Shadow mis à jour uniquement APRÈS la synchronisation distante réussie.
+    // Ne pas avancer la base s'il reste des conflits non résolus.
+    if (projectsSyncIsEnabled() && !ensureArray(state.projects).some(p => getProjectSyncMeta(p.id).syncStatus === DEOS_LINKS_SYNC_STATUS.CONFLICT)) {
+      saveProjectsSyncShadow(state.projects);
+    }
     const persistedProjects = saved("projects", []);
     if (persistedProjects.length !== state.projects.length) {
       throw new Error(`PERSISTENCE_MANAGERS_INCOMPLETE — ${state.projects.length} Projet(s) en mémoire mais ${persistedProjects.length} relu(s) dans le stockage local.`);
