@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D17-ARCHIVES-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D19-ARCHIVE-UX-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -9093,8 +9093,8 @@ function toggleProjectArchiveD18(id) {
   if (!archived) p.reactivatedAt = new Date().toISOString();
   persistProjectsState();
   addActivity(archived ? "📦 Projet archivé" : "♻️ Projet réactivé", p.name, archived ? "Retiré des projets actifs" : "Revenu dans les projets actifs", id);
-  // Revenir à la vue des projets actifs après archivage, sans perdre le projet.
-  projectArchiveFilter = "active";
+  // Préserver le filtre : une réactivation depuis « Archivés » ne doit pas
+  // masquer l'onglet dans lequel l'utilisateur travaille.
   renderProjects();
   if (typeof showDeosToast === "function") showDeosToast(archived ? "Projet archivé. Disponible dans « Archivés »." : "Projet réactivé.", "success");
   return true;
