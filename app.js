@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D21-COCKPIT-DIRECTION-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D22-COCKPIT-TRIAGE-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -4956,40 +4956,59 @@ function completeCockpitNote(id) {
   renderCockpit();
 }
 
-// D21 — Synthèse d'orientation, calculée à partir des données existantes (lecture seule).
-// Chaque élément apparaît au maximum une fois dans cette synthèse.
+// D22 — Classement unique, priorisation des retards et signalement des échéances anciennes.
+// Calcul d'affichage uniquement : aucune réécriture métier ou synchronisation.
 function getCockpitDirectionBuckets() {
   const buckets = { arbitrate: [], pilot: [], follow: [] };
-  const seen = new Set();
-  const add = (bucket, entity, item, reason, due = "") => {
-    if (!item?.id || item.archived || item.archivedAt && item.archived === true) return;
-    const key = `${entity}:${item.id}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    buckets[bucket].push({ entity, id: item.id, title: String(item.title || item.name || "Sans titre"), reason, due });
+  const proposals = [];
+  const todayDelta = value => daysUntil(value);
+  const titleKey = value => String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  const isArchived = item => Boolean(item?.archived || item?.archivedAt && item?.archiveStatus === "archived");
+  const propose = (bucket, entity, item, reason, due = "", attention = false) => {
+    if (!item?.id || isArchived(item)) return;
+    const title = String(item.title || item.name || "Sans titre");
+    proposals.push({ bucket, entity, id: item.id, title, reason, due, attention });
   };
-  const overdue = value => { const n = daysUntil(value); return n !== null && n < 0; };
-  // L'arbitrage correspond uniquement à une décision en attente explicite.
-  ensureArray(state.decisions).filter(d => !d.archived && isPendingDecision(d) && d.status === "review")
-    .forEach(d => add("arbitrate", "decisions", d, "Décision à arbitrer", d.reviewDate));
-  ensureArray(state.actions).filter(a => !a.done && !a.archived && overdue(a.due))
-    .forEach(a => add("pilot", "actions", a, "Action en retard", a.due));
-  ensureArray(state.projects).filter(p => !p.archived).forEach(p => {
+  const overdueReason = (kind, delta) => delta < -60 ? `${kind} · Échéance ancienne à requalifier` : `${kind} · En retard`;
+  // Arbitrage : uniquement un statut de décision qui le demande explicitement.
+  ensureArray(state.decisions).filter(d => !isArchived(d) && d.status === "review")
+    .forEach(d => propose("arbitrate", "decisions", d, "Décision à réexaminer", d.reviewDate));
+  ensureArray(state.actions).filter(a => !a.done && !isArchived(a)).forEach(a => {
+    const delta = todayDelta(a.due);
+    if (delta !== null && delta < 0) propose("pilot", "actions", a, overdueReason("Action", delta), a.due, true);
+    else if (a.status === "red" || a.priorityLevel === "red") propose("pilot", "actions", a, "Action critique", a.due);
+    else if (delta !== null && delta <= 7) propose("pilot", "actions", a, "Échéance proche", a.due);
+  });
+  ensureArray(state.projects).filter(p => !isArchived(p)).forEach(p => {
+    const delta = todayDelta(p.deadline);
     const risk = String(p.risks || "").trim();
     const blocked = /blocage|bloqu[ée]|critique/i.test(`${p.next || ""} ${p.context || ""} ${risk}`);
-    if (overdue(p.deadline) || risk || blocked || p.status === "red" || p.priorityLevel === "red") {
-      add("pilot", "projects", p, overdue(p.deadline) ? "Échéance dépassée" : risk ? "Risque déclaré" : "Projet à surveiller", p.deadline);
-    }
+    if (delta !== null && delta < 0) propose("pilot", "projects", p, overdueReason("Projet", delta), p.deadline, true);
+    else if (risk || blocked || p.status === "red" || p.priorityLevel === "red") propose("pilot", "projects", p, risk ? "Risque déclaré" : "Projet critique", p.deadline);
+    else if (delta !== null && delta <= 7) propose("pilot", "projects", p, "Échéance proche", p.deadline);
+    else propose("follow", "projects", p, "Projet en cours", p.deadline);
   });
-  ensureArray(state.priorities).filter(p => !p.done && !p.archived).forEach(p => {
-    add(p.level === "red" ? "pilot" : "follow", "priorities", p,
-      p.level === "red" ? "Priorité critique" : "Priorité active", p.due);
+  ensureArray(state.priorities).filter(p => !p.done && !isArchived(p)).forEach(p => {
+    const delta = todayDelta(p.due);
+    if (delta !== null && delta < 0) propose("pilot", "priorities", p, overdueReason("Priorité", delta), p.due, true);
+    else if (p.level === "red") propose("pilot", "priorities", p, "Priorité critique", p.due);
+    else if (delta !== null && delta <= 7) propose("pilot", "priorities", p, "Échéance proche", p.due);
+    else propose("follow", "priorities", p, "Priorité active", p.due);
   });
-  // Les projets non critiques constituent des points de suivi, sans jamais réintroduire les archives.
-  ensureArray(state.projects).filter(p => !p.archived).forEach(p => add("follow", "projects", p, "Projet en cours", p.deadline));
-  for (const items of Object.values(buckets)) {
-    items.sort((a,b) => dateRank(a.due) - dateRank(b.due) || a.title.localeCompare(b.title, "fr"));
-  }
+  // Un seul affichage par intitulé normalisé, même si le sujet existe dans plusieurs modules.
+  // Priorité au niveau le plus critique, puis à l'échéance la plus ancienne.
+  const weight = { arbitrate: 0, pilot: 1, follow: 2 };
+  proposals.sort((a,b) => weight[a.bucket] - weight[b.bucket] || dateRank(a.due) - dateRank(b.due) || a.title.localeCompare(b.title,"fr"));
+  const seenIds = new Set();
+  const seenTitles = new Set();
+  proposals.forEach(entry => {
+    const idKey = `${entry.entity}:${entry.id}`;
+    const nameKey = titleKey(entry.title);
+    if (seenIds.has(idKey) || nameKey && seenTitles.has(nameKey)) return;
+    seenIds.add(idKey);
+    if (nameKey) seenTitles.add(nameKey);
+    buckets[entry.bucket].push(entry);
+  });
   return buckets;
 }
 function cockpitDirectionBucketHtml(label, type, items) {
