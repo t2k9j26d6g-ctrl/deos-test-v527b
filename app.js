@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D22-COCKPIT-TRIAGE-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D23-SYNC-FIX-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -9143,11 +9143,16 @@ function projectMini(p) {
   return `<div class="item clickable" onclick="openProject('${p.id}')"><strong>${esc(p.name)}</strong><span class="muted">${esc(p.next || "")}</span>${badge(p.status)}</div>`;
 }
 
+// D23 : tri de présentation uniquement, sans modifier les données stockées.
+function compareProjectsForDisplay(a, b) {
+  return String(a.name || "").localeCompare(String(b.name || ""), "fr", { sensitivity: "base", numeric: true })
+    || String(a.id || "").localeCompare(String(b.id || ""), "en");
+}
 function renderProjects() {
   restoreProjectsFromSyncShadowIfNeeded();
   document.getElementById("viewTitle").textContent = "Projets V5";
   document.querySelectorAll(".nav").forEach(btn => btn.classList.toggle("active", btn.dataset.view === "projects"));
-  const visible = state.projects.filter(p => entityArchiveVisible(p, projectArchiveFilter));
+  const visible = state.projects.filter(p => entityArchiveVisible(p, projectArchiveFilter)).sort(compareProjectsForDisplay);
   appHtml(`<div class="card hero"><div class="row"><div><h2>Projets V5</h2><p class="muted">Le projet transforme : pilotez ici les changements structurés ayant un objectif et un résultat attendu.</p></div>${archiveFilterBarHtml(state.projects, projectArchiveFilter, "setProjectArchiveFilter")}</div></div><details class="card deos-create-details"><summary>Ajouter un projet</summary><div class="deos-create-details-body"><input id="prName" placeholder="Nom"><input id="prNext" placeholder="Prochaine étape"><div class="form-grid"><div><label>Responsable principal</label>${ownerSelect("prOwnerId")}</div><input id="prDeadline" placeholder="Échéance"><input id="prProgress" type="number" min="0" max="100" value="0"><select id="prStatus"><option value="green">Maîtrisé</option><option value="orange">À suivre</option><option value="red">Critique</option></select></div><div class="manager-links"><label>Dossiers liés</label>${folderSelect("prFolders")}</div><button class="action" onclick="addProject()">Ajouter</button></div></details><div class="grid two">${visible.map(projectCard).join("") || `<div class="card full-span empty">Aucun projet ${projectArchiveFilter === "archived" ? "archivé" : "actif"}.</div>`}</div>`);
 }
 function projectCard(p) {
@@ -22175,30 +22180,30 @@ function resolveProjectNonDestructive(localProject = {}, remoteProject = {}, bas
     const lEqualsBase = baseCanonical ? projectCanonicalValuesEqual(l, b) : false;
     const rEqualsBase = baseCanonical ? projectCanonicalValuesEqual(r, b) : false;
 
-    // Une valeur locale vide ou manifestement appauvrie ne doit jamais effacer une valeur distante riche.
-    if ((lEmpty || projectValueLooksDegraded(l, r)) && !rEmpty) {
-      merged[key] = remoteNormalized[key];
-      fromRemoteFields.push(key);
-      continue;
-    }
-    // Si le distant est vide et le local renseigné, on conserve le local.
-    if (!lEmpty && rEmpty) {
-      fromLocalFields.push(key);
-      continue;
-    }
-
+    // D23 : la base commune permet de reconnaître un retrait volontaire.
+    // Sans base, conserver le comportement prudent de récupération des valeurs riches.
     if (baseCanonical) {
-      // Seul le distant a évolué depuis le dernier état connu : on récupère le distant.
       if (lEqualsBase && !rEqualsBase) {
         merged[key] = remoteNormalized[key];
         fromRemoteFields.push(key);
         continue;
       }
-      // Seul le local a évolué et il ne s'est pas appauvri : on conserve le local.
       if (rEqualsBase && !lEqualsBase) {
         fromLocalFields.push(key);
         continue;
       }
+      // Les deux appareils ont modifié le même champ, même si l'un l'a vidé.
+      conflictFields.push(key);
+      continue;
+    }
+    if ((lEmpty || projectValueLooksDegraded(l, r)) && !rEmpty) {
+      merged[key] = remoteNormalized[key];
+      fromRemoteFields.push(key);
+      continue;
+    }
+    if (!lEmpty && rEmpty) {
+      fromLocalFields.push(key);
+      continue;
     }
 
     // Deux valeurs métier réellement renseignées et différentes = vrai conflit.
@@ -22378,12 +22383,12 @@ async function syncProjectsHybridNow(options = {}) {
     let remoteRows = await withProjectsRemoteTimeout(deosRemoteAdapter.listProjects(), "Lecture des Projets distants");
     const preflight = buildProjectsRemotePreview(state.projects, remoteRows);
     if (preflight.duplicateCandidates.length) {
-      throw new Error(`DUPLICATES_MANAGERS_DETECTED — ${preflight.duplicateCandidates.length} groupe(s) de doublons exacts détecté(s). Utilisez d’abord « Réparer les doublons exacts ». `);
+      throw new Error(`DUPLICATES_PROJECTS_DETECTED — ${preflight.duplicateCandidates.length} groupe(s) de doublons exacts détecté(s). Utilisez d’abord « Réparer les doublons exacts ». `);
     }
     let remoteActiveMap = new Map(remoteRows.filter(row => !row.deletedAt).map(row => [String(row.clientId), row]));
     let localChanged = false;
     if (preflight.conflicts.length) {
-      throw new Error(`CONFLICTS_MANAGERS_DETECTED — ${preflight.conflicts.length} vrai(s) conflit(s) métier détecté(s). Utilisez « Voir les conflits » avant toute écriture.`);
+      throw new Error(`CONFLICTS_PROJECTS_DETECTED — ${preflight.conflicts.length} vrai(s) conflit(s) métier détecté(s). Utilisez « Voir les conflits » avant toute écriture.`);
     }
 
     // V5.24B — fusion non destructive des Projets déjà présents des deux côtés AVANT
@@ -22396,7 +22401,7 @@ async function syncProjectsHybridNow(options = {}) {
       const resolution = resolveProjectNonDestructive(local, row.project, shadowMap.get(clientId) || null);
       if (resolution.conflictFields.length) {
         setProjectSyncMeta(clientId, { remoteId: row.remoteId, remoteVersion: Number(row.version || 0), remoteUpdatedAt: row.updatedAt || "", syncStatus: DEOS_LINKS_SYNC_STATUS.CONFLICT, lastSyncError: "CONFLICT", conflictRemote: row, conflictFields: resolution.conflictFields });
-        throw new Error(`CONFLICT_MANAGER_${clientId} — ${resolution.conflictFields.join(", ")}`);
+        throw new Error(`CONFLICT_PROJECT_${clientId} — ${resolution.conflictFields.join(", ")}`);
       }
       let effectiveRow = row;
       if (resolution.localChanged) {
@@ -22491,7 +22496,7 @@ async function syncProjectsHybridNow(options = {}) {
     }
     const persistedProjects = saved("projects", []);
     if (persistedProjects.length !== state.projects.length) {
-      throw new Error(`PERSISTENCE_MANAGERS_INCOMPLETE — ${state.projects.length} Projet(s) en mémoire mais ${persistedProjects.length} relu(s) dans le stockage local.`);
+      throw new Error(`PERSISTENCE_PROJECTS_INCOMPLETE — ${state.projects.length} Projet(s) en mémoire mais ${persistedProjects.length} relu(s) dans le stockage local.`);
     }
     const analysis = buildProjectsRemotePreview(state.projects, await withProjectsRemoteTimeout(deosRemoteAdapter.listProjects(), "Analyse finale des Projets"));
     refreshProjectsSyncRuntimeState({ syncing: false, remoteCount: analysis.remoteCount, lastValidRemoteCount: analysis.remoteCount, lastAnalysis: analysis, lastAnalysisAt: analysis.generatedAt, lastSyncAt: new Date().toLocaleString("fr-FR"), lastError: "", state: analysis.conflicts.length ? DEOS_LINKS_SYNC_STATUS.CONFLICT : DEOS_LINKS_SYNC_STATUS.SYNCED });
@@ -23706,7 +23711,7 @@ function restoreManagersFromSyncShadowIfNeeded(options = {}) {
 
 function persistManagersState(options = {}) {
   persist("managers");
-  if (options.updateShadow !== false && managersSyncIsEnabled()) saveManagersSyncShadow(state.managers);
+  if (options.updateShadow === true && managersSyncIsEnabled()) saveManagersSyncShadow(state.managers);
 }
 function managerFingerprint(manager = {}) { return JSON.stringify(canonicalManagerBusinessData(manager)); }
 
@@ -23820,30 +23825,30 @@ function resolveManagerNonDestructive(localManager = {}, remoteManager = {}, bas
     const lEqualsBase = baseCanonical ? managerCanonicalValuesEqual(l, b) : false;
     const rEqualsBase = baseCanonical ? managerCanonicalValuesEqual(r, b) : false;
 
-    // Une valeur locale vide ou manifestement appauvrie ne doit jamais effacer une valeur distante riche.
-    if ((lEmpty || managerValueLooksDegraded(l, r)) && !rEmpty) {
-      merged[key] = remoteNormalized[key];
-      fromRemoteFields.push(key);
-      continue;
-    }
-    // Si le distant est vide et le local renseigné, on conserve le local.
-    if (!lEmpty && rEmpty) {
-      fromLocalFields.push(key);
-      continue;
-    }
-
+    // D23 : la base commune permet de reconnaître un retrait volontaire.
+    // Sans base, conserver le comportement prudent de récupération des valeurs riches.
     if (baseCanonical) {
-      // Seul le distant a évolué depuis le dernier état connu : on récupère le distant.
       if (lEqualsBase && !rEqualsBase) {
         merged[key] = remoteNormalized[key];
         fromRemoteFields.push(key);
         continue;
       }
-      // Seul le local a évolué et il ne s'est pas appauvri : on conserve le local.
       if (rEqualsBase && !lEqualsBase) {
         fromLocalFields.push(key);
         continue;
       }
+      // Les deux appareils ont modifié le même champ, même si l'un l'a vidé.
+      conflictFields.push(key);
+      continue;
+    }
+    if ((lEmpty || managerValueLooksDegraded(l, r)) && !rEmpty) {
+      merged[key] = remoteNormalized[key];
+      fromRemoteFields.push(key);
+      continue;
+    }
+    if (!lEmpty && rEmpty) {
+      fromLocalFields.push(key);
+      continue;
     }
 
     // Deux valeurs métier réellement renseignées et différentes = vrai conflit.
@@ -24410,7 +24415,7 @@ async function syncManagersHybridNow(options = {}) {
       setManagerSyncMeta(clientId, { remoteId: row.remoteId, remoteVersion: Number(row.version || 0), remoteUpdatedAt: row.updatedAt || "", lastSyncedAt: new Date().toISOString(), syncStatus: DEOS_LINKS_SYNC_STATUS.SYNCED, lastLocalFingerprint: managerFingerprint(byId("managers", clientId) || row.manager), lastSyncError: "", conflictRemote: null, conflictFields: [] });
     }
     if (localChanged) persistManagersState();
-    else if (managersSyncIsEnabled()) saveManagersSyncShadow(state.managers);
+    if (managersSyncIsEnabled() && !ensureArray(state.managers).some(m => getManagerSyncMeta(m.id).syncStatus === DEOS_LINKS_SYNC_STATUS.CONFLICT)) saveManagersSyncShadow(state.managers);
     const persistedManagers = saved("managers", []);
     if (persistedManagers.length !== state.managers.length) {
       throw new Error(`PERSISTENCE_MANAGERS_INCOMPLETE — ${state.managers.length} Manager(s) en mémoire mais ${persistedManagers.length} relu(s) dans le stockage local.`);
