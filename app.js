@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D23-SYNC-FIX-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D24-MAIL-PILOT-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -2363,9 +2363,9 @@ function setView(view) {
   currentView = view;
   if (view !== "graph" && !graphNavigationLock) graphReturnContext = null;
   document.querySelectorAll(".nav").forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
-  const titles = { cockpit: "Cockpit décisionnel", graph: "Vue graphique", folders: "Dossiers", performance: "Performance", priorities: "Priorités V5", actionPlans: "Plans d'action", actions: "Actions", managers: "Managers V5", projects: "Projets V5", decisions: "Décisions V5", journal: "Journal", documents: "Documents", links: "Liens utiles", activity: "Agenda / Réunions", settings: "Paramètres" };
+  const titles = { mailPilot: "Messagerie / Pilotage", cockpit: "Cockpit décisionnel", graph: "Vue graphique", folders: "Dossiers", performance: "Performance", priorities: "Priorités V5", actionPlans: "Plans d'action", actions: "Actions", managers: "Managers V5", projects: "Projets V5", decisions: "Décisions V5", journal: "Journal", documents: "Documents", links: "Liens utiles", activity: "Agenda / Réunions", settings: "Paramètres" };
   document.getElementById("viewTitle").textContent = titles[view] || identity.appName;
-  const views = { cockpit: renderCockpit, graph: renderGraph, folders: renderFolders, performance: renderPerformance, priorities: renderPriorities, actionPlans: renderActionPlans, actions: renderActions, managers: renderManagers, projects: renderProjects, decisions: renderDecisions, journal: renderJournal, documents: renderDocuments, links: renderLinks, activity: renderActivity, settings: renderSettings };
+  const views = { mailPilot: renderMailPilot, cockpit: renderCockpit, graph: renderGraph, folders: renderFolders, performance: renderPerformance, priorities: renderPriorities, actionPlans: renderActionPlans, actions: renderActions, managers: renderManagers, projects: renderProjects, decisions: renderDecisions, journal: renderJournal, documents: renderDocuments, links: renderLinks, activity: renderActivity, settings: renderSettings };
   if (views[view]) views[view]();
 }
 
@@ -29890,3 +29890,82 @@ window.addEventListener("load", () => {
   setTimeout(ensureQuickNoteRailVisible, 0);
   setTimeout(ensureQuickNoteRailVisible, 250);
 });
+
+// D24 — La messagerie référence les Actions/Décisions existantes.
+var mailPilotShowClosed = false;
+function mailPilotCategoryLabel(category) {
+  return ({decide:'À décider',delegate:'À déléguer',waiting:'En attente'})[category] || '';
+}
+function mailPilotSafeUrl(value) {
+  try { const url = new URL(String(value || '').trim());
+    return url.protocol === 'https:' && url.hostname === 'mail.google.com' && !url.username && !url.password ? url.href : '';
+  } catch (_) { return ''; }
+}
+function mailPilotRows() {
+  return ['actions','decisions'].flatMap(type => ensureArray(state[type]).filter(item => item.mailPilot && mailPilotCategoryLabel(item.mailPilot.category)).map(item => ({type,item})))
+    .sort((a,b) => String(a.item.title || '').localeCompare(String(b.item.title || ''),'fr') || String(a.item.id).localeCompare(String(b.item.id)));
+}
+function mailPilotClosed(row) { return row.type === 'actions' ? Boolean(row.item.done) : ['decided','applying','applied'].includes(row.item.status); }
+function mailPilotNotice(message) { if (typeof showDeosToast === 'function') showDeosToast(message,'warning'); else alert(message); }
+function renderMailPilot() {
+  const rows = mailPilotRows();
+  const targets = ['actions','decisions'].flatMap(type => ensureArray(state[type]).filter(item => !isEntityArchived(item)).map(item => `<option value="${esc(type+':'+item.id)}">${type === 'actions' ? 'Action' : 'Décision'} · ${esc(item.title || item.id)}</option>`)).join('');
+  const columns = ['decide','delegate','waiting'].map(category => {
+    const items = rows.map((row,index)=>({...row,index})).filter(row=>row.item.mailPilot.category===category && !isEntityArchived(row.item) && (mailPilotShowClosed || !mailPilotClosed(row)));
+    return `<section class="card"><h2>${mailPilotCategoryLabel(category)} <span class="badge">${items.length}</span></h2>${items.map(row=>{
+      const item=row.item, due=row.type==='actions'?item.due:item.reviewDate;
+      const url=mailPilotSafeUrl(item.mailPilot.url);
+      return `<article class="item"><strong>${esc(item.title)}</strong><span class="muted">${esc(item.owner || 'Responsable à préciser')}</span><span class="meta">${due ? 'Échéance : '+esc(due) : 'Sans échéance'} · ${mailPilotClosed(row)?'Terminé':category==='waiting'?'En attente':category==='decide'?'À décider':'À déléguer'}</span><div class="row-actions">${url?`<a class="secondary" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Ouvrir Gmail</a>`:''}<button class="secondary" onclick="openMailPilotEntity(${row.index})">Ouvrir DEOS</button><button class="secondary" onclick="editMailPilotRow(${row.index})">Modifier le suivi</button><button class="secondary" onclick="toggleMailPilotRow(${row.index})">${mailPilotClosed(row)?'Réouvrir':'Terminer'}</button></div></article>`;
+    }).join('') || '<p class="muted">Aucun sujet à traiter.</p>'}</section>`;
+  }).join('');
+  appHtml(`<div class="card hero"><h2>Messagerie / Pilotage</h2><p class="muted">Le mail sert de référence. Les actions, décisions et relances sont suivies dans DEOS.</p><p class="muted">Ajout par lien Gmail ; aucune récupération automatique des messages. Aucun mail n'est déplacé ou supprimé.</p><label><input type="checkbox" ${mailPilotShowClosed?'checked':''} onchange="mailPilotShowClosed=this.checked;renderMailPilot()"> Afficher aussi les sujets terminés</label></div><details id="mailPilotForm" class="card deos-create-details"><summary>Ajouter ou rattacher un mail</summary><div class="deos-create-details-body"><label>Élément DEOS<select id="mpTarget" onchange="loadMailPilotTarget()"><option value="">Créer un nouvel élément</option>${targets}</select></label><label>Catégorie<select id="mpCategory"><option value="decide">À décider</option><option value="delegate">À déléguer</option><option value="waiting">En attente</option></select></label><label>Objet / résultat attendu<input id="mpTitle" maxlength="300"></label><label>Responsable<input id="mpOwner" maxlength="200" placeholder="Nom du responsable"></label><label>Échéance ou date de relance<input id="mpDue" type="date"></label><label>Lien du message Gmail<input id="mpUrl" type="url" placeholder="https://mail.google.com/…"></label><p class="muted">À décider crée une décision à prendre. Les deux autres catégories créent une action. Tu peux aussi choisir un élément existant pour éviter un doublon.</p><button class="action" onclick="saveMailPilotForm()">Enregistrer le suivi</button></div></details><div class="grid three">${columns}</div>`);
+}
+function mailPilotTarget(value) {
+  const match=String(value || '').match(/^(actions|decisions):(.+)$/);
+  return match ? {type:match[1],item:byId(match[1],match[2])} : null;
+}
+function loadMailPilotTarget() {
+  const target=mailPilotTarget(document.getElementById('mpTarget').value);
+  if (!target?.item) return;
+  const item=target.item;
+  document.getElementById('mpTitle').value=item.title || '';
+  document.getElementById('mpOwner').value=item.owner || '';
+  document.getElementById('mpDue').value=(target.type==='actions'?item.due:item.reviewDate) || '';
+  document.getElementById('mpCategory').value=item.mailPilot?.category || (target.type==='decisions'?'decide':'delegate');
+  document.getElementById('mpUrl').value=item.mailPilot?.url || mailPilotSafeUrl(item.link) || '';
+}
+function saveMailPilotForm() {
+  const value=id=>document.getElementById(id).value.trim();
+  const title=value('mpTitle'),owner=value('mpOwner'),category=value('mpCategory'),url=mailPilotSafeUrl(value('mpUrl')),due=value('mpDue');
+  if (!title || !url || !mailPilotCategoryLabel(category)) return mailPilotNotice('Renseigne un objet et un lien Gmail HTTPS valide.');
+  const type=category==='decide'?'decisions':'actions';
+  const selected=value('mpTarget');
+  const target=mailPilotTarget(selected);
+  if (selected && (!target?.item || target.type!==type)) return mailPilotNotice('Choisis une décision pour « À décider », ou une action pour les autres catégories.');
+  const existing=mailPilotRows().find(row=>mailPilotSafeUrl(row.item.mailPilot.url)===url && row.item.id!==target?.item?.id);
+  if (existing) return mailPilotNotice('Ce lien Gmail est déjà suivi. Modifie le sujet existant.');
+  const item=target?.item || normalizeEntity(type,{id:newId(type==='actions'?'action':'decision'),title,status:'review',date:today()});
+  item.title=title;item.owner=owner;
+  if(type==='actions') {item.due=due; if(!target) item.done=false;} else item.reviewDate=due;
+  item.mailPilot={...(item.mailPilot || {}),category,url};
+  if (!target) state[type].unshift(item);
+  persist(type);
+  addActivity('📬 Pilotage mail',title,mailPilotCategoryLabel(category),item.id);
+  renderMailPilot();
+}
+function editMailPilotRow(index) {
+  const row=mailPilotRows()[index];if(!row)return;
+  document.getElementById('mailPilotForm').open=true;
+  document.getElementById('mpTarget').value=row.type+':'+row.item.id;
+  loadMailPilotTarget();document.getElementById('mpTitle').focus();
+}
+function openMailPilotEntity(index) {
+  const row=mailPilotRows()[index];if(!row)return;
+  setView(row.type);if(row.type==='actions')openAction(row.item.id);else openDecision(row.item.id);
+}
+function toggleMailPilotRow(index) {
+  const row=mailPilotRows()[index];if(!row)return;
+  if(row.type==='actions') row.item.done=!row.item.done;
+  else row.item.status=mailPilotClosed(row)?'review':'decided';
+  persist(row.type);renderMailPilot();
+}
