@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D24-MAIL-PILOT-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D25-MAIL-PILOT-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
