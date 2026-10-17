@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D25-MAIL-BRIEF-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D25A-STARTUP-FIX-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -883,25 +883,36 @@ const defaults = {
   agenda: []
 };
 
-async function loadJson(name) {
+// D25A : accès local prioritaire et lectures initiales bornées.
+async function fetchStartupJson(url, fallback, timeoutMs = 6000) {
+  const controller = new AbortController();
+  let timer;
   try {
-    const r = await fetch(`data/${name}.json?v=${Date.now()}`);
-    if (!r.ok) return defaults[name] || [];
-    return await r.json();
-  } catch {
-    return defaults[name] || [];
-  }
+    return await Promise.race([
+      fetch(url, { signal: controller.signal }).then(async response => response.ok ? await response.json() : fallback),
+      new Promise((_, reject) => { timer = setTimeout(() => { controller.abort(); reject(new Error("STARTUP_DATA_TIMEOUT")); }, timeoutMs); })
+    ]);
+  } catch (_) {
+    console.warn("[DEOS STARTUP] Source initiale indisponible ; utilisation du repli local.");
+    return fallback;
+  } finally { clearTimeout(timer); }
 }
-
+async function loadJson(name) {
+  return fetchStartupJson(`data/${name}.json?v=${Date.now()}`, defaults[name] || []);
+}
 async function loadIdentityDefaults() {
-  try {
-    const r = await fetch(`data/settings.json?v=${Date.now()}`);
-    if (!r.ok) return identityDefaults;
-    const data = await r.json();
-    return normalizeIdentity(data);
-  } catch {
-    return identityDefaults;
+  return normalizeIdentity(await fetchStartupJson(`data/settings.json?v=${Date.now()}`, identityDefaults));
+}
+function setDeosStartupStatus(message, failed = false) {
+  let panel = document.getElementById("deosStartupStatus");
+  if (!message) { if (panel) panel.remove(); return; }
+  if (!panel) {
+    panel = document.createElement("div"); panel.id = "deosStartupStatus";
+    panel.className = "card"; panel.setAttribute("role", "status");
+    document.getElementById("app").before(panel);
   }
+  panel.textContent = message;
+  panel.style.border = failed ? "1px solid #b45309" : "1px solid #93c5fd";
 }
 
 function saved(name, fallback) {
@@ -2280,15 +2291,22 @@ function addActivity(type, title, detail = "", entityId = "") {
 }
 
 async function init() {
-  identity = savedIdentity(await loadIdentityDefaults());
+  setDeosStartupStatus("Chargement des données de cet appareil…");
+  const initialDataPromise = Promise.all(entities.map(name =>
+    deosDataService.exists(name) ? Promise.resolve(null) : loadJson(name)));
+  identity = savedIdentity(deosDataService.exists("identity") ? identityDefaults : await loadIdentityDefaults());
   persistIdentity();
   applyIdentity();
   actionTitleMigrationMode = true;
   actionTitleMigrationStats = { corrected: 0, examples: [] };
   deosInitialEntityLoad = true;
   try {
-    for (const name of entities) {
-      state[name] = saved(name, await loadJson(name));
+    // Les sources manquantes sont lues en parallèle ; une collection locale vide
+    // est une donnée valide, jamais remplacée par les exemples de démarrage.
+    const initialData = await initialDataPromise;
+    for (let index = 0; index < entities.length; index++) {
+      const name = entities[index];
+      state[name] = saved(name, initialData[index] || []);
       persist(name);
     }
   } finally {
@@ -2307,7 +2325,6 @@ async function init() {
     });
   }
   state.settings = ensureSettings(settingsRepository.load({}));
-  await initializeRemoteServices({ silent: true });
   initializeLinksHybridSync({ skipAutoSync: false });
   initializeActionsHybridSync({ skipAutoSync: false });
   initializeProjectsHybridSync({ skipAutoSync: false });
@@ -2356,6 +2373,23 @@ async function init() {
     setView("settings");
   } else {
     setView("cockpit");
+  }
+  // Le cockpit et la navigation sont disponibles AVANT l'attente de connexion.
+  setDeosStartupStatus("Données locales chargées. Connexion distante en cours ; la synchronisation n'est pas encore confirmée.");
+  try {
+    await initializeRemoteServices({ silent: true });
+    initializeLinksHybridSync({ skipAutoSync: false });
+    initializeActionsHybridSync({ skipAutoSync: false });
+    initializeProjectsHybridSync({ skipAutoSync: false });
+    initializeFoldersHybridSync({ skipAutoSync: false });
+    initializeManagersHybridSync({ skipAutoSync: false });
+    initializeDecisionDocumentHybridSync({ skipAutoSync: false });
+    setDeosStartupStatus(deosRemoteRuntime.lastError
+      ? "Connexion distante : " + deosRemoteRuntime.lastError + " Consultez Paramètres ; les données locales restent accessibles."
+      : "", Boolean(deosRemoteRuntime.lastError));
+  } catch (error) {
+    console.error("[DEOS STARTUP REMOTE]", error);
+    setDeosStartupStatus("Connexion distante non confirmée. Les données locales restent accessibles ; consultez Paramètres.", true);
   }
 }
 
@@ -25634,6 +25668,7 @@ function remoteStartupModeKey() {
   const config = resolvedRemoteConfig();
   if (!config.enabled) return "local";
   if (deosRemoteRuntime.temporaryLocal) return "test_local_temporary";
+  if (deosRemoteRuntime.connectionStatus === "pending") return "test_connecting";
   if (deosRemoteRuntime.connectionStatus === "authenticated" && deosRemoteRuntime.workspace && !deosRemoteRuntime.requiresWorkspaceSelection) return "test_connected";
   return "test_signed_out";
 }
@@ -25641,6 +25676,7 @@ function remoteStartupModeKey() {
 function remoteStartupModeLabel(mode = remoteStartupModeKey()) {
   return ({
     local: "MODE LOCAL",
+    test_connecting: "CONNEXION EN COURS",
     test_signed_out: "MODE TEST — NON CONNECTÉ",
     test_connected: "MODE TEST — CONNECTÉ",
     test_local_temporary: "TEST — LOCAL TEMPORAIRE"
@@ -28710,7 +28746,10 @@ function updateGoogleSyncUi() {
   return { lastSync, nextSync, eventCount };
 }
 
-init();
+init().catch(error => {
+  console.error("[DEOS STARTUP]", error);
+  setDeosStartupStatus("Démarrage interrompu : " + (error?.message || "erreur inattendue") + ". Conservez les données de ce navigateur.", true);
+});
 
 
 
