@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D25-MAIL-PILOT-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D25-MAIL-BRIEF-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -2363,9 +2363,9 @@ function setView(view) {
   currentView = view;
   if (view !== "graph" && !graphNavigationLock) graphReturnContext = null;
   document.querySelectorAll(".nav").forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
-  const titles = { dailyBrief: "Brief du jour", mailPilot: "Messagerie / Pilotage", cockpit: "Cockpit décisionnel", graph: "Vue graphique", folders: "Dossiers", performance: "Performance", priorities: "Priorités V5", actionPlans: "Plans d'action", actions: "Actions", managers: "Managers V5", projects: "Projets V5", decisions: "Décisions V5", journal: "Journal", documents: "Documents", links: "Liens utiles", activity: "Agenda / Réunions", settings: "Paramètres" };
+  const titles = { mailPilot: "Messagerie / Pilotage", cockpit: "Cockpit décisionnel", graph: "Vue graphique", folders: "Dossiers", performance: "Performance", priorities: "Priorités V5", actionPlans: "Plans d'action", actions: "Actions", managers: "Managers V5", projects: "Projets V5", decisions: "Décisions V5", journal: "Journal", documents: "Documents", links: "Liens utiles", activity: "Agenda / Réunions", settings: "Paramètres" };
   document.getElementById("viewTitle").textContent = titles[view] || identity.appName;
-  const views = { dailyBrief: renderDailyBrief, mailPilot: renderMailPilot, cockpit: renderCockpit, graph: renderGraph, folders: renderFolders, performance: renderPerformance, priorities: renderPriorities, actionPlans: renderActionPlans, actions: renderActions, managers: renderManagers, projects: renderProjects, decisions: renderDecisions, journal: renderJournal, documents: renderDocuments, links: renderLinks, activity: renderActivity, settings: renderSettings };
+  const views = { mailPilot: renderMailPilot, cockpit: renderCockpit, graph: renderGraph, folders: renderFolders, performance: renderPerformance, priorities: renderPriorities, actionPlans: renderActionPlans, actions: renderActions, managers: renderManagers, projects: renderProjects, decisions: renderDecisions, journal: renderJournal, documents: renderDocuments, links: renderLinks, activity: renderActivity, settings: renderSettings };
   if (views[view]) views[view]();
 }
 
@@ -29894,7 +29894,7 @@ window.addEventListener("load", () => {
 // D24 — La messagerie référence les Actions/Décisions existantes.
 var mailPilotShowClosed = false;
 function mailPilotCategoryLabel(category) {
-  return ({decide:'À décider',delegate:'À piloter',waiting:'À suivre',reply:'Réponse à préparer'})[category] || '';
+  return ({decide:'À décider',delegate:'À déléguer',waiting:'En attente'})[category] || '';
 }
 function mailPilotSafeUrl(value) {
   try { const url = new URL(String(value || '').trim());
@@ -29907,39 +29907,18 @@ function mailPilotRows() {
 }
 function mailPilotClosed(row) { return row.type === 'actions' ? Boolean(row.item.done) : ['decided','applying','applied'].includes(row.item.status); }
 function mailPilotNotice(message) { if (typeof showDeosToast === 'function') showDeosToast(message,'warning'); else alert(message); }
-function dailyBriefDateLabel() {
-  try { return new Intl.DateTimeFormat('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'}).format(new Date()); }
-  catch (_) { return isoToday(); }
-}
-function dailyBriefRowHtml(row) {
-  const item=row.item, due=row.type==='actions'?item.due:item.reviewDate;
-  const url=mailPilotSafeUrl(item.mailPilot.url);
-  const late=Boolean(due && due<isoToday() && !mailPilotClosed(row));
-  return `<article class="brief-item${late?' brief-item-late':''}"><div class="brief-item-main"><strong>${esc(item.title)}</strong><span>${esc(item.owner || 'Responsable à préciser')}</span><small>${due ? (late?'En retard depuis le ':'Échéance / relance : ')+esc(due) : 'Sans échéance renseignée'}</small></div><div class="row-actions">${url?`<a class="secondary" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Gmail</a>`:''}<button class="secondary" onclick="openMailPilotEntity(${row.index})">Ouvrir</button><button class="secondary" onclick="editMailPilotRow(${row.index})">Modifier</button><button class="action" onclick="toggleMailPilotRow(${row.index})">Régler</button></div></article>`;
-}
-function renderDailyBrief() {
-  const all=mailPilotRows().map((row,index)=>({...row,index})).filter(row=>!isEntityArchived(row.item));
-  const open=all.filter(row=>!mailPilotClosed(row));
-  const closed=all.filter(row=>mailPilotClosed(row));
-  const blocks=['decide','delegate','waiting','reply'].map(category=>{
-    const items=open.filter(row=>row.item.mailPilot.category===category);
-    return `<section class="card brief-column brief-${category}"><div class="brief-column-head"><h2>${mailPilotCategoryLabel(category)}</h2><span class="badge">${items.length}</span></div>${items.length?items.map(dailyBriefRowHtml).join(''):'<p class="muted brief-empty">Aucun sujet ouvert.</p>'}</section>`;
-  }).join('');
-  const late=open.filter(row=>{const due=row.type==='actions'?row.item.due:row.item.reviewDate;return due&&due<isoToday();}).length;
-  appHtml(`<section class="card hero brief-hero"><div><p class="brief-date">${esc(dailyBriefDateLabel())}</p><h2>Brief du jour</h2><p class="muted">Une vue courte pour décider, piloter, relancer et préparer les réponses. Le mail reste une pièce de référence ; DEOS porte le suivi.</p></div><div class="brief-kpis"><button onclick="document.querySelector('.brief-decide')?.scrollIntoView({behavior:'smooth'})"><strong>${open.filter(r=>r.item.mailPilot.category==='decide').length}</strong><span>à décider</span></button><button onclick="document.querySelector('.brief-delegate')?.scrollIntoView({behavior:'smooth'})"><strong>${open.filter(r=>r.item.mailPilot.category==='delegate').length}</strong><span>à piloter</span></button><button class="${late?'brief-alert':''}" onclick="document.querySelector('.brief-item-late')?.scrollIntoView({behavior:'smooth'})"><strong>${late}</strong><span>en retard</span></button><button onclick="setView('mailPilot')"><strong>＋</strong><span>ajouter</span></button></div></section><div class="brief-grid">${blocks}</div><details class="card brief-closed"><summary>Sujets réglés récemment <span class="badge">${closed.length}</span></summary>${closed.length?closed.slice(0,12).map(row=>`<article class="brief-done"><strong>${esc(row.item.title)}</strong><span>${mailPilotCategoryLabel(row.item.mailPilot.category)}</span><button class="secondary" onclick="toggleMailPilotRow(${row.index})">Réouvrir</button></article>`).join(''):'<p class="muted">Aucun sujet réglé.</p>'}</details>`);
-}
 function renderMailPilot() {
   const rows = mailPilotRows();
   const targets = ['actions','decisions'].flatMap(type => ensureArray(state[type]).filter(item => !isEntityArchived(item)).map(item => `<option value="${esc(type+':'+item.id)}">${type === 'actions' ? 'Action' : 'Décision'} · ${esc(item.title || item.id)}</option>`)).join('');
-  const columns = ['decide','delegate','waiting','reply'].map(category => {
+  const columns = ['decide','delegate','waiting'].map(category => {
     const items = rows.map((row,index)=>({...row,index})).filter(row=>row.item.mailPilot.category===category && !isEntityArchived(row.item) && (mailPilotShowClosed || !mailPilotClosed(row)));
     return `<section class="card"><h2>${mailPilotCategoryLabel(category)} <span class="badge">${items.length}</span></h2>${items.map(row=>{
       const item=row.item, due=row.type==='actions'?item.due:item.reviewDate;
       const url=mailPilotSafeUrl(item.mailPilot.url);
-      return `<article class="item"><strong>${esc(item.title)}</strong><span class="muted">${esc(item.owner || 'Responsable à préciser')}</span><span class="meta">${due ? 'Échéance : '+esc(due) : 'Sans échéance'} · ${mailPilotClosed(row)?'Terminé':mailPilotCategoryLabel(category)}</span><div class="row-actions">${url?`<a class="secondary" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Ouvrir Gmail</a>`:''}<button class="secondary" onclick="openMailPilotEntity(${row.index})">Ouvrir DEOS</button><button class="secondary" onclick="editMailPilotRow(${row.index})">Modifier le suivi</button><button class="secondary" onclick="toggleMailPilotRow(${row.index})">${mailPilotClosed(row)?'Réouvrir':'Terminer'}</button></div></article>`;
+      return `<article class="item"><strong>${esc(item.title)}</strong><span class="muted">${esc(item.owner || 'Responsable à préciser')}</span><span class="meta">${due ? 'Échéance : '+esc(due) : 'Sans échéance'} · ${mailPilotClosed(row)?'Terminé':category==='waiting'?'En attente':category==='decide'?'À décider':'À déléguer'}</span><div class="row-actions">${url?`<a class="secondary" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Ouvrir Gmail</a>`:''}<button class="secondary" onclick="openMailPilotEntity(${row.index})">Ouvrir DEOS</button><button class="secondary" onclick="editMailPilotRow(${row.index})">Modifier le suivi</button><button class="secondary" onclick="toggleMailPilotRow(${row.index})">${mailPilotClosed(row)?'Réouvrir':'Terminer'}</button></div></article>`;
     }).join('') || '<p class="muted">Aucun sujet à traiter.</p>'}</section>`;
   }).join('');
-  appHtml(`<div class="card hero"><h2>Messagerie / Pilotage</h2><p class="muted">Le mail sert de référence. Les actions, décisions et relances sont suivies dans DEOS.</p><p class="muted">Ajout par lien Gmail ; aucune récupération automatique des messages. Aucun mail n'est déplacé ou supprimé.</p><div class="row-actions"><button class="action" onclick="setView('dailyBrief')">Voir le brief du jour</button></div><label><input type="checkbox" ${mailPilotShowClosed?'checked':''} onchange="mailPilotShowClosed=this.checked;renderMailPilot()"> Afficher aussi les sujets terminés</label></div><details id="mailPilotForm" class="card deos-create-details"><summary>Ajouter ou rattacher un mail</summary><div class="deos-create-details-body"><label>Élément DEOS<select id="mpTarget" onchange="loadMailPilotTarget()"><option value="">Créer un nouvel élément</option>${targets}</select></label><label>Catégorie<select id="mpCategory"><option value="decide">À décider</option><option value="delegate">À piloter</option><option value="waiting">À suivre</option><option value="reply">Réponse à préparer</option></select></label><label>Objet / résultat attendu<input id="mpTitle" maxlength="300"></label><label>Responsable<input id="mpOwner" maxlength="200" placeholder="Nom du responsable"></label><label>Échéance ou date de relance<input id="mpDue" type="date"></label><label>Lien du message Gmail<input id="mpUrl" type="url" placeholder="https://mail.google.com/…"></label><p class="muted">« À décider » crée une décision. Les autres catégories créent une action. Tu peux choisir un élément existant pour éviter un doublon.</p><button class="action" onclick="saveMailPilotForm()">Enregistrer le suivi</button></div></details><div class="grid four mail-pilot-grid">${columns}</div>`);
+  appHtml(`<div class="card hero"><h2>Messagerie / Pilotage</h2><p class="muted">Le mail sert de référence. Les actions, décisions et relances sont suivies dans DEOS.</p><p class="muted">Ajout par lien Gmail ; aucune récupération automatique des messages. Aucun mail n'est déplacé ou supprimé.</p><label><input type="checkbox" ${mailPilotShowClosed?'checked':''} onchange="mailPilotShowClosed=this.checked;renderMailPilot()"> Afficher aussi les sujets terminés</label></div>${mailBriefPanelHtml()}<details id="mailPilotForm" class="card deos-create-details"><summary>Ajouter ou rattacher un mail</summary><div class="deos-create-details-body"><label>Élément DEOS<select id="mpTarget" onchange="loadMailPilotTarget()"><option value="">Créer un nouvel élément</option>${targets}</select></label><label>Catégorie<select id="mpCategory"><option value="decide">À décider</option><option value="delegate">À déléguer</option><option value="waiting">En attente</option></select></label><label>Objet / résultat attendu<input id="mpTitle" maxlength="300"></label><label>Responsable<input id="mpOwner" maxlength="200" placeholder="Nom du responsable"></label><label>Échéance ou date de relance<input id="mpDue" type="date"></label><label>Lien du message Gmail<input id="mpUrl" type="url" placeholder="https://mail.google.com/…"></label><p class="muted">À décider crée une décision à prendre. Les deux autres catégories créent une action. Tu peux aussi choisir un élément existant pour éviter un doublon.</p><button class="action" onclick="saveMailPilotForm()">Enregistrer le suivi</button></div></details><div class="grid three">${columns}</div>`);
 }
 function mailPilotTarget(value) {
   const match=String(value || '').match(/^(actions|decisions):(.+)$/);
@@ -29976,7 +29955,6 @@ function saveMailPilotForm() {
 }
 function editMailPilotRow(index) {
   const row=mailPilotRows()[index];if(!row)return;
-  if (typeof currentView!=='undefined' && currentView!=='mailPilot') setView('mailPilot');
   document.getElementById('mailPilotForm').open=true;
   document.getElementById('mpTarget').value=row.type+':'+row.item.id;
   loadMailPilotTarget();document.getElementById('mpTitle').focus();
@@ -29989,5 +29967,69 @@ function toggleMailPilotRow(index) {
   const row=mailPilotRows()[index];if(!row)return;
   if(row.type==='actions') row.item.done=!row.item.done;
   else row.item.status=mailPilotClosed(row)?'review':'decided';
-  persist(row.type);if(typeof currentView!=='undefined' && currentView==='dailyBrief')renderDailyBrief();else renderMailPilot();
+  persist(row.type);renderMailPilot();
+}
+
+// D25 — Brief daté importable, transporté par Documents.
+var mailBriefSelectedId = '';
+var mailBriefPending = null;
+function normalizeMailBrief(raw) {
+  if (!raw || raw.schema !== 'deos.mailBrief.v1' || !/^\d{4}-\d{2}-\d{2}$/.test(raw.date || '') || !Array.isArray(raw.items) || raw.items.length>40) throw new Error('Format de brief DEOS invalide (40 sujets maximum).');
+  if(new Date(raw.date+'T12:00:00Z').toISOString().slice(0,10)!==raw.date) throw new Error('Date du brief invalide.');
+  const text=(value,max)=>String(value || '').trim().slice(0,max);
+  const stamp=new Date(raw.generatedAt);if(!Number.isFinite(stamp.getTime()))throw new Error('Date de préparation invalide.');
+  const ids=new Set();
+  const items=raw.items.map(item=>{
+    if(!item || !/^[a-zA-Z0-9_-]{1,100}$/.test(item.id || '') || ids.has(item.id))throw new Error('Identifiant de sujet absent ou dupliqué.');
+    ids.add(item.id);
+    const url=mailPilotSafeUrl(item.url);
+    if(!url || !text(item.title,300) || !['decide','delegate','waiting','info'].includes(item.category))throw new Error('Sujet incomplet ou lien Gmail invalide.');
+    const due=text(item.due,10);
+    if(due && (!/^\d{4}-\d{2}-\d{2}$/.test(due) || new Date(due+'T12:00:00Z').toISOString().slice(0,10)!==due))throw new Error('Échéance invalide.');
+    return {id:item.id,title:text(item.title,300),summary:text(item.summary,3000),proposal:text(item.proposal,2000),owner:text(item.owner,200),due,category:item.category,url};
+  });
+  return {schema:'deos.mailBrief.v1',date:raw.date,generatedAt:stamp.toISOString(),scope:text(raw.scope,2000),summary:text(raw.summary,3000),items};
+}
+function mailBriefDocuments() {
+  return ensureArray(state.documents).filter(doc=>doc.mailBrief?.schema==='deos.mailBrief.v1' && !isEntityArchived(doc))
+    .slice().sort((a,b)=>String(b.mailBrief.date).localeCompare(String(a.mailBrief.date)) || String(b.mailBrief.generatedAt).localeCompare(String(a.mailBrief.generatedAt)));
+}
+function mailBriefCurrent() {
+  const docs=mailBriefDocuments();return docs.find(doc=>doc.id===mailBriefSelectedId) || docs[0] || null;
+}
+function mailBriefPanelHtml() {
+  const docs=mailBriefDocuments(),doc=mailBriefCurrent(),brief=doc?.mailBrief;
+  const pending=mailBriefPending;
+  return `<section class="card"><h2>Brief mails</h2><p class="muted">Synthèse préparée à partir des mails consultés, puis importée ici. Aucun rafraîchissement automatique de Gmail.</p><label>Importer un brief JSON<input type="file" accept=".json,application/json" onchange="previewMailBriefFile(event)"></label>${pending?`<div class="item"><strong>Import proposé : ${esc(pending.date)} · ${pending.items.length} sujets</strong><p>${esc(pending.summary)}</p><button class="action" onclick="confirmMailBriefImport()">Confirmer l'import du brief</button><button class="secondary" onclick="mailBriefPending=null;renderMailPilot()">Annuler</button></div>`:''}${docs.length?`<label>Historique<select onchange="mailBriefSelectedId=this.value;renderMailPilot()">${docs.map(d=>`<option value="${esc(d.id)}" ${d.id===doc.id?'selected':''}>${esc(d.mailBrief.date)}</option>`).join('')}</select></label>`:''}${brief?`<h3>Brief du ${esc(brief.date)} ${brief.date!==localIsoDate()?'<span class="badge">Brief antérieur ou à venir</span>':''}</h3><p>${esc(brief.summary)}</p><p class="muted">Préparé le ${esc(brief.generatedAt)} · ${esc(brief.scope)}</p>${brief.items.map((item,index)=>{
+  const linked=mailPilotRows().find(row=>mailPilotSafeUrl(row.item.mailPilot.url)===mailPilotSafeUrl(item.url));
+  return `<article class="item"><strong>${esc(item.title)}</strong><span class="meta">${item.category==='info'?'Pour information':mailPilotCategoryLabel(item.category)}</span><p>${esc(item.summary)}</p>${item.proposal?`<p><strong>Suite proposée :</strong> ${esc(item.proposal)}</p>`:''}${item.owner||item.due?`<span class="muted">${item.owner?'Responsable proposé : '+esc(item.owner):''}${item.due?' · Échéance proposée : '+esc(item.due):''}</span>`:''}<div class="row-actions"><a class="secondary" href="${esc(mailPilotSafeUrl(item.url))}" target="_blank" rel="noopener noreferrer">Ouvrir Gmail</a>${linked?`<button class="secondary" onclick="prepareMailBriefTracking(${index})">Voir le suivi existant</button>`:item.category!=='info'?`<button class="secondary" onclick="prepareMailBriefTracking(${index})">Préparer le suivi DEOS</button>`:''}</div></article>`;
+  }).join('')}`:'<p class="muted">Aucun brief importé. Tes suivis manuels restent disponibles ci-dessous.</p>'}</section>`;
+}
+async function previewMailBriefFile(event) {
+  const file=event.target.files?.[0];if(!file)return;
+  try {
+    if(file.size>1024*1024)throw new Error('Le brief dépasse 1 Mo.');
+    const parsed=normalizeMailBrief(JSON.parse(await file.text()));
+    mailBriefPending=parsed;renderMailPilot();
+  } catch(error){mailBriefPending=null;mailPilotNotice(error.message || 'Lecture du brief impossible.');}
+}
+function confirmMailBriefImport() {
+  if(!mailBriefPending)return;
+  let brief;try{brief=normalizeMailBrief(mailBriefPending)}catch(error){return mailPilotNotice(error.message)}
+  const id='mailbrief-'+brief.date;
+  const current=byId('documents',id);
+  if(current && current.mailBrief?.schema!=='deos.mailBrief.v1')return mailPilotNotice('Un autre document utilise cet identifiant. Aucun changement effectué.');
+  if(current && current.mailBrief.generatedAt>=brief.generatedAt)return mailPilotNotice('Un brief identique ou plus récent existe déjà pour cette date.');
+  const item=normalizeEntity('documents',{...(current || {}),id,title:'Brief mails — '+brief.date,type:'Brief mails',date:brief.date,summary:brief.summary,content:brief.items.map(i=>i.title+'\n'+i.summary+'\n'+i.proposal+'\n'+i.url).join('\n\n'),mailBrief:brief});
+  if(current)state.documents[state.documents.indexOf(current)]=item;else state.documents.unshift(item);
+  persist('documents');mailBriefSelectedId=id;mailBriefPending=null;renderMailPilot();
+}
+function prepareMailBriefTracking(index) {
+  const item=mailBriefCurrent()?.mailBrief.items[index];if(!item)return;
+  const linked=mailPilotRows().findIndex(row=>mailPilotSafeUrl(row.item.mailPilot.url)===mailPilotSafeUrl(item.url));
+  if(linked>=0)return openMailPilotEntity(linked);
+  if(item.category==='info')return;
+  document.getElementById('mailPilotForm').open=true;
+  for(const [id,value] of Object.entries({mpTarget:'',mpTitle:item.title,mpCategory:item.category,mpOwner:item.owner,mpDue:item.due,mpUrl:item.url}))document.getElementById(id).value=value || '';
+  document.getElementById('mpTitle').focus();
 }
