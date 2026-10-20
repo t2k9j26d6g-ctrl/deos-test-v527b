@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D25C-PRINT-HIERARCHY-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D25D-DOUBLONS-DIAGNOSTIC-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -27928,7 +27928,41 @@ renderSettings = function renderSettingsWithRemote(message = "") {
   mountRemoteSettingsCard();
   mountMultiDeviceSyncSettingsCard();
   enhanceSettingsAccordions();
+  mountDuplicateDiagnosticCard();
 };
+
+// D25D: audit strictement en lecture seule. Aucun appel de sauvegarde ni suppression.
+function duplicateAuditNormalize(value) {
+  return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+function duplicateAuditData() {
+  const types = [{key:"folders",label:"Dossiers",field:"name"},{key:"projects",label:"Projets",field:"name"},{key:"actions",label:"Actions",field:"title"},{key:"decisions",label:"Décisions",field:"title"}];
+  return types.map(type => {
+    const groups = new Map();
+    ensureArray(state[type.key]).forEach(item => {
+      const title = String(item[type.field] || (type.key === "decisions" ? item.decision : "") || "");
+      const key = duplicateAuditNormalize(title);
+      if (!key) return;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push({id:String(item.id || ""),title,folders:ensureArray(item.linkedFolders),projects:ensureArray(item.linkedProjects),archived:!!item.archived});
+    });
+    return {type:type.label,count:ensureArray(state[type.key]).length,groups:[...groups.values()].filter(group=>group.length>1)};
+  });
+}
+function mountDuplicateDiagnosticCard() {
+  const host = document.querySelector("#app") || document.querySelector("main");
+  if (!host || document.getElementById("deos-d25d-duplicates")) return;
+  const data = duplicateAuditData();
+  const count = data.reduce((n,section)=>n+section.groups.reduce((m,group)=>m+group.length-1,0),0);
+  const card = document.createElement("div"); card.className="card"; card.id="deos-d25d-duplicates";
+  card.innerHTML = `<h3>Diagnostic des doublons — D25D (lecture seule)</h3><p class="muted">${count} occurrence(s) supplémentaires possibles sur les titres identiques. Un titre identique ne prouve pas un doublon métier. Aucun élément n'est fusionné ni supprimé.</p>` + data.map(section => `<details><summary><strong>${esc(section.type)}</strong> — ${section.count} éléments, ${section.groups.length} groupe(s) suspect(s)</summary>${section.groups.map(group => `<div class="item"><strong>${esc(group[0].title)} (${group.length})</strong>${group.map(row=>`<div class="meta">ID : ${esc(row.id)} · Dossiers : ${esc(row.folders.join(", ") || "aucun")} · Projets : ${esc(row.projects.join(", ") || "aucun")} · Archivé : ${row.archived ? "oui" : "non"}</div>`).join("")}</div>`).join("") || `<p class="muted">Aucun titre répété.</p>`}</details>`).join("") + `<p class="muted">Audit local des données actuellement chargées. Vérifier également les liens inverses avant toute fusion.</p><button class="secondary" type="button" onclick="downloadDuplicateAuditD25D()">Exporter le diagnostic JSON</button>`;
+  host.appendChild(card);
+}
+function downloadDuplicateAuditD25D() {
+  const payload={schema:"deos.duplicateAudit.v1",generatedAt:new Date().toISOString(),readOnly:true,sections:duplicateAuditData()};
+  const url=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}));
+  const a=document.createElement("a");a.href=url;a.download="DEOS_diagnostic_doublons.json";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
 
 function readSettingsForm() {
   return normalizeIdentity({
