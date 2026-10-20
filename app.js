@@ -10747,12 +10747,67 @@ function saveActionPlanSchedule(planId, count) {
 
 function setActionPlanViewMode(mode) { actionPlanViewMode = mode === "table" ? "table" : "timeline"; if (actionPlanDetailId) openActionPlan(actionPlanDetailId); }
 
+// D25B — Impression isolée, sans écriture dans les données DEOS.
+function openActionPlanPrintOptions() {
+  const plan = byId("actionPlans", actionPlanDetailId);
+  if (!plan) return;
+  const existing = document.getElementById("ap-print-options");
+  if (existing) { existing.remove(); return; }
+  const box = document.createElement("div");
+  box.id = "ap-print-options";
+  box.className = "card";
+  box.style.cssText = "position:fixed;z-index:99999;top:12%;left:50%;transform:translateX(-50%);width:min(520px,94vw);box-shadow:0 15px 70px #0005;background:white;padding:24px;max-height:80vh;overflow:auto";
+  box.innerHTML = `<h2>Imprimer le plan d'action</h2><p class="muted">Les filtres du chronogramme sont conservés. Aucun changement n'est enregistré.</p>
+  <label>Niveau de détail</label><select id="ap-print-level" style="width:100%"><option value="folders">Dossiers uniquement</option><option value="projects">Dossiers et projets</option><option value="actions" selected>Dossiers, projets et actions</option><option value="all">Vue complète (avec décisions)</option></select>
+  <label>Présentation</label><select id="ap-print-view" style="width:100%"><option value="timeline">Chronogramme graphique</option><option value="table">Tableau de suivi</option></select>
+  <label>Format papier</label><select id="ap-print-paper" style="width:100%"><option value="A3">A3 paysage</option><option value="A4">A4 paysage</option></select>
+  <div class="row-actions" style="margin-top:20px"><button class="action" onclick="printActionPlanD25B()">Ouvrir l'impression / PDF</button><button class="secondary" onclick="document.getElementById('ap-print-options').remove()">Annuler</button></div>`;
+  document.body.appendChild(box);
+}
+function actionPlanPrintRows(plan, level) {
+  const order = {folders:0,projects:1,actions:2,decisions:3};
+  const limit = {folders:0,projects:1,actions:2,all:3}[level] ?? 2;
+  return actionPlanFilteredRows(ensureArray(plan.items).map(actionPlanResolveItem).filter(Boolean))
+    .filter(row => (order[row.entityType] ?? 99) <= limit)
+    .sort((a,b) => (order[a.entityType]-order[b.entityType]) || String(a.label).localeCompare(String(b.label),'fr'));
+}
+function actionPlanPrintDocument(plan, rows, opts) {
+  const safe = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const valid = v => /^\d{4}-\d{2}-\d{2}$/.test(String(v||''));
+  const times = rows.flatMap(r=>[r.startDate,r.dueDate,r.completedDate]).concat([plan.startDate,plan.endDate]).filter(valid).map(v=>Date.parse(v+'T12:00:00'));
+  const min = times.length ? Math.min(...times) : Date.now(), max = times.length ? Math.max(...times) : min+86400000;
+  const span = Math.max(86400000,max-min);
+  const percent = v => Math.max(0,Math.min(100,100*(Date.parse(v+'T12:00:00')-min)/span));
+  const rowsHtml = rows.map(r=>{
+    const status = actionPlanRowStatus(r), statusText = actionPlanRowStatusLabel(status);
+    const colors = {done:'#19a45b',late:'#d92929',planned:'#64748b',active:'#2563eb'};
+    const start = valid(r.startDate)?r.startDate:(valid(r.dueDate)?r.dueDate:'');
+    const end = valid(r.dueDate)?r.dueDate:start;
+    const bar = start ? `<div class="track"><span style="left:${percent(start)}%;width:${Math.max(1,percent(end)-percent(start))}%;background:${colors[status]}"></span></div>` : '—';
+    return `<tr><td class="label lvl-${safe(r.entityType)}"><b>${safe(r.label)}</b><small>${safe(r.typeLabel)}</small></td><td>${safe(r.owner||'À définir')}</td><td>${safe(statusText)}</td><td>${safe(r.startDate||'—')}</td><td>${safe(r.dueDate||'—')}</td>${opts.view==='timeline'?`<td class="timeline">${bar}</td>`:`<td>${safe(r.completedDate||'—')}</td>`}</tr>`;
+  }).join('');
+  const title = safe(plan.name||"Plan d'action");
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${title} — impression</title><style>
+  @page{size:${opts.paper} landscape;margin:12mm}body{font:11px Arial,sans-serif;color:#172238}h1{font-size:20px;margin:0 0 8px}p{margin:4px 0 12px;color:#526178}table{width:100%;border-collapse:collapse;table-layout:fixed}th{background:#edf2f7;text-align:left}td,th{border:1px solid #d8e0e9;padding:8px 6px;vertical-align:middle;overflow-wrap:anywhere}tr{break-inside:avoid}td.label{width:30%}small{display:block;color:#64748b;margin-top:4px}.lvl-folders{border-left:5px solid #243b60}.lvl-projects{border-left:5px solid #3b82f6}.lvl-actions{border-left:5px solid #9ca3af}.lvl-decisions{border-left:5px solid #a855f7}.timeline{width:33%}.track{height:14px;background:repeating-linear-gradient(90deg,#f1f5f9 0,#f1f5f9 24%,#dce5ef 25%);position:relative;border-radius:4px}.track span{position:absolute;top:2px;height:10px;border-radius:4px}.toolbar{margin:0 0 12px;padding:8px;background:#edf2f7}button{padding:8px 14px;cursor:pointer}@media print{.toolbar{display:none}}
+  </style></head><body><div class="toolbar"><button onclick="window.print()">Imprimer / Enregistrer en PDF</button> <span>Choisir le format ${safe(opts.paper)} paysage dans les paramètres d'impression si nécessaire.</span></div><h1>Plan d'action — ${title}</h1><p>Saint-Gilles · Édité le ${safe(new Date().toLocaleString('fr-FR'))} · ${rows.length} élément(s) · ${safe(opts.levelLabel)} · ${safe(opts.view==='timeline'?'Chronogramme':'Tableau')}</p><table><thead><tr><th>Élément</th><th>Responsable</th><th>Statut</th><th>Début</th><th>Échéance</th><th>${opts.view==='timeline'?'Période':'Réalisé le'}</th></tr></thead><tbody>${rowsHtml||'<tr><td colspan="6">Aucun élément correspondant aux filtres et au niveau sélectionné.</td></tr>'}</tbody></table><p>Statuts : prévu (gris), en cours (bleu), en retard (rouge), réalisé (vert).</p></body></html>`;
+}
+function printActionPlanD25B() {
+  const plan = byId('actionPlans',actionPlanDetailId); if (!plan) return;
+  const levelSelect=document.getElementById('ap-print-level');
+  const opts={level:levelSelect.value,levelLabel:levelSelect.selectedOptions[0].textContent,view:document.getElementById('ap-print-view').value,paper:document.getElementById('ap-print-paper').value};
+  const rows=actionPlanPrintRows(plan,opts.level);
+  const win=window.open('','_blank');
+  if (!win) { alert('Autorisez les fenêtres contextuelles pour imprimer ce plan.');return; }
+  win.document.open();win.document.write(actionPlanPrintDocument(plan,rows,opts));win.document.close();
+  document.getElementById('ap-print-options')?.remove();
+}
+
 function openActionPlan(id) {
   const plan = byId("actionPlans", id); if (!plan) return renderActionPlans();
   actionPlanDetailId = id;
   const allRows = ensureArray(plan.items).map(actionPlanResolveItem).filter(Boolean);
   const rows = actionPlanFilteredRows(allRows);
-  appHtml(`<div class="card hero"><div class="row"><div><button class="secondary" onclick="renderActionPlans()">← Plans d'action</button><h2>${esc(plan.name)}</h2><p>${esc(plan.objective || "Objectif à préciser")}</p><span class="meta">Pilote : ${esc(plan.owner || "À définir")} · ${esc(plan.startDate || "Début à définir")} → ${esc(plan.endDate || "Fin à définir")}</span></div><div>${actionPlanStatusBadge(plan.status)}</div></div><div class="row-actions"><button class="secondary" onclick="editActionPlan('${esc(plan.id)}')">Modifier la sélection</button><button class="secondary ${actionPlanViewMode === "timeline" ? "active-filter" : ""}" onclick="setActionPlanViewMode('timeline')">Chronogramme</button><button class="secondary ${actionPlanViewMode === "table" ? "active-filter" : ""}" onclick="setActionPlanViewMode('table')">Responsables & dates</button><button class="secondary" onclick="toggleActionPlanArchive('${esc(plan.id)}')">${isEntityArchived(plan) || plan.status === "archived" ? "Réactiver le plan" : "Archiver le plan"}</button><button class="danger" onclick="deleteActionPlan('${esc(plan.id)}')">Supprimer le plan</button></div></div>
+  appHtml(`<div class="card hero"><div class="row"><div><button class="secondary" onclick="renderActionPlans()">← Plans d'action</button><h2>${esc(plan.name)}</h2><p>${esc(plan.objective || "Objectif à préciser")}</p><span class="meta">Pilote : ${esc(plan.owner || "À définir")} · ${esc(plan.startDate || "Début à définir")} → ${esc(plan.endDate || "Fin à définir")}</span></div><div>${actionPlanStatusBadge(plan.status)}</div></div><div class="row-actions"><button class="secondary" onclick="editActionPlan('${esc(plan.id)}')">Modifier la sélection</button><button class="action" onclick="openActionPlanPrintOptions()">Imprimer / PDF</button><button class="secondary ${actionPlanViewMode === "timeline" ? "active-filter" : ""}" onclick="setActionPlanViewMode('timeline')">Chronogramme</button><button class="secondary ${actionPlanViewMode === "table" ? "active-filter" : ""}" onclick="setActionPlanViewMode('table')">Responsables & dates</button><button class="secondary" onclick="toggleActionPlanArchive('${esc(plan.id)}')">${isEntityArchived(plan) || plan.status === "archived" ? "Réactiver le plan" : "Archiver le plan"}</button><button class="danger" onclick="deleteActionPlan('${esc(plan.id)}')">Supprimer le plan</button></div></div>
   <div class="card"><div class="row"><div><h2>${actionPlanViewMode === "timeline" ? "Chronogramme" : "Pilotage des échéances"}</h2><p class="muted">${rows.length} affiché(s) sur ${allRows.length} élément(s)</p></div></div>${actionPlanFilterBarHtml(allRows)}${actionPlanViewMode === "timeline" ? actionPlanTimelineHtml(plan, rows) : actionPlanTableHtml(plan, rows)}</div>`);
 }
 
