@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D25A-STARTUP-FIX-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D25C-PRINT-HIERARCHY-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -10767,9 +10767,28 @@ function openActionPlanPrintOptions() {
 function actionPlanPrintRows(plan, level) {
   const order = {folders:0,projects:1,actions:2,decisions:3};
   const limit = {folders:0,projects:1,actions:2,all:3}[level] ?? 2;
-  return actionPlanFilteredRows(ensureArray(plan.items).map(actionPlanResolveItem).filter(Boolean))
-    .filter(row => (order[row.entityType] ?? 99) <= limit)
-    .sort((a,b) => (order[a.entityType]-order[b.entityType]) || String(a.label).localeCompare(String(b.label),'fr'));
+  const all = actionPlanFilteredRows(ensureArray(plan.items).map(actionPlanResolveItem).filter(Boolean))
+    .filter(row => (order[row.entityType] ?? 99) <= limit);
+  const folders = all.filter(row => row.entityType === 'folders');
+  const projects = all.filter(row => row.entityType === 'projects');
+  const children = all.filter(row => row.entityType === 'actions' || row.entityType === 'decisions');
+  const cmp = (a,b) => String(a.label||'').localeCompare(String(b.label||''),'fr');
+  const result = [], seen = new Set();
+  const add = (row,depth,group) => { const key = `${row.entityType}:${row.entityId}`; if (seen.has(key)) return; seen.add(key); result.push({...row,printDepth:depth,printGroup:group||''}); };
+  const linked = (entity,field,id) => normalizeLinkedIdArray(ensureArray(entity?.[field])).some(x => sameId(x,id));
+  const projectFolders = project => normalizeLinkedIdArray(ensureArray(project.entity?.linkedFolders)).map(String);
+  const projectChildren = project => children.filter(row => linked(row.entity,'linkedProjects',project.entityId));
+  const emitProject = (project,depth,group) => { add(project,depth,group); projectChildren(project).sort(cmp).forEach(child=>add(child,depth+1,group)); };
+  folders.sort(cmp).forEach(folder => {
+    add(folder,0,folder.label);
+    const relatedProjects=projects.filter(project=>projectFolders(project).some(id=>sameId(id,folder.entityId)));
+    relatedProjects.sort(cmp).forEach(project=>emitProject(project,1,folder.label));
+    children.filter(child=>linked(child.entity,'linkedFolders',folder.entityId))
+      .sort(cmp).forEach(child=>add(child,1,folder.label));
+  });
+  projects.sort(cmp).forEach(project=>emitProject(project,0,''));
+  children.sort(cmp).forEach(child=>add(child,0,''));
+  return result;
 }
 function actionPlanPrintDocument(plan, rows, opts) {
   const safe = value => String(value ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -10784,11 +10803,11 @@ function actionPlanPrintDocument(plan, rows, opts) {
     const start = valid(r.startDate)?r.startDate:(valid(r.dueDate)?r.dueDate:'');
     const end = valid(r.dueDate)?r.dueDate:start;
     const bar = start ? `<div class="track"><span style="left:${percent(start)}%;width:${Math.max(1,percent(end)-percent(start))}%;background:${colors[status]}"></span></div>` : '—';
-    return `<tr><td class="label lvl-${safe(r.entityType)}"><b>${safe(r.label)}</b><small>${safe(r.typeLabel)}</small></td><td>${safe(r.owner||'À définir')}</td><td>${safe(statusText)}</td><td>${safe(r.startDate||'—')}</td><td>${safe(r.dueDate||'—')}</td>${opts.view==='timeline'?`<td class="timeline">${bar}</td>`:`<td>${safe(r.completedDate||'—')}</td>`}</tr>`;
+    return `<tr><td class="label lvl-${safe(r.entityType)} depth-${Number(r.printDepth||0)}"><b>${safe(r.label)}</b><small>${safe(r.typeLabel)}</small></td><td>${safe(r.owner||'À définir')}</td><td>${safe(statusText)}</td><td>${safe(r.startDate||'—')}</td><td>${safe(r.dueDate||'—')}</td>${opts.view==='timeline'?`<td class="timeline">${bar}</td>`:`<td>${safe(r.completedDate||'—')}</td>`}</tr>`;
   }).join('');
   const title = safe(plan.name||"Plan d'action");
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${title} — impression</title><style>
-  @page{size:${opts.paper} landscape;margin:12mm}body{font:11px Arial,sans-serif;color:#172238}h1{font-size:20px;margin:0 0 8px}p{margin:4px 0 12px;color:#526178}table{width:100%;border-collapse:collapse;table-layout:fixed}th{background:#edf2f7;text-align:left}td,th{border:1px solid #d8e0e9;padding:8px 6px;vertical-align:middle;overflow-wrap:anywhere}tr{break-inside:avoid}td.label{width:30%}small{display:block;color:#64748b;margin-top:4px}.lvl-folders{border-left:5px solid #243b60}.lvl-projects{border-left:5px solid #3b82f6}.lvl-actions{border-left:5px solid #9ca3af}.lvl-decisions{border-left:5px solid #a855f7}.timeline{width:33%}.track{height:14px;background:repeating-linear-gradient(90deg,#f1f5f9 0,#f1f5f9 24%,#dce5ef 25%);position:relative;border-radius:4px}.track span{position:absolute;top:2px;height:10px;border-radius:4px}.toolbar{margin:0 0 12px;padding:8px;background:#edf2f7}button{padding:8px 14px;cursor:pointer}@media print{.toolbar{display:none}}
+  @page{size:${opts.paper} landscape;margin:12mm}body{font:11px Arial,sans-serif;color:#172238}h1{font-size:20px;margin:0 0 8px}p{margin:4px 0 12px;color:#526178}table{width:100%;border-collapse:collapse;table-layout:fixed}th{background:#edf2f7;text-align:left}td,th{border:1px solid #d8e0e9;padding:8px 6px;vertical-align:middle;overflow-wrap:anywhere}tr{break-inside:avoid}td.label{width:30%}small{display:block;color:#64748b;margin-top:4px}.lvl-folders{border-left:5px solid #243b60}.lvl-projects{border-left:5px solid #3b82f6}.lvl-actions{border-left:5px solid #9ca3af}.lvl-decisions{border-left:5px solid #a855f7}.depth-1{padding-left:20px}.depth-2{padding-left:36px}.depth-3{padding-left:50px}.lvl-folders{background:#eaf0f8;font-weight:700}.lvl-projects{background:#f5f8fc}.timeline{width:33%}.track{height:14px;background:repeating-linear-gradient(90deg,#f1f5f9 0,#f1f5f9 24%,#dce5ef 25%);position:relative;border-radius:4px}.track span{position:absolute;top:2px;height:10px;border-radius:4px}.toolbar{margin:0 0 12px;padding:8px;background:#edf2f7}button{padding:8px 14px;cursor:pointer}@media print{.toolbar{display:none}}
   </style></head><body><div class="toolbar"><button onclick="window.print()">Imprimer / Enregistrer en PDF</button> <span>Choisir le format ${safe(opts.paper)} paysage dans les paramètres d'impression si nécessaire.</span></div><h1>Plan d'action — ${title}</h1><p>Saint-Gilles · Édité le ${safe(new Date().toLocaleString('fr-FR'))} · ${rows.length} élément(s) · ${safe(opts.levelLabel)} · ${safe(opts.view==='timeline'?'Chronogramme':'Tableau')}</p><table><thead><tr><th>Élément</th><th>Responsable</th><th>Statut</th><th>Début</th><th>Échéance</th><th>${opts.view==='timeline'?'Période':'Réalisé le'}</th></tr></thead><tbody>${rowsHtml||'<tr><td colspan="6">Aucun élément correspondant aux filtres et au niveau sélectionné.</td></tr>'}</tbody></table><p>Statuts : prévu (gris), en cours (bleu), en retard (rouge), réalisé (vert).</p></body></html>`;
 }
 function printActionPlanD25B() {
