@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D25D-DOUBLONS-DIAGNOSTIC-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D25F-PREFLIGHT-DISTANT-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -27955,7 +27955,7 @@ function mountDuplicateDiagnosticCard() {
   const data = duplicateAuditData();
   const count = data.reduce((n,section)=>n+section.groups.reduce((m,group)=>m+group.length-1,0),0);
   const card = document.createElement("div"); card.className="card"; card.id="deos-d25d-duplicates";
-  card.innerHTML = `<h3>Diagnostic des doublons — D25D (lecture seule)</h3><p class="muted">${count} occurrence(s) supplémentaires possibles sur les titres identiques. Un titre identique ne prouve pas un doublon métier. Aucun élément n'est fusionné ni supprimé.</p>` + data.map(section => `<details><summary><strong>${esc(section.type)}</strong> — ${section.count} éléments, ${section.groups.length} groupe(s) suspect(s)</summary>${section.groups.map(group => `<div class="item"><strong>${esc(group[0].title)} (${group.length})</strong>${group.map(row=>`<div class="meta">ID : ${esc(row.id)} · Dossiers : ${esc(row.folders.join(", ") || "aucun")} · Projets : ${esc(row.projects.join(", ") || "aucun")} · Archivé : ${row.archived ? "oui" : "non"}</div>`).join("")}</div>`).join("") || `<p class="muted">Aucun titre répété.</p>`}</details>`).join("") + `<p class="muted">Audit local des données actuellement chargées. Vérifier également les liens inverses avant toute fusion.</p><button class="secondary" type="button" onclick="downloadDuplicateAuditD25D()">Exporter le diagnostic JSON</button>`;
+  card.innerHTML = `<h3>Doublons — D25F (audit local et distant)</h3><p class="muted">${count} occurrence(s) supplémentaires possibles sur les titres identiques. Un titre identique ne prouve pas un doublon métier. Aucun élément n'est fusionné ni supprimé.</p>` + data.map(section => `<details><summary><strong>${esc(section.type)}</strong> — ${section.count} éléments, ${section.groups.length} groupe(s) suspect(s)</summary>${section.groups.map(group => `<div class="item"><strong>${esc(group[0].title)} (${group.length})</strong>${group.map(row=>`<div class="meta">ID : ${esc(row.id)} · Dossiers : ${esc(row.folders.join(", ") || "aucun")} · Projets : ${esc(row.projects.join(", ") || "aucun")} · Archivé : ${row.archived ? "oui" : "non"}</div>`).join("")}</div>`).join("") || `<p class="muted">Aucun titre répété.</p>`}</details>`).join("") + `<p class="muted">Audit local des données actuellement chargées. Vérifier également les liens inverses avant toute fusion.</p><button class="secondary" type="button" onclick="downloadDuplicateAuditD25D()">Exporter le diagnostic JSON</button><button class="secondary" type="button" onclick="downloadDuplicateMergePlanD25E()">Exporter le plan de fusion vérifié</button><button class="secondary" type="button" onclick="downloadDuplicateRemotePreflightD25F()">Contrôler les doublons dans le cloud</button><p class="muted">La fusion distante est volontairement bloquée tant que les suppressions synchronisées et leur vérification ne sont pas garanties. Aucun changement de données par cet outil.</p>`;
   host.appendChild(card);
 }
 function downloadDuplicateAuditD25D() {
@@ -27964,6 +27964,71 @@ function downloadDuplicateAuditD25D() {
   const a=document.createElement("a");a.href=url;a.download="DEOS_diagnostic_doublons.json";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
+// D25E — Plan déterministe, en lecture seule, fondé sur les IDs effectivement audités.
+// Les noms seuls ne suffisent jamais à autoriser une fusion.
+const D25E_MERGE_GROUPS = [
+  {entity:"projects",ids:["prj-v5-002","proj-mthm1ayi-ke8wp","proj-mrhef6i8-8k76s"]},
+  {entity:"projects",ids:["prj-v5-003","proj-mthm1ayi-w3g8x","proj-mrhef6i8-ouslr"]},
+  {entity:"projects",ids:["prj-v5-004","proj-mthm1ayi-q0bbi","proj-mrhef6i8-ya3go"]},
+  {entity:"projects",ids:["prj-v5-005","proj-mthm1ayi-68lvy"]},
+  {entity:"decisions",ids:["dec-v5-001","deci-mthm1b4a-o5f0i"]},
+  {entity:"decisions",ids:["dec-v5-002","deci-mtu9cas6-ih77w"]}
+];
+function buildDuplicateMergePlanD25E() {
+  const groups = D25E_MERGE_GROUPS.map(spec => {
+    const records = spec.ids.map(id => ensureArray(state[spec.entity]).find(item => String(item.id) === id));
+    const names = records.map(item => item ? duplicateAuditNormalize(item.name || item.title || item.decision) : "");
+    const valid = records.every(Boolean) && names[0] && names.every(name => name === names[0]);
+    return {entity:spec.entity,keep:spec.ids[0],merge:spec.ids.slice(1),title:records[0]?.name || records[0]?.title || "",valid:Boolean(valid),reason:valid?"Identifiants présents et titres cohérents":"Identifiant absent ou titre divergent : fusion interdite"};
+  });
+  return {schema:"deos.duplicateMergePlan.v1",generatedAt:new Date().toISOString(),readOnly:true,appVersion:DEOS_VERSION,valid:groups.every(group=>group.valid),plannedRemovals:groups.filter(g=>g.valid).reduce((n,g)=>n+g.merge.length,0),groups,warning:"Plan de contrôle uniquement. Aucun effacement local ou distant. Une fusion effective exige des tombstones distantes et une validation des rattachements."};
+}
+function downloadDuplicateMergePlanD25E() {
+  const plan = buildDuplicateMergePlanD25E();
+  const url = URL.createObjectURL(new Blob([JSON.stringify(plan,null,2)],{type:"application/json"}));
+  const a=document.createElement("a"); a.href=url; a.download="DEOS_D25E_plan_fusion.json";
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000);
+  alert(plan.valid ? `Plan vérifié : ${plan.plannedRemovals} enregistrements candidats. Aucune suppression effectuée.` : "Plan incomplet ou divergent : fusion bloquée. Consulter le JSON exporté.");
+}
+
+// D25F : audit cloud authentifié sans mutation. Aucun effacement, aucun déclenchement de synchronisation.
+async function buildDuplicateRemotePreflightD25F() {
+  const local = buildDuplicateMergePlanD25E();
+  if (!local.valid) throw new Error("Les identifiants locaux ou les titres divergent : audit cloud interrompu.");
+  if (!multiDeviceConnected()) throw new Error("Connexion authentifiée au workspace nécessaire pour lire le cloud.");
+  if (typeof deosRemoteAdapter.listProjects !== "function" || typeof deosRemoteAdapter.listDecisions !== "function") throw new Error("API cloud Projets/Décisions indisponible.");
+  const [projects, decisions] = await Promise.all([
+    withProjectsRemoteTimeout(deosRemoteAdapter.listProjects(), "D25F audit cloud Projets"),
+    deosRemoteAdapter.listDecisions()
+  ]);
+  const snapshots = {projects,decisions};
+  const groups = local.groups.map(group => {
+    const ids = [group.keep,...group.merge];
+    const remote = ids.map(id => {
+      const matches = ensureArray(snapshots[group.entity]).filter(row => String(row.clientId || "") === id);
+      return {id, count:matches.length, present:matches.length>0, deleted:matches.length===1 ? Boolean(matches[0].deletedAt) : null,
+        version:matches.length===1 ? Number(matches[0].version || 0) : null,
+        title:matches.length===1 ? String((matches[0][group.entity === "projects" ? "project" : "decision"] || {}).name || (matches[0][group.entity === "projects" ? "project" : "decision"] || {}).title || "") : ""};
+    });
+    const blockers = [];
+    if (remote.some(row=>row.count!==1)) blockers.push("Enregistrement cloud absent ou multiple : contrôle manuel requis");
+    if (remote[0]?.deleted) blockers.push("Enregistrement canonique déjà supprimé dans le cloud");
+    if (remote.some(row=>row.present && !row.deleted && duplicateAuditNormalize(row.title)!==duplicateAuditNormalize(group.title))) blockers.push("Titre cloud divergent");
+    return {...group,remote,blockers,readyForManualReview:blockers.length===0};
+  });
+  return {schema:"deos.duplicateRemotePreflight.v1",generatedAt:new Date().toISOString(),appVersion:DEOS_VERSION,readOnly:true,
+    readyForManualReview:groups.every(g=>g.readyForManualReview),groups,
+    warning:"Contrôle des identifiants et titres uniquement. Ne prouve pas l'équivalence du contenu. Aucune fusion cloud automatique n'est autorisée sans protection contre les appareils obsolètes."};
+}
+async function downloadDuplicateRemotePreflightD25F() {
+  try {
+    const result = await buildDuplicateRemotePreflightD25F();
+    const url=URL.createObjectURL(new Blob([JSON.stringify(result,null,2)],{type:"application/json"}));
+    const a=document.createElement("a");a.href=url;a.download="DEOS_D25F_audit_cloud_sans_modification.json";
+    document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    alert(result.readyForManualReview ? "Audit cloud terminé : identifiants cohérents. Fusion non exécutée ; comparer les contenus et sécuriser les appareils avant toute suppression." : "Audit cloud terminé : anomalies détectées. Consulter le rapport exporté. Aucune donnée modifiée.");
+  } catch(error) { alert("Audit cloud impossible : " + (error?.message || String(error)) + ". Aucune donnée modifiée."); }
+}
 function readSettingsForm() {
   return normalizeIdentity({
     ...identity,
