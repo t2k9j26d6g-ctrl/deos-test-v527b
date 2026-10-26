@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D25F-PREFLIGHT-DISTANT-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D25M-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -4295,9 +4295,9 @@ function actionEditModalBody(action) {
         <option value="orange" ${action.level === "orange" || !action.level ? "selected" : ""}>Important</option>
         <option value="red" ${action.level === "red" ? "selected" : ""}>Critique</option>
       </select>
-      <input id="eaStartDate" type="date" value="${esc(action.startDate || "")}" placeholder="Date de début">
-      <input id="eaDue" type="date" value="${esc(action.due || "")}" placeholder="Échéance">
-      <input id="eaCompletedAt" type="date" value="${esc(action.completedAt || "")}" placeholder="Date de réalisation">
+      <label class="action-date-field" for="eaStartDate"><span>Date de début</span><input id="eaStartDate" type="date" value="${esc(action.startDate || "")}"></label>
+      <label class="action-date-field" for="eaDue"><span>Date d’échéance</span><input id="eaDue" type="date" value="${esc(action.due || "")}"></label>
+      <label class="action-date-field" for="eaCompletedAt"><span>Date de réalisation</span><input id="eaCompletedAt" type="date" value="${esc(action.completedAt || "")}"></label>
       <label class="check-row"><input id="eaDone" type="checkbox" ${action.done ? "checked" : ""}> <span>Action réalisée</span></label>
       ${hasProgressField ? `<input id="eaProgress" type="number" min="0" max="100" value="${Number(progressValue || 0)}" placeholder="Avancement">` : ""}
     </div>
