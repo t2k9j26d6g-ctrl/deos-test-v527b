@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D25M-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D25O-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -21796,6 +21796,9 @@ async function analyzeActionsHybridState() {
   return analysis;
 }
 async function activateActionsHybridSync() {
+  if (!actionsSyncCanInspectRemote()) {
+    throw new Error("Connexion cloud absente : connectez-vous au workspace DEOS dans Paramètres avant d'activer la synchronisation Actions.");
+  }
   setActionsSyncSettings({ enabled: true, activatedAt: new Date().toISOString(), lastMode: "activated" });
   refreshActionsSyncRuntimeState({ state: navigator.onLine === false ? DEOS_LINKS_SYNC_STATUS.OFFLINE : DEOS_LINKS_SYNC_STATUS.SYNC_READY, lastError: "" });
   return deosActionsSyncRuntime;
@@ -21822,12 +21825,14 @@ async function syncActionsHybridNow(options = {}) {
     let remoteActiveMap = new Map(remoteRows.filter(row => !row.deletedAt).map(row => [String(row.clientId), row]));
     let localChanged = false;
 
-    // Les suppressions locales déjà connues deviennent des soft-deletes distants.
-    for (const [clientId, meta] of Object.entries(deosActionsSyncRuntime.metaByClientId || {})) {
-      if (!byId("actions", clientId) && meta.remoteVersion > 0 && remoteActiveMap.has(clientId) && meta.syncStatus !== DEOS_LINKS_SYNC_STATUS.CONFLICT) {
-        const deleted = await withActionsRemoteTimeout(deosRemoteAdapter.softDeleteAction(clientId, Number(remoteActiveMap.get(clientId).version || meta.remoteVersion)), `Suppression logique de l'Action ${clientId}`);
-        setActionSyncMeta(clientId, { remoteVersion: Number(deleted.version || 0), remoteUpdatedAt: deleted.updatedAt || "", lastSyncedAt: new Date().toISOString(), syncStatus: DEOS_LINKS_SYNC_STATUS.SYNCED, lastLocalFingerprint: "" });
-      }
+    // D25N : protection multi-appareils. Une absence locale ne prouve PAS une suppression
+    // intentionnelle : elle peut résulter d'un cache obsolète ou d'une restauration.
+    // Les suppressions distantes implicites sont interdites jusqu'à la mise en place
+    // de tombstones explicites, datées et vérifiées entre appareils.
+    const remoteOnlyKnown = Object.entries(deosActionsSyncRuntime.metaByClientId || {})
+      .filter(([clientId, meta]) => !byId("actions", clientId) && meta.remoteVersion > 0 && remoteActiveMap.has(clientId));
+    if (remoteOnlyKnown.length) {
+      console.info(`[DEOS D25N] ${remoteOnlyKnown.length} Action(s) absente(s) localement : conservation dans le cloud.`);
     }
 
     remoteRows = await withActionsRemoteTimeout(deosRemoteAdapter.listActions(), "Actualisation des Actions distantes");
@@ -21849,8 +21854,11 @@ async function syncActionsHybridNow(options = {}) {
       const local = byId("actions", clientId);
       const meta = getActionSyncMeta(clientId);
       if (row.deletedAt) {
-        if (local && meta.remoteVersion > 0) { state.actions = state.actions.filter(item => !sameId(item.id, clientId)); localChanged = true; }
-        setActionSyncMeta(clientId, { remoteId: row.remoteId, remoteVersion: Number(row.version || 0), remoteUpdatedAt: row.updatedAt || "", lastSyncedAt: new Date().toISOString(), syncStatus: DEOS_LINKS_SYNC_STATUS.SYNCED, lastLocalFingerprint: "" });
+        // D25O: ne jamais effacer une Action locale en réponse à une suppression
+        // distante tant que la provenance de la suppression n'est pas vérifiable.
+        if (local) {
+          setActionSyncMeta(clientId, { remoteId: row.remoteId, remoteVersion: Number(row.version || 0), remoteUpdatedAt: row.updatedAt || "", syncStatus: DEOS_LINKS_SYNC_STATUS.CONFLICT, lastSyncError: "SUPPRESSION_DISTANTE_A_VERIFIER", conflictRemote: row, conflictFields: ["suppression distante"] });
+        }
         continue;
       }
       if (!local) {
