@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D25O-TEST";
+const DEOS_VERSION = "V5.30-SYNC-D25P-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -4434,10 +4434,29 @@ function saveActionEdit(id) {
   return true;
 }
 
+// D25P — journal durable des suppressions volontaires, séparé des absences de cache.
+function actionDeletionLedger() {
+  const value = deosDataService.load("sync_deleted_actions", {});
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+function markActionDeletion(id) {
+  const key = String(id || "").trim();
+  if (!key) return;
+  const ledger = actionDeletionLedger();
+  ledger[key] = ledger[key] || { deletedAt: new Date().toISOString(), acknowledged: false };
+  deosDataService.save("sync_deleted_actions", ledger);
+}
+function acknowledgeActionDeletion(id) {
+  const ledger = actionDeletionLedger();
+  if (!ledger[id]) return;
+  ledger[id] = { ...ledger[id], acknowledged: true };
+  deosDataService.save("sync_deleted_actions", ledger);
+}
 function confirmActionDelete(id) {
   const i = indexById("actions", id);
   if (i < 0) return false;
   const title = state.actions[i].title;
+  markActionDeletion(id); // MUST precede local removal, even when offline.
   state.actions.splice(i, 1);
   persist("actions");
   addActivity("🗑️ Action supprimée", title);
@@ -21825,6 +21844,31 @@ async function syncActionsHybridNow(options = {}) {
     let remoteActiveMap = new Map(remoteRows.filter(row => !row.deletedAt).map(row => [String(row.clientId), row]));
     let localChanged = false;
 
+    // D25P: ONLY explicit, durable user deletions can remove cloud records.
+    // Process before remote imports to prevent deleted actions reappearing.
+    const deletionLedger = actionDeletionLedger();
+    for (const [clientId, deletion] of Object.entries(deletionLedger)) {
+      const row = remoteRows.find(item => String(item.clientId) === clientId);
+      if (!row || row.deletedAt) { acknowledgeActionDeletion(clientId); continue; }
+      const meta = getActionSyncMeta(clientId);
+      if (!meta.remoteVersion || !meta.lastLocalFingerprint) {
+        setActionSyncMeta(clientId, { syncStatus: DEOS_LINKS_SYNC_STATUS.CONFLICT, lastSyncError: "SUPPRESSION_SANS_PREUVE_DE_SYNCHRONISATION" });
+        throw new Error(`Suppression de ${clientId} suspendue : historique de synchronisation insuffisant.`);
+      }
+      if (Number(row.version) !== Number(meta.remoteVersion)) {
+        setActionSyncMeta(clientId, { syncStatus: DEOS_LINKS_SYNC_STATUS.CONFLICT, lastSyncError: "SUPPRESSION_VERSION_DISTANTE_MODIFIEE" });
+        throw new Error(`Suppression de ${clientId} suspendue : modification distante concurrente.`);
+      }
+      const deleted = await withActionsRemoteTimeout(deosRemoteAdapter.softDeleteAction(clientId, Number(row.version)), `Suppression synchronisée ${clientId}`);
+      if (!deleted.deletedAt) throw new Error(`Suppression ${clientId} non confirmée par le serveur.`);
+      acknowledgeActionDeletion(clientId);
+      setActionSyncMeta(clientId, { remoteVersion: Number(deleted.version || row.version), remoteUpdatedAt: deleted.updatedAt || "", syncStatus: DEOS_LINKS_SYNC_STATUS.SYNCED, lastSyncError: "", conflictRemote: null, conflictFields: [] });
+    }
+    if (Object.keys(deletionLedger).length) {
+      remoteRows = await withActionsRemoteTimeout(deosRemoteAdapter.listActions(), "Contrôle des suppressions distantes");
+      remoteActiveMap = new Map(remoteRows.filter(row => !row.deletedAt).map(row => [String(row.clientId), row]));
+    }
+
     // D25N : protection multi-appareils. Une absence locale ne prouve PAS une suppression
     // intentionnelle : elle peut résulter d'un cache obsolète ou d'une restauration.
     // Les suppressions distantes implicites sont interdites jusqu'à la mise en place
@@ -21842,7 +21886,7 @@ async function syncActionsHybridNow(options = {}) {
     for (const action of ensureArray(state.actions)) {
       ensureActionSyncClientId(action);
       const clientId = actionSyncClientId(action);
-      if (!clientId || remoteActiveMap.has(clientId)) continue;
+      if (!clientId || remoteActiveMap.has(clientId) || actionDeletionLedger()[clientId]) continue;
       const created = await withActionsRemoteTimeout(deosRemoteAdapter.createAction({ ...action, id: clientId, clientId }), `Création de l'Action ${action.title || clientId}`);
       setActionSyncMeta(clientId, { remoteId: created.remoteId, remoteVersion: Number(created.version || 0), remoteUpdatedAt: created.updatedAt || "", lastSyncedAt: new Date().toISOString(), syncStatus: DEOS_LINKS_SYNC_STATUS.SYNCED, lastLocalFingerprint: actionFingerprint(action), conflictRemote: null, conflictFields: [] });
     }
@@ -21854,14 +21898,24 @@ async function syncActionsHybridNow(options = {}) {
       const local = byId("actions", clientId);
       const meta = getActionSyncMeta(clientId);
       if (row.deletedAt) {
-        // D25O: ne jamais effacer une Action locale en réponse à une suppression
-        // distante tant que la provenance de la suppression n'est pas vérifiable.
+        // D25P: a known previously-synced action deleted on another device
+        // can be removed locally; an unknown deletion remains a conflict.
+        if (local && meta.remoteVersion > 0 && meta.lastLocalFingerprint &&
+            actionFingerprint(local) === meta.lastLocalFingerprint) {
+          markActionDeletion(clientId);
+          acknowledgeActionDeletion(clientId);
+          const idx = indexById("actions", clientId);
+          if (idx >= 0) { state.actions.splice(idx, 1); localChanged = true; }
+          setActionSyncMeta(clientId, { remoteVersion: Number(row.version || 0), remoteUpdatedAt: row.updatedAt || "", syncStatus: DEOS_LINKS_SYNC_STATUS.SYNCED, lastSyncError: "", conflictRemote: null, conflictFields: [] });
+          continue;
+        }
         if (local) {
           setActionSyncMeta(clientId, { remoteId: row.remoteId, remoteVersion: Number(row.version || 0), remoteUpdatedAt: row.updatedAt || "", syncStatus: DEOS_LINKS_SYNC_STATUS.CONFLICT, lastSyncError: "SUPPRESSION_DISTANTE_A_VERIFIER", conflictRemote: row, conflictFields: ["suppression distante"] });
         }
         continue;
       }
       if (!local) {
+        if (actionDeletionLedger()[clientId]) continue;
         state.actions.push(normalizeEntity("actions", { ...row.action, id: clientId, clientId }));
         localChanged = true;
         setActionSyncMeta(clientId, { remoteId: row.remoteId, remoteVersion: Number(row.version || 0), remoteUpdatedAt: row.updatedAt || "", lastSyncedAt: new Date().toISOString(), syncStatus: DEOS_LINKS_SYNC_STATUS.SYNCED, lastLocalFingerprint: actionFingerprint(row.action), conflictRemote: null, conflictFields: [] });
