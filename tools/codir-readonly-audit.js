@@ -8,13 +8,15 @@ function render(){
   if(!app || typeof currentView==="undefined" || currentView!=="folders" || typeof state==="undefined")return;
   if(app.querySelector("#deos-codir-status"))return;
   const folders=(state.folders||[]).filter(x=>!x.archived),projects=(state.projects||[]).filter(x=>!x.archived);
+  const totalProjects=(state.projects||[]).length;
+  const archivedProjects=(state.projects||[]).filter(x=>x.archived).length;
   const existing=folders.map(x=>String(x.name||""));
   const ready=folders.length===6 && names.every(n=>existing.includes(n));
   const el=document.createElement("div");el.id="deos-codir-status";el.className="card";el.style.cssText="padding:14px;margin-bottom:16px;border-left:4px solid #dba44a";
   const h=document.createElement("strong");h.textContent="Organisation CODIR — contrôle TEST en lecture seule";el.appendChild(h);
   const p=document.createElement("p");p.style.margin="8px 0";p.textContent=ready
     ?"Les six dossiers CODIR sont présents. "+projects.length+" projets actifs."
-    :"Réorganisation non appliquée : "+folders.length+" dossiers et "+projects.length+" projets actifs actuellement. Cible : 6 dossiers CODIR et 54 projets.";
+    :"Réorganisation non appliquée : "+folders.length+" dossiers et "+projects.length+" projets actifs actuellement ("+totalProjects+" au total, dont "+archivedProjects+" archivés). Cible : 6 dossiers CODIR et 54 projets au total.";
   el.appendChild(p);
   const detail=document.createElement("small");detail.textContent="Aucune modification des données : Supabase TEST et PROD partagent la même base.";el.appendChild(detail);
 
@@ -22,11 +24,11 @@ function render(){
   const countsByFolder=Object.fromEntries(names.map(n=>[n,0]));
   let matched=0;
   for(const project of projects){const target=projectTargets[String(project.clientId||project.id||"")];if(target){countsByFolder[target]++;matched++;}}
-  if(matched===47){
+  if(matched>=40){
     const summary=document.createElement("div");summary.style.cssText="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px";
     for(const name of names){const chip=document.createElement("span");chip.style.cssText="padding:5px 9px;border:1px solid #bbb;border-radius:8px";chip.textContent=name+" : "+countsByFolder[name]+" projets existants";summary.appendChild(chip);}
     el.appendChild(summary);
-    const note=document.createElement("small");note.style.display="block";note.style.marginTop="8px";note.textContent="Rattachements calculés depuis le tableau validé du 06/11 ; 7 dossiers thématiques à convertir en projets (total cible : 54). Affichage indicatif, sans modification des données.";el.appendChild(note);
+    const note=document.createElement("small");note.style.display="block";note.style.marginTop="8px";note.textContent="Rattachements identifiés : "+matched+" sur "+projects.length+" projets actifs. Les 7 dossiers thématiques restent à convertir. Affichage indicatif, sans modification des données.";el.appendChild(note);
   }
   app.prepend(el);
 }
