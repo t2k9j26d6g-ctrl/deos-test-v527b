@@ -15,6 +15,7 @@ const rh=out.data.folders.find(f=>f.name==='RH').id;
 assert.deepEqual(plain(out.data.actions[0].linkedFolderIds),[rh]);assert(out.data.actions[0].linkedProjects.includes('proj-from-f6'));
 assert(out.data.projects.find(p=>p.id==='proj-from-f6').linkedActions.includes('a1'));
 assert.equal(out.data.projects.find(p=>p.id==='proj-from-f6').migrationSourceFolderSnapshot.directorNotes,'Note historique');
+assert.equal(out.data.projects.find(p=>p.id==='proj-from-f6').directorNotes[0].content,'Note historique');
 assert.equal(out.data.projects.find(p=>p.id==='proj-from-f6').deadline,'2026-12-09');
 assert.equal(out.data.activity[0].sourceType,'projects');assert.equal(out.data.activity[0].sourceId,'proj-from-f6');
 assert.equal(JSON.stringify(transform(out.data,ctx.DeosCodirAssignments).data),JSON.stringify(out.data));

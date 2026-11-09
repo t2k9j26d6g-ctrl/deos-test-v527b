@@ -2430,7 +2430,7 @@ async function init() {
     initializeFoldersHybridSync({ skipAutoSync: false });
     initializeManagersHybridSync({ skipAutoSync: false });
     initializeDecisionDocumentHybridSync({ skipAutoSync: false });
-    setDeosStartupStatus(deosRemoteRuntime.lastError
+    setDeosStartupStatus(window.DeosTest && !window.DeosTest.ready() ? "Copie TEST en attente de connexion pour reprendre les données existantes." : deosRemoteRuntime.lastError
       ? "Connexion distante : " + deosRemoteRuntime.lastError + " Consultez Paramètres ; les données locales restent accessibles."
       : "", Boolean(deosRemoteRuntime.lastError));
   } catch (error) {

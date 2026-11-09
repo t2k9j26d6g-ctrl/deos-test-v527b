@@ -25,7 +25,7 @@
       const id="proj-from-"+f.id;
       if(projects.some(p=>p.id===id))throw Error("Conversion partielle détectée : "+id);
       replacement[f.id]=ids[name];convertedIds[f.id]=id;
-      converted.push({...copy(f),id,clientId:id,name:f.name,objective:f.objectives||f.objective||"",context:[f.description,f.context].filter(Boolean).join("\n\n"),linkedFolders:[ids[name]],launchDate:f.launchDate||f.createdAt||"",progress:Number(f.progress||0),directorNotes:Array.isArray(f.directorNotes)?f.directorNotes:[],migrationSourceFolderId:f.id,migrationSourceFolderSnapshot:copy(f)});
+      converted.push({...copy(f),id,clientId:id,name:f.name,objective:f.objectives||f.objective||"",context:[f.description,f.context].filter(Boolean).join("\n\n"),linkedFolders:[ids[name]],launchDate:f.launchDate||f.createdAt||"",progress:Number(f.progress||0),directorNotes:Array.isArray(f.directorNotes)?f.directorNotes:(f.directorNotes?[{id:"note-from-"+f.id,date:f.updatedAt||f.createdAt||"",content:f.directorNotes}]:[]),migrationSourceFolderId:f.id,migrationSourceFolderSnapshot:copy(f)});
     }
     const originalIds=new Set(folders.map(f=>f.id));
     const mapped=id=>replacement[id]||id;
