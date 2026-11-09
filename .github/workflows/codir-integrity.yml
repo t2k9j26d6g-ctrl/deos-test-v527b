@@ -1,0 +1,19 @@
+name: CODIR migration integrity
+on:
+  pull_request:
+    paths:
+      - 'tools/codir-six-folders-transform.js'
+      - 'tools/test-codir-transform.cjs'
+  workflow_dispatch:
+jobs:
+  codir-integrity:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate migration without database access
+        run: node tools/test-codir-transform.cjs
