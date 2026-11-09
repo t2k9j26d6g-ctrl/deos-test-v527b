@@ -1,0 +1,21 @@
+// Node.js: node tools/test-codir-transform.cjs
+const assert=require("node:assert/strict");
+const fs=require("node:fs");
+const vm=require("node:vm");
+const context={structuredClone,globalThis:{}};
+vm.runInNewContext(fs.readFileSync(__dirname+"/codir-six-folders-transform.js","utf8"),context);
+const {transform,TARGETS,THEMES}=context.globalThis.DeosCodirMigration;
+const folders=Object.values(TARGETS).concat(Object.keys(THEMES)).map((name,i)=>({id:"f"+i,name,linkedManagers:["m1"],description:"Contenu "+name}));
+const projects=Array.from({length:47},(_,i)=>({id:"p"+i,name:"Projet "+i,linkedFolderIds:["f0"],linkedActions:["a"+i]}));
+const snapshot={folders,projects,actions:[{id:"a0",linkedFolderIds:["f6"]}],documents:[{id:"d0",folderId:"f7"}]};
+const assignments=Object.fromEntries(projects.map((p,i)=>[p.id,Object.keys(TARGETS)[i%6]]));
+const before=JSON.stringify(snapshot);
+const out=transform(snapshot,assignments);
+assert.equal(out.data.folders.length,6);
+assert.equal(out.data.projects.length,54);
+assert.equal(out.data.actions[0].linkedFolderIds[0],out.data.folders.find(f=>f.name==="RH").id);
+assert.equal(out.data.documents[0].folderId,out.data.folders.find(f=>f.name==="Contrôle de gestion").id);
+assert.equal(JSON.stringify(snapshot),before,"Input must remain unchanged");
+assert.throws(()=>transform(snapshot,{}),/Affectation manquante/);
+assert.throws(()=>transform({...snapshot,folders:folders.slice(1)},assignments),/Inventaire différent/);
+console.log("CODIR: tests de structure, conservation, références et garde-fous OK");
