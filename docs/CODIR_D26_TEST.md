@@ -9,3 +9,9 @@ La sauvegarde source et la copie migrée restent privées dans le navigateur. Un
 Cette copie TEST est propre au navigateur : elle ne synchronise pas les éditions entre PC et iPad. Aucune donnée métier ni export privé n’est publié dans GitHub. Aucun changement de PROD.
 
 Vérifications : `npm ci --ignore-scripts && npm test`. Tests de migration, intégrité des liens, archives, historique, réexécution, nouveaux projets, concurrence au démarrage, quota, absence de modification source et navigation de l’application complète dans un DOM de test.
+
+## Correctif D26.2
+
+D26 pouvait présenter une copie vide si une lecture distante échouait avant l’import. La copie complète et la sauvegarde pouvaient également dépasser le quota localStorage. D26.2 charge d’abord le cache d’origine intact, puis réorganise cette copie avant l’authentification distante. Les données de travail et leur sauvegarde sont conservées dans une transaction IndexedDB, sans dupliquer les gros imports dans localStorage. Le lanceur attend que le stockage soit prêt avant de démarrer les dépôts synchrones de l’application.
+
+Régressions testées : ancien espace D26 vide mais non validé, toutes les lectures distantes en échec, quota localStorage simulé, copie supérieure à 6 Mo, persistance au rechargement et ordre de démarrage du lanceur. Validation locale supplémentaire sur une copie privée de la sauvegarde de travail, absente du dépôt public.

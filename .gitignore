@@ -1,2 +1,3 @@
 test-data/
 config.local.js
+node_modules/

@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-CODIR-D26-TEST";
+const DEOS_VERSION = "V5.30-CODIR-D26.2-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -2296,40 +2296,54 @@ function reportCodirTestError(error) {
   console.error("[DEOS TEST CODIR]", error);
   setDeosStartupStatus("Copie TEST non préparée : " + (error?.message || "lecture source impossible") + ". Les données source sont conservées.", true);
 }
-async function prepareCodirTestCopy() {
+async function prepareCodirTestCopy(options = {}) {
   const test = window.DeosTest;
   if (!test) return;
+  await test.loaded;
   if (test.ready()) { document.getElementById("app").inert = false; return; }
-  if (!deosRemoteAuthService?.isAuthenticated?.() || !deosRemoteAdapter || !deosRemoteRuntime.workspace) return;
   if (codirTestCopyPromise) return codirTestCopyPromise;
   codirTestCopyPromise = (async () => {
     document.getElementById("app").inert = true;
-    setDeosStartupStatus("Préparation de la copie TEST et reclassement des dossiers…");
     const source = Object.fromEntries(entities.map(name => [name, test.originalJson(DEOS_STORAGE_KEYS[name], [])]));
-    const imports = [["folders","listFolders","folder"],["projects","listProjects","project"],["actions","listActions","action"],["managers","listManagers","manager"],["decisions","listDecisions","decision"],["documents","listDocuments","document"],["links","listLinks","link"]];
-    const results = await Promise.all(imports.map(async ([entity,method,payload]) => {
-      const rows = await withRemoteTimeout(deosRemoteAdapter[method](), 20000, "TEST_SOURCE_TIMEOUT", "Lecture source trop longue : " + entity);
-      const active = rows.filter(row => !row.deletedAt);
-      if (active.length >= 1000) throw Error("Lecture source possiblement tronquée : " + entity);
-      return [entity, active.map(row => ({...row[payload], id: row.clientId || row[payload]?.id}))];
-    }));
-    for (const [entity,items] of results) source[entity] = items;
-    // Priorities and journal are carried in hidden documents by the existing sync bridge.
-    for (const doc of source.documents) {
-      if (isPrioritySyncTransportDocument(doc)) { const payload = prioritySyncPayloadFromDocument(doc); if (payload) source.priorities = payload.priorities; }
-      if (isJournalSyncTransportDocument(doc)) { const payload = journalSyncPayloadFromDocument(doc); if (payload) source.journal = payload.journal; }
+    let migrated = null;
+    // First recover the complete existing cache. Network failure must never hide existing data.
+    if (source.folders.length && source.projects.length) {
+      try { migrated = window.DeosCodir.transform(source, window.DeosCodirAssignments); }
+      catch (error) { console.warn("[DEOS TEST cached source]",error); if(options.localOnly)return; }
     }
-    const migrated = window.DeosCodir.transform(source, window.DeosCodirAssignments);
+    if (!migrated) {
+      if (options.localOnly || !deosRemoteAuthService?.isAuthenticated?.() || !deosRemoteAdapter || !deosRemoteRuntime.workspace) return;
+      setDeosStartupStatus("Lecture des données existantes pour préparer TEST…");
+      const imports = [["folders","listFolders","folder"],["projects","listProjects","project"],["actions","listActions","action"],["managers","listManagers","manager"],["decisions","listDecisions","decision"],["documents","listDocuments","document"],["links","listLinks","link"]];
+      const results = await Promise.allSettled(imports.map(async ([entity,method,payload]) => {
+        const rows = await withRemoteTimeout(deosRemoteAdapter[method](), 15000, "TEST_SOURCE_TIMEOUT", "Lecture source trop longue : " + entity);
+        const active = rows.filter(row => !row.deletedAt);
+        if (active.length >= 1000) throw Error("Lecture source possiblement tronquée : " + entity);
+        return [entity, active.map(row => ({...row[payload], id: row.clientId || row[payload]?.id}))];
+      }));
+      const errors=[];
+      results.forEach((result,index)=>{
+        const entity=imports[index][0];
+        if(result.status==="fulfilled")source[entity]=result.value[1];
+        else if(test.originalJson(DEOS_STORAGE_KEYS[entity],null)===null)errors.push(entity+" : "+(result.reason?.message||"lecture impossible"));
+      });
+      if(errors.length)throw Error(errors.join(" ; "));
+      // Existing bridge logic will reconcile multi-device Journal/Priorities after import.
+      for (const doc of source.documents) {
+        if (isPrioritySyncTransportDocument(doc)) { const payload = prioritySyncPayloadFromDocument(doc); if (payload) source.priorities = payload.priorities; }
+      }
+      migrated = window.DeosCodir.transform(source, window.DeosCodirAssignments);
+    }
     const previous = Object.fromEntries(entities.map(name => [name,state[name]]));
     try {
       for (const name of entities) state[name] = migrated.data[name] || [];
       for (const name of entities) migrated.data[name] = normalizeCollection(name, state[name]);
-      test.commit(source,migrated,DEOS_STORAGE_KEYS);
+      await test.commit(source,migrated,DEOS_STORAGE_KEYS);
       for (const name of entities) state[name] = migrated.data[name];
     } catch (error) { for (const name of entities) state[name] = previous[name]; throw error; }
     document.getElementById("app").inert = false;
     setDeosStartupStatus("");
-    setView(currentView || "folders");
+    if (!options.localOnly) setView(currentView || "folders");
   })();
   try { return await codirTestCopyPromise; } finally { codirTestCopyPromise = null; }
 }
@@ -2357,6 +2371,7 @@ async function init() {
   } finally {
     deosInitialEntityLoad = false;
   }
+  if (window.DeosTest) await prepareCodirTestCopy({localOnly:true});
   // Si cet appareil possède déjà le document de transport (par exemple après
   // une synchro précédente), les Priorités locales sont restaurées avant le
   // démarrage des pilotes distants.
@@ -2430,12 +2445,14 @@ async function init() {
     initializeFoldersHybridSync({ skipAutoSync: false });
     initializeManagersHybridSync({ skipAutoSync: false });
     initializeDecisionDocumentHybridSync({ skipAutoSync: false });
-    setDeosStartupStatus(window.DeosTest && !window.DeosTest.ready() ? "Copie TEST en attente de connexion pour reprendre les données existantes." : deosRemoteRuntime.lastError
+    setDeosStartupStatus(window.DeosTest ? (window.DeosTest.ready() ? "" : "Copie TEST en attente de connexion pour reprendre les données existantes.") : deosRemoteRuntime.lastError
       ? "Connexion distante : " + deosRemoteRuntime.lastError + " Consultez Paramètres ; les données locales restent accessibles."
       : "", Boolean(deosRemoteRuntime.lastError));
   } catch (error) {
     console.error("[DEOS STARTUP REMOTE]", error);
-    setDeosStartupStatus("Connexion distante non confirmée. Les données locales restent accessibles ; consultez Paramètres.", true);
+    if (window.DeosTest?.ready()) setDeosStartupStatus("");
+    else if (window.DeosTest) reportCodirTestError(error);
+    else setDeosStartupStatus("Connexion distante non confirmée. Les données locales restent accessibles ; consultez Paramètres.", true);
   }
 }
 
@@ -2445,6 +2462,9 @@ function setView(view) {
   document.querySelectorAll(".nav").forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
   const titles = { mailPilot: "Messagerie / Pilotage", cockpit: "Cockpit décisionnel", graph: "Vue graphique", folders: "Dossiers", performance: "Performance", priorities: "Priorités V5", actionPlans: "Plans d'action", actions: "Actions", managers: "Managers V5", projects: "Projets V5", decisions: "Décisions V5", journal: "Journal", documents: "Documents", links: "Liens utiles", activity: "Agenda / Réunions", settings: "Paramètres" };
   document.getElementById("viewTitle").textContent = titles[view] || identity.appName;
+  if (window.DeosTest && !window.DeosTest.ready() && ["folders","projects"].includes(view) && !state[view].length) {
+    appHtml(`<div class="card"><h2>Données en cours de récupération</h2><p>La copie TEST n’est pas prête. Les données originales sont conservées. Le détail du chargement apparaît au-dessus.</p></div>`); return;
+  }
   const views = { mailPilot: renderMailPilot, cockpit: renderCockpit, graph: renderGraph, folders: renderFolders, performance: renderPerformance, priorities: renderPriorities, actionPlans: renderActionPlans, actions: renderActions, managers: renderManagers, projects: renderProjects, decisions: renderDecisions, journal: renderJournal, documents: renderDocuments, links: renderLinks, activity: renderActivity, settings: renderSettings };
   if (views[view]) views[view]();
 }
