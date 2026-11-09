@@ -24,12 +24,14 @@
     if (!projectAssignments || typeof projectAssignments !== "object") throw Error("Rattachements des projets requis");
     const data=structuredClone(snapshot);
     const byName=new Map(data.folders.map(f=>[f.name,f]));
+    if(data.folders.some(f=>!f.id)||data.projects.some(p=>!p.id)) throw Error("Identifiants absents : fournir des objets enrichis avec les ID des lignes Supabase");
     if (data.folders.length!==13 || data.projects.length!==47) throw Error("Inventaire différent du 06/11 : migration arrêtée");
     const targets={};
     for(const [target,oldName] of Object.entries(TARGETS)){
       const folder=byName.get(oldName);
       if(!folder) throw Error("Dossier permanent introuvable : "+oldName);
       folder.name=target;
+      folder.category=target;
       targets[target]=folder.id;
     }
     const replacement={};
