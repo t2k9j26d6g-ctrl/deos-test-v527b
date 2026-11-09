@@ -14,7 +14,7 @@ const out=transform(snapshot,assignments);
 assert.equal(out.data.folders.length,6);
 assert.equal(out.data.projects.length,54);
 assert.equal(out.data.actions[0].linkedFolderIds[0],out.data.folders.find(f=>f.name==="RH").id);
-assert.equal(out.data.documents[0].folderId,out.data.folders.find(f=>f.name==="Contrôle de gestion").id);
+assert.equal(out.data.documents[0].folderId,out.data.folders.find(f=>f.name==="Exploitation").id);
 assert.equal(JSON.stringify(snapshot),before,"Input must remain unchanged");
 assert.throws(()=>transform(snapshot,{}),/Affectation manquante/);
 assert.throws(()=>transform({...snapshot,folders:folders.slice(1)},assignments),/Inventaire différent/);
