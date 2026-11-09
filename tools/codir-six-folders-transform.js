@@ -12,12 +12,12 @@
   });
   const THEMES = Object.freeze({
     "Adaptation des effectifs et recours à l'intérim":"RH",
-    "Gestion des pointage 099 et des temps improductifs":"Contrôle de gestion",
-    "IPO":"Contrôle de gestion",
+    "Gestion des pointage 099 et des temps improductifs":"Exploitation",
+    "IPO":"Direction",
     "Réduction casse / non-livrés / litiges magasins":"RMPQ",
     "Productivité":"Exploitation",
     "Réduction des heures de polyvalence":"Exploitation",
-    "Mise en place de tables rondes":"RH"
+    "Mise en place de tables rondes":"Direction"
   });
   function transform(snapshot, projectAssignments) {
     if (!snapshot || !Array.isArray(snapshot.folders) || !Array.isArray(snapshot.projects)) throw Error("Snapshot dossiers/projets requis");
