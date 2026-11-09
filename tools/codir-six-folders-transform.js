@@ -56,7 +56,6 @@
         if(key==="migrationSourceFolderSnapshot")continue;
         if(key==="linkedFolders"&&Array.isArray(value))node[key]=[...new Set(value.map(id=>replacement[id]||id))];
         else if(key==="linkedFolderIds"&&Array.isArray(value))node[key]=[...new Set(value.map(id=>replacement[id]||id))];
-        else if(key==="linkedFolderIds"&&Array.isArray(value))value.forEach(id=>{if(typeof id==="string"&&!ids.has(id))errors.push(id)});
         else if((key==="folderId"||key==="linkedFolderId")&&typeof value==="string")node[key]=replacement[value]||value;
         else rewrite(value);
       }
@@ -72,7 +71,7 @@
       if(!node||typeof node!=="object")return;
       for(const [key,value] of Object.entries(node)){
         if(key==="migrationSourceFolderSnapshot")continue;
-        if(key==="linkedFolders"&&Array.isArray(value))value.forEach(id=>{if(typeof id==="string"&&!ids.has(id))errors.push(id)});
+        if((key==="linkedFolders"||key==="linkedFolderIds")&&Array.isArray(value))value.forEach(id=>{if(typeof id==="string"&&!ids.has(id))errors.push(id)});
         else if((key==="folderId"||key==="linkedFolderId")&&typeof value==="string"&&!ids.has(value))errors.push(value);
         else validate(value);
       }
