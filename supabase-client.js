@@ -133,7 +133,7 @@
       this.config = normalizeRemoteConfig(config);
       this.options = options || {};
       this.debug = Boolean(this.config.debug || this.options.debug);
-      this.workspacePreferenceKey = String(this.options.workspacePreferenceKey || "deos_remote_workspace_preference");
+      this.workspacePreferenceKey = String(this.options.workspacePreferenceKey || (global.DeosTest ? "deos_codir_test_workspace_preference" : "deos_remote_workspace_preference"));
       this.client = null;
       this.initialized = false;
       this.connectionStatus = this.config.enabled ? "pending" : "local_only";

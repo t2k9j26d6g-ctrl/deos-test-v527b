@@ -324,6 +324,7 @@ class SupabaseRemoteAdapter {
     }
 
     assertWritableRole(role) {
+      if (global.DeosTest) throw createRemoteError("TEST_SOURCE_READ_ONLY", "La base source reste en lecture seule dans TEST.");
       if (["owner", "admin", "contributor"].includes(String(role || "").toLowerCase())) return;
       throw createRemoteError("FORBIDDEN_ROLE", "Ce role distant ne peut pas ecrire dans les enregistrements de test.");
     }

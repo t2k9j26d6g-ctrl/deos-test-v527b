@@ -1,0 +1,7 @@
+{
+  "name": "deos-test",
+  "private": true,
+  "scripts": {"test": "node tests/codir.test.cjs && node tests/codir-ui.test.cjs"},
+  "devDependencies": {"jsdom": "31.0.0"},
+  "engines": {"node": ">=24.15.0"}
+}

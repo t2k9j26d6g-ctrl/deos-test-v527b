@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-SYNC-D25P-TEST";
+const DEOS_VERSION = "V5.30-CODIR-D26-TEST";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -424,7 +424,7 @@ function createRepository(dataService, config) {
   };
 }
 
-const localStorageAdapter = new BrowserStorageAdapter(localStorage, "localStorage");
+const localStorageAdapter = new BrowserStorageAdapter(window.DeosTest?.storage || localStorage, "localStorage");
 const sessionStorageAdapter = new BrowserStorageAdapter(sessionStorage, "sessionStorage");
 const deosDataService = new DeosDataService(localStorageAdapter, DEOS_STORAGE_KEYS, { prefix: DEOS_STORAGE_PREFIX });
 const deosSessionService = new DeosDataService(sessionStorageAdapter, DEOS_STORAGE_KEYS, { prefix: DEOS_STORAGE_PREFIX });
@@ -898,6 +898,7 @@ async function fetchStartupJson(url, fallback, timeoutMs = 6000) {
   } finally { clearTimeout(timer); }
 }
 async function loadJson(name) {
+  if (window.DeosTest) return [];
   return fetchStartupJson(`data/${name}.json?v=${Date.now()}`, defaults[name] || []);
 }
 async function loadIdentityDefaults() {
@@ -1070,13 +1071,13 @@ let deosJournalSyncTimer = null;
 
 function journalSyncDeviceId() {
   try {
-    let id = String(localStorage.getItem(DEOS_JOURNAL_SYNC_DEVICE_KEY) || "").trim();
+    let id = String((window.DeosTest?.storage || localStorage).getItem(DEOS_JOURNAL_SYNC_DEVICE_KEY) || "").trim();
     if (!id) {
       const seed = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
         ? crypto.randomUUID()
         : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       id = seed.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48) || `device-${Date.now()}`;
-      localStorage.setItem(DEOS_JOURNAL_SYNC_DEVICE_KEY, id);
+      (window.DeosTest?.storage || localStorage).setItem(DEOS_JOURNAL_SYNC_DEVICE_KEY, id);
     }
     return id;
   } catch (_) {
@@ -1090,7 +1091,7 @@ function journalSyncOwnDocumentId() {
 
 function loadJournalDeletedTombstones() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(DEOS_JOURNAL_SYNC_DELETED_KEY) || "[]");
+    const parsed = JSON.parse((window.DeosTest?.storage || localStorage).getItem(DEOS_JOURNAL_SYNC_DELETED_KEY) || "[]");
     if (!Array.isArray(parsed)) return [];
     const latest = new Map();
     parsed.forEach(entry => {
@@ -1118,7 +1119,7 @@ function saveJournalDeletedTombstones(entries) {
       const previous = latest.get(id);
       if (!previous || stamp > Date.parse(previous.deletedAt || 0)) latest.set(id, { id, deletedAt });
     });
-    localStorage.setItem(DEOS_JOURNAL_SYNC_DELETED_KEY, JSON.stringify([...latest.values()]));
+    (window.DeosTest?.storage || localStorage).setItem(DEOS_JOURNAL_SYNC_DELETED_KEY, JSON.stringify([...latest.values()]));
   } catch (_) {}
 }
 
@@ -2290,7 +2291,51 @@ function addActivity(type, title, detail = "", entityId = "") {
   persist("activity");
 }
 
+let codirTestCopyPromise = null;
+function reportCodirTestError(error) {
+  console.error("[DEOS TEST CODIR]", error);
+  setDeosStartupStatus("Copie TEST non préparée : " + (error?.message || "lecture source impossible") + ". Les données source sont conservées.", true);
+}
+async function prepareCodirTestCopy() {
+  const test = window.DeosTest;
+  if (!test) return;
+  if (test.ready()) { document.getElementById("app").inert = false; return; }
+  if (!deosRemoteAuthService?.isAuthenticated?.() || !deosRemoteAdapter || !deosRemoteRuntime.workspace) return;
+  if (codirTestCopyPromise) return codirTestCopyPromise;
+  codirTestCopyPromise = (async () => {
+    document.getElementById("app").inert = true;
+    setDeosStartupStatus("Préparation de la copie TEST et reclassement des dossiers…");
+    const source = Object.fromEntries(entities.map(name => [name, test.originalJson(DEOS_STORAGE_KEYS[name], [])]));
+    const imports = [["folders","listFolders","folder"],["projects","listProjects","project"],["actions","listActions","action"],["managers","listManagers","manager"],["decisions","listDecisions","decision"],["documents","listDocuments","document"],["links","listLinks","link"]];
+    const results = await Promise.all(imports.map(async ([entity,method,payload]) => {
+      const rows = await withRemoteTimeout(deosRemoteAdapter[method](), 20000, "TEST_SOURCE_TIMEOUT", "Lecture source trop longue : " + entity);
+      const active = rows.filter(row => !row.deletedAt);
+      if (active.length >= 1000) throw Error("Lecture source possiblement tronquée : " + entity);
+      return [entity, active.map(row => ({...row[payload], id: row.clientId || row[payload]?.id}))];
+    }));
+    for (const [entity,items] of results) source[entity] = items;
+    // Priorities and journal are carried in hidden documents by the existing sync bridge.
+    for (const doc of source.documents) {
+      if (isPrioritySyncTransportDocument(doc)) { const payload = prioritySyncPayloadFromDocument(doc); if (payload) source.priorities = payload.priorities; }
+      if (isJournalSyncTransportDocument(doc)) { const payload = journalSyncPayloadFromDocument(doc); if (payload) source.journal = payload.journal; }
+    }
+    const migrated = window.DeosCodir.transform(source, window.DeosCodirAssignments);
+    const previous = Object.fromEntries(entities.map(name => [name,state[name]]));
+    try {
+      for (const name of entities) state[name] = migrated.data[name] || [];
+      for (const name of entities) migrated.data[name] = normalizeCollection(name, state[name]);
+      test.commit(source,migrated,DEOS_STORAGE_KEYS);
+      for (const name of entities) state[name] = migrated.data[name];
+    } catch (error) { for (const name of entities) state[name] = previous[name]; throw error; }
+    document.getElementById("app").inert = false;
+    setDeosStartupStatus("");
+    setView(currentView || "folders");
+  })();
+  try { return await codirTestCopyPromise; } finally { codirTestCopyPromise = null; }
+}
+
 async function init() {
+  if (window.DeosTest && !window.DeosTest.ready()) document.getElementById("app").inert = true;
   setDeosStartupStatus("Chargement des données de cet appareil…");
   const initialDataPromise = Promise.all(entities.map(name =>
     deosDataService.exists(name) ? Promise.resolve(null) : loadJson(name)));
@@ -2378,6 +2423,7 @@ async function init() {
   setDeosStartupStatus("Données locales chargées. Connexion distante en cours ; la synchronisation n'est pas encore confirmée.");
   try {
     await initializeRemoteServices({ silent: true });
+    if (window.DeosTest) await prepareCodirTestCopy();
     initializeLinksHybridSync({ skipAutoSync: false });
     initializeActionsHybridSync({ skipAutoSync: false });
     initializeProjectsHybridSync({ skipAutoSync: false });
@@ -20904,6 +20950,7 @@ function linksSyncCanUseRemote() {
 }
 
 function linksSyncCanInspectRemote() {
+  if (window.DeosTest) return false;
   return Boolean(
     navigator.onLine !== false
     && !deosRemoteRuntime.temporaryLocal
@@ -25458,6 +25505,7 @@ let deosMultiDeviceSyncRuntime = {
 };
 
 function multiDeviceConnected() {
+  if (window.DeosTest) return false;
   return Boolean(
     navigator.onLine !== false
     && !deosRemoteRuntime.temporaryLocal
@@ -25588,6 +25636,7 @@ function bindMultiDeviceSyncListeners() {
 }
 
 function initializeMultiDeviceSyncForAuthenticatedSession(options = {}) {
+  if (window.DeosTest) { prepareCodirTestCopy().catch(reportCodirTestError); return; }
   bindMultiDeviceSyncListeners();
   if (!multiDeviceConnected()) return;
   enableAllMultiDevicePilots();
@@ -25609,6 +25658,7 @@ function multiDeviceSyncSummary() {
 }
 
 function renderMultiDeviceSyncSettingsCardHtml() {
+  if (window.DeosTest) return `<div class="card"><h2>Copie TEST indépendante</h2><p>Les modifications sont enregistrées dans ce navigateur. La base PROD reste en lecture seule. Cette copie TEST ne se synchronise pas entre PC et iPad.</p></div>`;
   const connected = multiDeviceConnected();
   const summary = multiDeviceSyncSummary();
   const labelMap = { links:"Liens", actions:"Actions", projects:"Projets", folders:"Dossiers", managers:"Managers", decisions:"Décisions", documents:"Documents" };
@@ -25899,6 +25949,7 @@ function bindRemoteUserContextNetworkListeners() {
 }
 
 function remoteCanInspectLinks() {
+  if (window.DeosTest) return false;
   return Boolean(
     navigator.onLine !== false
     && !deosRemoteRuntime.temporaryLocal
@@ -26119,7 +26170,7 @@ async function remoteFastHydrateContext(session) {
       );
       if (membershipResponse?.error) diagnostics.push(`workspace_members: ${membershipResponse.error.message || membershipResponse.error.code || "erreur"}`);
       const memberships = Array.isArray(membershipResponse?.data) ? membershipResponse.data : [];
-      const preferredWorkspaceId = String(localStorage.getItem(preferenceKey) || "").trim();
+      const preferredWorkspaceId = String((window.DeosTest?.storage || localStorage).getItem(preferenceKey) || "").trim();
       const selectedMembership = memberships.find(item => String(item.workspace_id) === preferredWorkspaceId) || memberships[0] || null;
       if (selectedMembership) {
         workspaceId = String(selectedMembership.workspace_id || "").trim();
@@ -26250,7 +26301,7 @@ async function remoteFastHydrateContext(session) {
     siteName: site?.name || "",
     role
   }];
-  try { localStorage.setItem(preferenceKey, String(workspace.id)); } catch (_) {}
+  try { (window.DeosTest?.storage || localStorage).setItem(preferenceKey, String(workspace.id)); } catch (_) {}
 
   const snapshot = deosRemoteAuthService.getStateSnapshot?.() || {};
   return {
@@ -26404,6 +26455,7 @@ async function submitStartupPasswordSignIn() {
     deosRemoteRuntime.lastErrorCode = "";
     updateRemoteStartupDialog({ linksPromptDismissed: false, busy: false, error: "", message: "" });
     closeRemoteStartupOverlay();
+    if (window.DeosTest) await prepareCodirTestCopy();
     renderRemoteUserContext();
     if (currentView === "settings") renderSettings("Connexion distante réussie."); else setView(currentView || "cockpit");
   } catch (error) {
@@ -26523,7 +26575,7 @@ function applyRemoteEnvironmentBadge() {
   const mode = remoteModeKey();
   node.hidden = false;
   node.className = `environment-chip ${remoteModeClass(mode)}`;
-  node.textContent = remoteStartupModeLabel();
+  node.textContent = window.DeosTest ? "TEST · copie locale isolée" : remoteStartupModeLabel();
 }
 
 function updateRemoteRuntime(summary = {}) {
@@ -27882,7 +27934,7 @@ const DEOS_SETTINGS_ACCORDION_STATE_KEY = "deos_settings_accordion_state_v526a";
 
 function settingsAccordionReadState() {
   try {
-    const raw = localStorage.getItem(DEOS_SETTINGS_ACCORDION_STATE_KEY);
+    const raw = (window.DeosTest?.storage || localStorage).getItem(DEOS_SETTINGS_ACCORDION_STATE_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch (_) {
@@ -27892,7 +27944,7 @@ function settingsAccordionReadState() {
 
 function settingsAccordionWriteState(stateMap) {
   try {
-    localStorage.setItem(DEOS_SETTINGS_ACCORDION_STATE_KEY, JSON.stringify(stateMap || {}));
+    (window.DeosTest?.storage || localStorage).setItem(DEOS_SETTINGS_ACCORDION_STATE_KEY, JSON.stringify(stateMap || {}));
   } catch (_) {}
 }
 
@@ -29728,7 +29780,7 @@ function readPerformanceImportedSources() {
 
   appendImports(state.performance_imports);
   try {
-    const raw = localStorage.getItem("deos_performance_imports");
+    const raw = (window.DeosTest?.storage || localStorage).getItem("deos_performance_imports");
     appendImports(raw ? JSON.parse(raw) : []);
   } catch (error) {
     console.warn("[DEOS] Lecture deos_performance_imports impossible", error);
