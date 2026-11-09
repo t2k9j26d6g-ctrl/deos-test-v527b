@@ -1,4 +1,6 @@
-/* DEOS CODIR: pure, non-mutating transformation. No Supabase requests or storage writes.
+/* DEOS CODIR: pure, non-mutating transformation.
+   IMPORTANT: when consuming Supabase CSV rows, hydrate data.id from row.client_id,
+   NOT row.id (the latter is the Supabase UUID, not the DEOS client ID). No Supabase requests or storage writes.
    Not loaded by index.html. For controlled migration tooling only. */
 (function (global) {
   "use strict";
