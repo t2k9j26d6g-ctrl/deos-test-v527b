@@ -46,6 +46,8 @@
       const target=projectAssignments[project.id];
       if(!targets[target]) throw Error("Affectation manquante/invalide : "+project.id);
       project.linkedFolders=[targets[target]];
+      if (Object.prototype.hasOwnProperty.call(project,"linkedFolderIds")) project.linkedFolderIds=[targets[target]];
+      if (Object.prototype.hasOwnProperty.call(project,"folderId")) project.folderId=targets[target];
     }
     const rewrite=(node)=>{
       if(Array.isArray(node)){node.forEach(rewrite);return;}
@@ -53,6 +55,8 @@
       for(const [key,value] of Object.entries(node)){
         if(key==="migrationSourceFolderSnapshot")continue;
         if(key==="linkedFolders"&&Array.isArray(value))node[key]=[...new Set(value.map(id=>replacement[id]||id))];
+        else if(key==="linkedFolderIds"&&Array.isArray(value))node[key]=[...new Set(value.map(id=>replacement[id]||id))];
+        else if(key==="linkedFolderIds"&&Array.isArray(value))value.forEach(id=>{if(typeof id==="string"&&!ids.has(id))errors.push(id)});
         else if((key==="folderId"||key==="linkedFolderId")&&typeof value==="string")node[key]=replacement[value]||value;
         else rewrite(value);
       }
