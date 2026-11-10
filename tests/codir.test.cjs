@@ -52,7 +52,7 @@ const entities=Object.keys(source),keys=Object.fromEntries(entities.map(x=>[x,'d
 async function harness(native,fail=false){
  const integration=await runtime('/deos-test-v527b/',native),state={};let calls=0;
  const adapter={};for(const [e,m,p] of [['folders','listFolders','folder'],['projects','listProjects','project'],['actions','listActions','action'],['managers','listManagers','manager'],['decisions','listDecisions','decision'],['documents','listDocuments','document'],['links','listLinks','link']])adapter[m]=async()=>{calls++;if(fail)throw Error('Source unavailable');return (source[e]||[]).map(x=>({clientId:x.id,[p]:{...x,id:'server-uuid-must-not-win'}}))};
- const c={window:{DeosTest:integration.DeosTest,DeosCodir:ctx.DeosCodir,DeosCodirAssignments:ctx.DeosCodirAssignments},entities,DEOS_STORAGE_KEYS:keys,state,deosRemoteAuthService:{isAuthenticated:()=>true},deosRemoteRuntime:{workspace:{id:'source'}},deosRemoteAdapter:adapter,withRemoteTimeout:p=>p,document:{getElementById:()=>({})},setDeosStartupStatus:()=>{},setView:()=>{},currentView:'folders',normalizeCollection:(_n,x)=>x,isPrioritySyncTransportDocument:()=>false,isJournalSyncTransportDocument:()=>false,console};
+ const c={upgradeIsolatedDirection:async()=>{},window:{DeosTest:integration.DeosTest,DeosCodir:ctx.DeosCodir,DeosCodirAssignments:ctx.DeosCodirAssignments},entities,DEOS_STORAGE_KEYS:keys,state,deosRemoteAuthService:{isAuthenticated:()=>true},deosRemoteRuntime:{workspace:{id:'source'}},deosRemoteAdapter:adapter,withRemoteTimeout:p=>p,document:{getElementById:()=>({})},setDeosStartupStatus:()=>{},setView:()=>{},currentView:'folders',normalizeCollection:(_n,x)=>x,isPrioritySyncTransportDocument:()=>false,isJournalSyncTransportDocument:()=>false,console};
  vm.createContext(c);vm.runInContext(bootstrap,c);return {c,state,getCalls:()=>calls,integration};
 }
 const cold=storage();cold.setItem('deos_folders','[]');const h=await harness(cold);
@@ -63,9 +63,9 @@ const cached=storage();for(const [e,v] of Object.entries(source))cached.setItem(
 const recovered=await harness(cached,true);await vm.runInContext('prepareCodirTestCopy({localOnly:true})',recovered.c);assert.equal(recovered.getCalls(),0);assert.equal(recovered.state.folders.length,6);assert.equal(recovered.state.projects.length,54);assert(recovered.integration.DeosTest.ready());assert.equal(JSON.parse(cached.getItem('deos_folders')).length,13);
 // Launcher must not execute app.js before IndexedDB has hydrated repositories.
 let resolveLoad;const waitLoad=new Promise(r=>{resolveLoad=r}),scripts=[];
-const launchContext={window:{DeosTest:{loaded:waitLoad}},document:{createElement:()=>({}),body:{appendChild:s=>scripts.push(s)},getElementById:()=>({})},console};
+const launchContext={window:{DeosTest:{loaded:waitLoad}},document:{createElement:()=>({}),body:{appendChild:s=>{scripts.push(s);s.onload?.();}},getElementById:()=>({})},console};
 const launched=vm.runInNewContext(fs.readFileSync('tools/codir-launch.js','utf8'),launchContext);
-assert.equal(scripts.length,0);resolveLoad();await launched;assert.equal(scripts.length,1);assert.equal(scripts[0].src,'app.js?v=530CODIRD26.2');
+assert.equal(scripts.length,0);resolveLoad();await launched;assert.equal(scripts.length,2);assert.equal(scripts[0].src,'tools/safeguard.js?v=27.3');assert.equal(scripts[1].src,'app.js?v=530D27.3-TEST');
 console.log('PASS: migration, références, archives, source inchangée, IndexedDB durable, 6 Mo malgré quota localStorage, démarrage concurrent et récupération D26 sans réseau.');
 }
 if(require.main===module)main().catch(e=>{console.error(e);process.exitCode=1});

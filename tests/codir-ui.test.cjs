@@ -11,17 +11,19 @@ if(process.env.DEOS_PRIVATE_FIXTURE)raw=JSON.parse(fs.readFileSync(process.env.D
 for(const [key,value] of Object.entries(raw))w.localStorage.setItem(key,JSON.stringify(value));
 const values={deos_folders:'[]',deos_projects:'[]'};
 values.deos_settings=JSON.stringify({remoteSync:{enabled:false}});
+w.localStorage.setItem('deos_test_engagements_direction_v1',JSON.stringify([{number:4,title:'Productivité intérim',note:'Commentaire ancien prototype à conserver',deadline:'2026-11-09',status:'En cours'}]));
 w.localStorage.setItem('deos_codir_test_v1',JSON.stringify({ready:false,values}));
 (async()=>{
 w.eval(fs.readFileSync('tools/codir-test-runtime.js','utf8'));await w.DeosTest.loaded;
-for(const file of ['tools/codir-project-assignments.js','tools/codir-transform.js','supabase-client.js','remote-adapter.js','app.js'])w.eval(fs.readFileSync(file,'utf8'));
+for(const file of ['tools/codir-project-assignments.js','tools/codir-transform.js','tools/direction-plan.js','tools/direction-release.js','supabase-client.js','remote-adapter.js','app.js'])w.eval(fs.readFileSync(file,'utf8'));
 setTimeout(async()=>{
 try{
  const deadline=Date.now()+15000;while(!w.DeosTest.ready()&&Date.now()<deadline)await new Promise(r=>setTimeout(r,50));
  assert(w.DeosTest.ready(),w.document.getElementById("deosStartupStatus")?.textContent);
  w.setView('folders');const names=Object.keys(w.DeosCodir.targets);for(const name of names)assert(w.document.querySelector('#app').textContent.includes(name),name);
- assert(w.document.getElementById('brandVersion').textContent.includes('D26.2'));
+ assert(w.document.getElementById('brandVersion').textContent.includes('D27.3'));
  assert(w.DeosTest.ready());
+ w.setView('directionCommitments');assert(w.document.querySelector('#app').textContent.includes('11 objectifs')||w.document.querySelector('#app').textContent.includes('/ 11'));w.openAction('act-direction-20261104-04');assert(w.document.querySelector('#app').textContent.includes('Commentaire ancien prototype à conserver'));assert.equal(JSON.parse(w.DeosTest.storage.getItem('deos_actions')).find(a=>a.id==='act-direction-20261104-04').notes,'Commentaire ancien prototype à conserver');const preserved=JSON.parse(w.DeosTest.storage.getItem('deos_actions')).find(a=>a.id==='act-direction-20261104-04');assert.equal(preserved.due,'2026-11-09');assert(preserved.linkedProjects.length);assert.equal(JSON.parse(w.localStorage.getItem('deos_test_engagements_direction_v1'))[0].note,'Commentaire ancien prototype à conserver');
  assert.equal(JSON.parse(w.localStorage.getItem('deos_codir_test_v1')).ready,false);
  w.setView('projects');assert(w.document.querySelector('#app').textContent.includes(process.env.DEOS_PRIVATE_FIXTURE?'Projets':'Projet 1'));
  w.setView('folders');w.openFolder(process.env.DEOS_PRIVATE_FIXTURE?'fold-ms60ptsk-mskhs':'f2');assert(w.document.querySelector('#app').textContent.includes("Adaptation des effectifs"));

@@ -1,11 +1,11 @@
 <!doctype html>
-<!-- DEOS VERSION : V5.30-CODIR-D26.2-TEST | FICHIER : index.html -->
+<!-- DEOS VERSION : V5.30-D27.3-TEST | FICHIER : index.html -->
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>DEOS V5.30-CODIR-D26.2-TEST</title>
-  <link rel="stylesheet" href="style.css?v=530D25P" />
+  <title>DEOS V5.30-D27.3-TEST</title>
+  <link rel="stylesheet" href="style.css?v=530D27.3-TEST" />
 
   <style>
     /* V5.24D — iPad/Safari : conserver la correction du débordement horizontal de la barre latérale. */
@@ -91,7 +91,7 @@
       <button class="nav" data-view="projects">📁 Projets</button>
       <button class="nav" data-view="actions">✅ Actions</button>
       <button class="nav" data-view="decisions">📌 Décisions</button>
-      <a class="nav" href="engagements-direction.html" style="display:block;text-decoration:none">🎯 Engagements Direction ↗</a>
+      <button class="nav" data-view="directionCommitments">🎯 Engagements Direction</button>
       <button class="nav" data-view="mailPilot">📬 Messagerie / Pilotage</button>
       <button class="nav" data-view="performance">📊 Performance</button>
       <button class="nav" data-view="priorities">🎯 Priorités / To-Do</button>
@@ -100,6 +100,7 @@
       <button class="nav" data-view="journal">📝 Journal opérationnel</button>
       <button class="nav" data-view="documents">📄 Documents</button>
       <button class="nav" data-view="links">🔗 Liens</button>
+      <button class="nav" onclick="DeosSafeguard.open()">🔎 Contrôle des saisies</button>
       <button class="nav nav-settings" data-view="settings">⚙️ Paramètres</button>
       <button class="nav" data-view="activity">🕘 Agenda / Réunions</button>
     </div>
@@ -120,13 +121,16 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="libs/jszip.js?v=132"></script>
   <script src="libs/xlsx.full.min.js"></script>
- <script src="tools/codir-test-runtime.js?v=26.2"></script>
-  <script src="tools/codir-project-assignments.js?v=26"></script>
-  <script src="tools/codir-transform.js?v=26.1"></script>
-  <script src="config.js?v=530D17"></script>
-  <script src="supabase-client.js?v=530CODIRD26"></script>
-  <script src="remote-adapter.js?v=530CODIRD26"></script>
-  <script src="tools/codir-launch.js?v=26.2"></script>
+ <script src="config.js?v=530D17"></script>
+  <script src="supabase-client.js?v=530D25P-PROD"></script>
+  <script src="remote-adapter.js?v=530D17"></script>
+  <script src="tools/codir-project-assignments.js?v=27"></script>
+  <script src="tools/codir-transform.js?v=27"></script>
+  <script src="tools/direction-plan.js?v=27"></script>
+  <script src="tools/direction-release.js?v=27"></script>
+  <script src="tools/test-recovery.js?v=27.1"></script>
+  <script src="tools/codir-test-runtime.js?v=27.3"></script>
+  <script src="tools/codir-launch.js?v=27.3"></script>
 </body>
 </html>
 

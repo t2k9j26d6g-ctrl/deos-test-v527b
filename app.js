@@ -1,4 +1,4 @@
-const DEOS_VERSION = "V5.30-CODIR-D26.2-TEST";
+const DEOS_VERSION = window.DeosTest ? "V5.30-D27.3-TEST" : "V5.30-D27.3-PROD";
 // Notes N2 TEST — boîte d’entrée opérationnelle : Notes à traiter dans le Cockpit.
 
 // -- V5.23C : feedback visuel commun pour les actions asynchrones ----------------
@@ -1308,6 +1308,7 @@ function scheduleJournalSyncWrite() {
 }
 
 function persist(name) {
+  window.DeosSafeguard?.capture(name,state[name],"enregistrement");
   const repository = getEntityRepository(name);
   if (repository) {
     repository.save(state[name]);
@@ -1406,6 +1407,7 @@ function hideVisibleTechnicalIds(html) {
 }
 
 function appHtml(html) {
+  window.DeosSafeguard?.draftCapture(actionEditDialog.actionId);
   const graphReturnBanner = graphReturnContext && currentView !== "graph"
     ? `<div class="card graph-return-banner"><div><strong>Vue graphique</strong><p class="muted">Contexte conservé (filtres, zoom, sélection).</p></div><div class="row-actions"><button class="secondary" onclick="returnToGraph()">Retour à la vue graphique</button></div></div>`
     : "";
@@ -2291,6 +2293,15 @@ function addActivity(type, title, detail = "", entityId = "") {
   persist("activity");
 }
 
+async function upgradeIsolatedDirection(){
+ const test=window.DeosTest;if(!test?.ready()||test.storage.getItem('deos_direction_local_d273'))return;
+ const source=Object.fromEntries(entities.map(n=>[n,JSON.parse(test.storage.getItem(DEOS_STORAGE_KEYS[n])||'[]')]));
+ let legacy=[];try{legacy=JSON.parse(localStorage.getItem('deos_test_engagements_direction_v1')||'[]');}catch{}
+ const result=window.DeosDirectionPlan.prepare(source,window.DeosCodirAssignments,legacy);
+ test.storage.setItem('deos_direction_local_before_d273',JSON.stringify({savedAt:new Date().toISOString(),source,legacy}));
+ for(const n of entities)if(result.data[n]){state[n]=normalizeCollection(n,result.data[n]);test.storage.setItem(DEOS_STORAGE_KEYS[n],JSON.stringify(state[n]));}
+ await test.flush();test.storage.setItem('deos_direction_local_d273','1');await test.flush();
+}
 let codirTestCopyPromise = null;
 function reportCodirTestError(error) {
   console.error("[DEOS TEST CODIR]", error);
@@ -2300,7 +2311,7 @@ async function prepareCodirTestCopy(options = {}) {
   const test = window.DeosTest;
   if (!test) return;
   await test.loaded;
-  if (test.ready()) { document.getElementById("app").inert = false; return; }
+  if (test.ready()) { await upgradeIsolatedDirection(); document.getElementById("app").inert = false; return; }
   if (codirTestCopyPromise) return codirTestCopyPromise;
   codirTestCopyPromise = (async () => {
     document.getElementById("app").inert = true;
@@ -2340,6 +2351,7 @@ async function prepareCodirTestCopy(options = {}) {
       for (const name of entities) migrated.data[name] = normalizeCollection(name, state[name]);
       await test.commit(source,migrated,DEOS_STORAGE_KEYS);
       for (const name of entities) state[name] = migrated.data[name];
+      await upgradeIsolatedDirection();
     } catch (error) { for (const name of entities) state[name] = previous[name]; throw error; }
     document.getElementById("app").inert = false;
     setDeosStartupStatus("");
@@ -2349,7 +2361,7 @@ async function prepareCodirTestCopy(options = {}) {
 }
 
 async function init() {
-  if (window.DeosTest && !window.DeosTest.ready()) document.getElementById("app").inert = true;
+  if(window.DeosTest && !window.DeosTest.ready())document.getElementById("app").inert=true;
   setDeosStartupStatus("Chargement des données de cet appareil…");
   const initialDataPromise = Promise.all(entities.map(name =>
     deosDataService.exists(name) ? Promise.resolve(null) : loadJson(name)));
@@ -2371,7 +2383,7 @@ async function init() {
   } finally {
     deosInitialEntityLoad = false;
   }
-  if (window.DeosTest) await prepareCodirTestCopy({localOnly:true});
+  if(window.DeosTest)await prepareCodirTestCopy({localOnly:true});
   // Si cet appareil possède déjà le document de transport (par exemple après
   // une synchro précédente), les Priorités locales sont restaurées avant le
   // démarrage des pilotes distants.
@@ -2425,34 +2437,32 @@ async function init() {
     deosDataService.remove("restore_success");
   }
   document.getElementById("today").textContent = cockpitDateLabel(new Date());
-  document.querySelectorAll(".nav").forEach(btn => btn.onclick = () => setView(btn.dataset.view));
+  document.querySelectorAll(".nav[data-view]").forEach(btn => btn.onclick = () => setView(btn.dataset.view));
   document.addEventListener("change", onAgendaFormSelectionChange);
   document.getElementById("searchInput").oninput = e => runSearch(e.target.value);
   applyRemoteEnvironmentBadge();
   if (restoreSuccessMessage) {
     setView("settings");
   } else {
-    setView("cockpit");
+    setView(new URLSearchParams(location.search).get("view")==="directionCommitments"?"directionCommitments":"cockpit");
   }
   // Le cockpit et la navigation sont disponibles AVANT l'attente de connexion.
   setDeosStartupStatus("Données locales chargées. Connexion distante en cours ; la synchronisation n'est pas encore confirmée.");
   try {
     await initializeRemoteServices({ silent: true });
-    if (window.DeosTest) await prepareCodirTestCopy();
+    if(window.DeosTest)await prepareCodirTestCopy();
     initializeLinksHybridSync({ skipAutoSync: false });
     initializeActionsHybridSync({ skipAutoSync: false });
     initializeProjectsHybridSync({ skipAutoSync: false });
     initializeFoldersHybridSync({ skipAutoSync: false });
     initializeManagersHybridSync({ skipAutoSync: false });
     initializeDecisionDocumentHybridSync({ skipAutoSync: false });
-    setDeosStartupStatus(window.DeosTest ? (window.DeosTest.ready() ? "" : "Copie TEST en attente de connexion pour reprendre les données existantes.") : deosRemoteRuntime.lastError
+    setDeosStartupStatus(window.DeosTest?.ready()?"":deosRemoteRuntime.lastError
       ? "Connexion distante : " + deosRemoteRuntime.lastError + " Consultez Paramètres ; les données locales restent accessibles."
       : "", Boolean(deosRemoteRuntime.lastError));
   } catch (error) {
     console.error("[DEOS STARTUP REMOTE]", error);
-    if (window.DeosTest?.ready()) setDeosStartupStatus("");
-    else if (window.DeosTest) reportCodirTestError(error);
-    else setDeosStartupStatus("Connexion distante non confirmée. Les données locales restent accessibles ; consultez Paramètres.", true);
+    setDeosStartupStatus("Connexion distante non confirmée. Les données locales restent accessibles ; consultez Paramètres.", true);
   }
 }
 
@@ -2460,12 +2470,9 @@ function setView(view) {
   currentView = view;
   if (view !== "graph" && !graphNavigationLock) graphReturnContext = null;
   document.querySelectorAll(".nav").forEach(btn => btn.classList.toggle("active", btn.dataset.view === view));
-  const titles = { mailPilot: "Messagerie / Pilotage", cockpit: "Cockpit décisionnel", graph: "Vue graphique", folders: "Dossiers", performance: "Performance", priorities: "Priorités V5", actionPlans: "Plans d'action", actions: "Actions", managers: "Managers V5", projects: "Projets V5", decisions: "Décisions V5", journal: "Journal", documents: "Documents", links: "Liens utiles", activity: "Agenda / Réunions", settings: "Paramètres" };
+  const titles = { directionCommitments: "Engagements Direction", mailPilot: "Messagerie / Pilotage", cockpit: "Cockpit décisionnel", graph: "Vue graphique", folders: "Dossiers", performance: "Performance", priorities: "Priorités V5", actionPlans: "Plans d'action", actions: "Actions", managers: "Managers V5", projects: "Projets V5", decisions: "Décisions V5", journal: "Journal", documents: "Documents", links: "Liens utiles", activity: "Agenda / Réunions", settings: "Paramètres" };
   document.getElementById("viewTitle").textContent = titles[view] || identity.appName;
-  if (window.DeosTest && !window.DeosTest.ready() && ["folders","projects"].includes(view) && !state[view].length) {
-    appHtml(`<div class="card"><h2>Données en cours de récupération</h2><p>La copie TEST n’est pas prête. Les données originales sont conservées. Le détail du chargement apparaît au-dessus.</p></div>`); return;
-  }
-  const views = { mailPilot: renderMailPilot, cockpit: renderCockpit, graph: renderGraph, folders: renderFolders, performance: renderPerformance, priorities: renderPriorities, actionPlans: renderActionPlans, actions: renderActions, managers: renderManagers, projects: renderProjects, decisions: renderDecisions, journal: renderJournal, documents: renderDocuments, links: renderLinks, activity: renderActivity, settings: renderSettings };
+  const views = { directionCommitments: renderDirectionCommitments, mailPilot: renderMailPilot, cockpit: renderCockpit, graph: renderGraph, folders: renderFolders, performance: renderPerformance, priorities: renderPriorities, actionPlans: renderActionPlans, actions: renderActions, managers: renderManagers, projects: renderProjects, decisions: renderDecisions, journal: renderJournal, documents: renderDocuments, links: renderLinks, activity: renderActivity, settings: renderSettings };
   if (views[view]) views[view]();
 }
 
@@ -3108,6 +3115,14 @@ function getMeetingsLinkedToObject(type, objectId) {
     push(normalizeMeetingForLinkedRender({ ...ev, source: "google", eventKey, confidentiality: enrichment.confidentiality }));
   });
 
+  if (targetType === "action") {
+    const action=byId("actions",targetId);
+    for (const ref of ensureArray(action?.linkedMeetingRefs)) {
+      if(!ref||!ref.id||!["manual","google"].includes(ref.source))continue;
+      const live=ref.source === "google" ? (state.externalCalendarEvents||[]).find(e=>String(e._key||`google_${e.externalId||""}`)===ref.id) : state.agenda.find(e=>sameId(e.id,ref.id));
+      push(normalizeMeetingForLinkedRender({...ref.snapshot,...(live||{}),source:ref.source,id:ref.id,eventKey:ref.id}));
+    }
+  }
   return out.slice().sort(compareAgendaEvents);
 }
 
@@ -3147,8 +3162,8 @@ function linkedMeetingItem(meeting, originType, originId) {
 
 function renderLinkedMeetingsSection(type, objectId) {
   const meetings = getMeetingsLinkedToObject(type, objectId);
-  if (!meetings.length) return `<div class="empty">Aucun rendez-vous lié.</div>`;
-  return meetings.map(m => linkedMeetingItem(m, type, objectId)).join("");
+  const button=type === "action" ? `<div class="row-actions"><button class="secondary" type="button" onclick="openActionMeetingLinker('${esc(objectId)}')">Lier un rendez-vous</button></div>` : "";
+  return button + (meetings.length ? meetings.map(m=>linkedMeetingItem(m,type,objectId)).join("") : `<div class="empty">Aucun rendez-vous lié.</div>`);
 }
 
 function parseEntityIdFromCall(source, fnName) {
@@ -3683,15 +3698,15 @@ function buildActionA5Summary(actionId) {
   const managerNames = normalizeLinkedIdArray(rel.managers.map(manager => String(manager.name || "").trim()).filter(Boolean));
   const meetings = rel.meetings.map(a5MeetingDisplay);
 
-  const description = a5SafeText(action.description || action.objective || action.link || "", 260);
-  const expected = a5SafeText(action.expectedResults || action.result || action.next || "", 220);
-  const notes = a5SafeText(action.notes || action.note || "", 220);
+  const description = String(action.description || action.link || "").trim();
+  const expected = String(action.expectedResults || action.result || action.next || "").trim();
+  const notes = String(action.notes || action.note || "").trim();
   const risks = normalizeLinkedIdArray([
-    a5SafeText(action.risks || action.blockers || "", 140),
+    String(action.risks || action.blockers || "").trim(),
     ...((!action.done && daysUntil(action.due) !== null && daysUntil(action.due) < 0) ? ["Action en retard"] : [])
   ].filter(Boolean));
   const nextSteps = normalizeLinkedIdArray([
-    a5SafeText(action.nextStep || "", 140),
+    String(action.nextStep || "").trim(),
     action.due ? `Échéance : ${a5Date(action.due) || action.due}` : ""
   ].filter(Boolean));
 
@@ -3708,6 +3723,8 @@ function buildActionA5Summary(actionId) {
     },
     body: {
       description,
+      objective: action.objective && action.objective !== description ? String(action.objective).trim() : "",
+      context: action.link && action.link !== description && action.link !== action.objective ? String(action.link).trim() : "",
       expectedResults: expected,
       owner: String(action.owner || "").trim(),
       notes
@@ -3736,9 +3753,9 @@ function buildActionA5Summary(actionId) {
       status: decisionStatusLabel(decision.status),
       date: decision.date || ""
     })),
-    meetings: meetings.slice(0, 5),
-    risks: risks.slice(0, 5),
-    nextSteps: nextSteps.slice(0, 5)
+    meetings,
+    risks,
+    nextSteps
   };
 }
 
@@ -3899,14 +3916,14 @@ function collectA5PrintHeadMarkup(orientation) {
 
 function buildA5PrintWindowHtml(orientation) {
   return `<!doctype html>
-<html lang="fr">
+<html lang="fr" class="${a5SummaryDialog.model?.type === "action" ? "a5-action-print-document" : ""}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>DEOS Synthèse A5</title>
   ${collectA5PrintHeadMarkup(orientation)}
 </head>
-<body></body>
+<body class="${a5SummaryDialog.model?.type === "action" ? "a5-action-print-body" : ""}"></body>
 </html>`;
 }
 
@@ -4160,7 +4177,9 @@ function renderA5SummaryAction(model) {
   const body = model.body || {};
   const managerNames = ensureArray(model.managerNames).filter(Boolean);
   const descriptionBody = [
-    body.description ? `<p><strong>Description / objectif :</strong> ${esc(body.description)}</p>` : "",
+    body.description ? `<p><strong>Description :</strong> ${esc(body.description)}</p>` : "",
+    body.objective ? `<p><strong>Objectif :</strong> ${esc(body.objective)}</p>` : "",
+    body.context ? `<p><strong>Contexte :</strong> ${esc(body.context)}</p>` : "",
     body.expectedResults ? `<p><strong>Résultat attendu :</strong> ${esc(body.expectedResults)}</p>` : "",
     body.owner ? `<p><strong>Responsable :</strong> ${esc(body.owner)}</p>` : ""
   ].join("");
@@ -4240,6 +4259,7 @@ function renderA5SummaryModal() {
         <h2>Synthèse A5 · ${typeLabel}</h2>
         <button class="icon-close" type="button" onclick="closeA5SummaryPreview()" aria-label="Fermer">×</button>
       </div>
+      ${model.type === "action" ? `<p class="muted no-print">Texte intégral · impression sur plusieurs pages si nécessaire.</p>` : ""}
       <div class="a5-summary-toolbar no-print">
         <div class="a5-orientation-switch" role="group" aria-label="Orientation">
           <button type="button" class="secondary ${orientation === "portrait" ? "active-filter" : ""}" onclick="setA5SummaryOrientation('portrait')">Portrait</button>
@@ -4250,8 +4270,8 @@ function renderA5SummaryModal() {
           <button type="button" class="secondary" onclick="closeA5SummaryPreview()">Fermer</button>
         </div>
       </div>
-      <div class="a5-print-root ${orientation}">
-        <article class="a5-summary-sheet ${orientation}">
+      <div class="a5-print-root ${orientation} ${model.type === "action" ? "action-summary-print" : ""}">
+        <article class="a5-summary-sheet ${orientation} ${model.type === "action" ? "a5-action-full" : ""}">
           ${renderA5SummaryHeader(model, orientation)}
           <div class="a5-content ${orientation === "landscape" ? "two-columns" : "one-column"}">${body}</div>
           <footer class="a5-footer">Document interne DEOS</footer>
@@ -4335,6 +4355,65 @@ function actionRenderRelatedMeetings(action) {
   return a5List(meetings, meeting => `<article class="a5-item"><strong>${esc(meeting.label)}</strong><p>${esc(meeting.date)} · ${esc(meeting.time)} ${meetingConfidentialityBadge(meeting.confidentiality)}</p></article>`, "Aucun rendez-vous lié.");
 }
 
+// D27.2 — readable long fields and native meeting links on Actions.
+function resizeActionTextarea(field) {
+  if (!field || field.tagName !== 'TEXTAREA') return;
+  const panel=field.closest('.modal-panel'),top=panel?.scrollTop||0;
+  field.style.height='auto';
+  const style=getComputedStyle(field),border=(parseFloat(style.borderTopWidth)||0)+(parseFloat(style.borderBottomWidth)||0);
+  field.style.height=Math.max(parseFloat(style.minHeight)||0,field.scrollHeight+border)+'px';
+  field.style.overflowY='hidden';
+  if(panel)panel.scrollTop=top;
+}
+function fitActionTextareas(root=document) {
+  if(!window.__actionTextResizeBound){window.__actionTextResizeBound=true;window.addEventListener("resize",()=>fitActionTextareas(document));}
+  root.querySelectorAll('.action-edit-modal textarea').forEach(field=>{
+    if(!field.dataset.autoGrowBound){field.dataset.autoGrowBound='1';field.addEventListener('input',()=>resizeActionTextarea(field));}
+    resizeActionTextarea(field);
+  });
+}
+function actionMeetingChoices(action) {
+  const items=new Map();
+  const push=item=>{const meeting=normalizeMeetingForLinkedRender(item);if(meeting)items.set(meeting.key,meeting);};
+  for(const ref of ensureArray(action.linkedMeetingRefs))if(ref&&ref.id&&['manual','google'].includes(ref.source))push({...ref.snapshot,source:ref.source,id:ref.id,eventKey:ref.id});
+  for(const item of getMeetingsLinkedToObject('action',action.id))items.set(item.key,item);
+  for(const item of state.agenda)push({...item,source:'manual'});
+  for(const item of state.externalCalendarEvents||[]){const key=String(item._key||`google_${item.externalId||''}`),visibility=[items.get('google:'+key)?.confidentiality,state.externalEventEnrichments[key]?.confidentiality,item.confidentiality];push({...item,source:'google',eventKey:key,confidentiality:visibility.includes('confidential')?'confidential':visibility.includes('restricted')?'restricted':'normal'});}
+  return [...items.values()].sort(compareAgendaEvents);
+}
+function actionMeetingLinkControls(action) {
+  const linked=new Set(getMeetingsLinkedToObject('action',action.id).map(m=>m.key));
+  const meetings=actionMeetingChoices(action);
+  return `<div class="card action-meeting-links" id="eaMeetingLinks"><h3>Lier des rendez-vous</h3><p class="muted">Coche les rendez-vous DEOS ou Google à rattacher, puis enregistre l’action.</p>${meetings.length?`<label for="eaMeetingSearch">Rechercher un rendez-vous</label><input id="eaMeetingSearch" type="search" placeholder="Titre, date, lieu…" oninput="filterActionMeetingChoices(this.value)"><div id="eaMeetings" class="action-meeting-options">${meetings.map(m=>`<label class="check-row action-meeting-option" data-meeting-search="${esc([m.title,m.date,m.location].join(' ').toLocaleLowerCase('fr'))}"><input type="checkbox" name="eaMeetings" value="${esc(m.key)}" ${linked.has(m.key)?'checked':''}><span><strong>${esc(m.title)}</strong><br>${esc(m.date||'Sans date')} · ${esc(m.allDay?'Journée entière':m.startTime||'Heure à préciser')} · ${m.source==='google'?'Google':'DEOS'}${m.location?' · '+esc(m.location):''}</span></label>`).join('')}</div>`:'<p>Aucun rendez-vous disponible. Ajoute un rendez-vous dans Agenda / Réunions, ou charge ton calendrier Google, puis reviens le sélectionner ici.</p>'}</div>`;
+}
+function filterActionMeetingChoices(query) {
+  const text=String(query||'').trim().toLocaleLowerCase('fr');
+  document.querySelectorAll('.action-meeting-option').forEach(row=>{row.hidden=!String(row.dataset.meetingSearch||'').includes(text);});
+}
+function saveActionMeetingLinks(action,selected) {
+  const selectedKeys=new Set(selected),choices=actionMeetingChoices(action);
+  action.linkedMeetingRefs=choices.filter(m=>selectedKeys.has(m.key)).map(m=>({source:m.source,id:m.sourceMeetingId,snapshot:{title:m.title,date:m.date,startTime:m.startTime,endTime:m.endTime,allDay:m.allDay,location:m.location,confidentiality:m.confidentiality}}));
+  let agendaChanged=false,googleChanged=false;
+  for(const meeting of state.agenda){
+    const ids=meetingLinkIdsForType(meeting,'action','manual'),next=selectedKeys.has('manual:'+meeting.id)?[...new Set([...ids,action.id])]:ids.filter(id=>!sameId(id,action.id));
+    if(JSON.stringify(next)!==JSON.stringify(ids)){meeting.linkedActions=next;if('linkedActionIds' in meeting)meeting.linkedActionIds=next;agendaChanged=true;}
+  }
+  const googleKeys=new Set([...(state.externalCalendarEvents||[]).map(e=>String(e._key||`google_${e.externalId||''}`)),...Object.keys(state.externalEventEnrichments||{}),...action.linkedMeetingRefs.filter(ref=>ref.source==='google').map(ref=>ref.id)]);
+  for(const key of googleKeys){
+    const existing=state.externalEventEnrichments[key];if(!existing&&!selectedKeys.has('google:'+key))continue;
+    const enrichment=getExternalEventEnrichment(key),ids=normalizeLinkedIdArray(enrichment.linkedActionIds),next=selectedKeys.has('google:'+key)?[...new Set([...ids,action.id])]:ids.filter(id=>!sameId(id,action.id));
+    const ref=action.linkedMeetingRefs.find(r=>r.source==='google'&&r.id===key);
+    if(ref&&['restricted','confidential'].includes(ref.snapshot.confidentiality)&&enrichment.confidentiality!==ref.snapshot.confidentiality){enrichment.confidentiality=ref.snapshot.confidentiality;googleChanged=true;}
+    if(JSON.stringify(next)!==JSON.stringify(ids)){enrichment.linkedActionIds=next;googleChanged=true;}
+  }
+  if(agendaChanged)persist('agenda');if(googleChanged)persistExternalEventEnrichmentsOnly();
+}
+function openActionMeetingLinker(actionId) {
+  openActionEditModal(actionId);
+  document.getElementById('eaMeetingLinks')?.scrollIntoView({block:'start',behavior:'smooth'});
+  document.getElementById('eaMeetingSearch')?.focus({preventScroll:true});
+}
+
 function actionEditModalBody(action) {
   const relations = actionRelationsForA5(action);
   const hasManagersField = Object.prototype.hasOwnProperty.call(action, "linkedManagers") || Object.prototype.hasOwnProperty.call(action, "linkedManagerIds");
@@ -4353,8 +4432,8 @@ function actionEditModalBody(action) {
 
   return `
     <div class="form-grid">
-      <input id="eaTitle" value="${esc(action.title || "")}" placeholder="Titre ou libellé" class="full">
-      <input id="eaLink" value="${esc(action.link || "")}" placeholder="Description / contexte" class="full">
+      <textarea id="eaTitle" rows="1" aria-label="Titre ou libellé" placeholder="Titre ou libellé" class="full">${esc(action.title || "")}</textarea>
+      <textarea id="eaLink" rows="2" aria-label="Description / contexte" placeholder="Description / contexte" class="full">${esc(action.link || "")}</textarea>
       <input id="eaOwner" value="${esc(action.owner || "")}" placeholder="Responsable">
       <select id="eaLevel">
         <option value="green" ${action.level === "green" ? "selected" : ""}>Normal</option>
@@ -4367,11 +4446,17 @@ function actionEditModalBody(action) {
       <label class="check-row"><input id="eaDone" type="checkbox" ${action.done ? "checked" : ""}> <span>Action réalisée</span></label>
       ${hasProgressField ? `<input id="eaProgress" type="number" min="0" max="100" value="${Number(progressValue || 0)}" placeholder="Avancement">` : ""}
     </div>
+    <label for="eaDescription">Description</label>
     <textarea id="eaDescription" placeholder="Description">${esc(descriptionValue)}</textarea>
+    <label for="eaObjective">Objectif</label>
     <textarea id="eaObjective" placeholder="Objectif">${esc(objectiveValue)}</textarea>
+    <label for="eaExpectedResults">Résultat attendu</label>
     <textarea id="eaExpectedResults" placeholder="Résultat attendu">${esc(expectedValue)}</textarea>
+    <label for="eaRisks">Blocages ou risques</label>
     <textarea id="eaRisks" placeholder="Blocages ou risques">${esc(risksValue)}</textarea>
+    <label for="eaNextStep">Prochaines étapes</label>
     <textarea id="eaNextStep" placeholder="Prochaines étapes">${esc(nextStepValue)}</textarea>
+    <label for="eaNotes">Notes</label>
     <textarea id="eaNotes" placeholder="Notes">${esc(notesValue)}</textarea>
     <div class="grid two manager-links">
       <div><label>Dossiers liés</label>${checkboxList("eaFolders", state.folders, normalizeLinkedIdArray(action.linkedFolders), folder => folder.name)}</div>
@@ -4379,10 +4464,7 @@ function actionEditModalBody(action) {
       <div><label>Décisions liées</label>${checkboxList("eaDecisions", state.decisions, normalizeLinkedIdArray(action.linkedDecisions), decision => decision.title)}</div>
       ${relatedManagersHtml}
     </div>
-    <div class="card" style="margin-top:12px">
-      <h3>Rendez-vous liés</h3>
-      ${actionRenderRelatedMeetings(action)}
-    </div>
+    ${actionMeetingLinkControls(action)}
     <div class="modal-actions">
       <button class="action" type="button" onclick="saveActionEdit('${esc(action.id)}')">Enregistrer</button>
       <button class="secondary" type="button" onclick="closeActionEditModal()">Annuler</button>
@@ -4408,11 +4490,14 @@ function renderActionDeleteModal() {
 }
 
 function renderActionModalOverlays() {
+  window.DeosSafeguard?.draftCapture(actionEditDialog.actionId);
   const root = document.getElementById("app");
   if (!root) return;
   root.querySelectorAll(".action-edit-modal, .action-delete-modal").forEach(node => node.remove());
   if (actionEditDialog.open) root.insertAdjacentHTML("beforeend", renderActionEditModal());
   if (actionDeleteDialog.open) root.insertAdjacentHTML("beforeend", renderActionDeleteModal());
+  window.DeosSafeguard?.draftRestore(actionEditDialog.actionId);
+  fitActionTextareas(root);
 }
 
 function openActionEditModal(id) {
@@ -4425,6 +4510,7 @@ function openActionEditModal(id) {
 
 function closeActionEditModal() {
   if (!actionEditDialog.open) return;
+  window.DeosSafeguard?.draftCapture(actionEditDialog.actionId);
   actionEditDialog = { open: false, actionId: "", error: "" };
   renderActionModalOverlays();
 }
@@ -4447,6 +4533,7 @@ function saveActionEdit(id) {
   const i = indexById("actions", id);
   if (i < 0) return false;
   const current = state.actions[i];
+  window.DeosSafeguard?.capture("actions",state.actions,"avant modification");
   const title = document.getElementById("eaTitle")?.value.trim() || "";
   if (!title) {
     actionEditDialog.error = "Le titre de l'action est obligatoire.";
@@ -4485,6 +4572,7 @@ function saveActionEdit(id) {
     next.linkedManagers = managerIds;
     if (Object.prototype.hasOwnProperty.call(current, "linkedManagerIds")) next.linkedManagerIds = managerIds;
   }
+  saveActionMeetingLinks(next, checkedValues("eaMeetings"));
   state.actions[i] = normalizeEntity("actions", next);
   persist("actions");
   addActivity("Action modifiée", state.actions[i].title, state.actions[i].link || state.actions[i].owner || "", id);
@@ -4492,6 +4580,8 @@ function saveActionEdit(id) {
     a5SummaryDialog.model = buildActionA5Summary(id);
   }
   closeActionEditModal();
+  window.DeosSafeguard?.draftClear(id);
+  Promise.resolve(window.DeosTest?.flush()).then(()=>showDeosToast(window.DeosTest?'Enregistré dans TEST sur cet appareil.':'Enregistré sur cet appareil. Synchronisation cloud à confirmer.','success',4000)).catch(reportCodirTestError);
   if (sameId(actionDetailId, id)) {
     openAction(id);
   } else {
@@ -8202,6 +8292,15 @@ function deleteAction(id) {
   openActionDeleteModal(id);
 }
 
+function actionReadableFields(action){
+ const fields=[['Description',action.description],['Objectif',action.objective],['Résultat attendu',action.expectedResults],['Blocages ou risques',action.risks||action.blockers],['Prochaines étapes',action.nextStep],['Notes',action.notes||action.note]];
+ const seen=new Set();return fields.filter(([,v])=>v&&!seen.has(v)&&seen.add(v)).map(([label,value])=>`<section class="card"><h2>${label}</h2><p style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(value)}</p></section>`).join('');
+}
+function actionSaveStatus(action){
+ if(window.DeosTest)return 'Enregistré dans la copie TEST locale';
+ const meta=getActionSyncMeta(action.id);
+ return meta.syncStatus===DEOS_LINKS_SYNC_STATUS.SYNCED && meta.lastLocalFingerprint===actionFingerprint(action)?'Synchronisation cloud confirmée':'Enregistré sur cet appareil · synchronisation cloud à confirmer';
+}
 function openAction(id) {
   const a = byId("actions", id);
   if (!a) return renderActions();
@@ -8212,7 +8311,7 @@ function openAction(id) {
   const linkedFolders = state.folders.filter(f => ensureArray(a.linkedFolders).includes(f.id));
   const linkedDocuments = state.documents.filter(d => ensureArray(d.linkedActions).includes(a.id));
   document.getElementById("viewTitle").textContent = a.title;
-  appHtml(`<div class="card hero manager-hero"><button class="secondary" onclick="renderActions()">Retour Actions</button><h2>${esc(a.title)}</h2><p>${esc(a.link || "")}</p><span class="muted">${a.done ? "Terminée" : "En cours"}</span><div class="row-actions"><button class="secondary" onclick="editAction('${a.id}')">Modifier</button><button class="secondary" onclick="toggleAction('${a.id}')">${a.done ? "Réouvrir" : "Terminer"}</button><button class="secondary" onclick="toggleEntityArchive('actions','${a.id}')">${isEntityArchived(a) ? "Réactiver" : "Archiver"}</button><button class="danger" onclick="deleteAction('${a.id}')">Supprimer</button></div></div><div class="grid two"><div class="card"><h2>Dossiers liés</h2>${linkedFolders.map(f => `<div class="item clickable" onclick="openFolder('${f.id}')"><strong>${esc(f.name)}</strong><span class="muted">${esc(f.category || "")}</span></div>`).join("") || `<div class="empty">Aucun dossier lié.</div>`}</div><div class="card"><h2>Projets liés</h2>${linkedProjects.map(p => `<div class="item clickable" onclick="openProject('${p.id}')"><strong>${esc(p.name)}</strong><span class="muted">${esc(p.next || "")}</span></div>`).join("") || `<div class="empty">Aucun projet lié.</div>`}</div><div class="card"><h2>Décisions liées</h2>${linkedDecisions.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(decisionStatusLabel(d.status))}</span></div>`).join("") || `<div class="empty">Aucune décision liée.</div>`}</div><div class="card"><h2>Documents liés</h2>${linkedDocuments.map(d => `<div class="item clickable" onclick="editDocument('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(d.type || "")}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`}</div><div class="card full-span"><h2>Rendez-vous liés</h2>${actionAgendaList(a)}</div></div>`);
+  appHtml(`<div class="card hero manager-hero"><button class="secondary" onclick="renderActions()">Retour Actions</button><h2>${esc(a.title)}</h2><p style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(a.link || "")}</p><p class="muted">${esc(actionSaveStatus(a))}</p><span class="muted">${a.done ? "Terminée" : "En cours"}</span><div class="row-actions"><button class="secondary" onclick="editAction('${a.id}')">Modifier</button><button class="secondary" onclick="toggleAction('${a.id}')">${a.done ? "Réouvrir" : "Terminer"}</button><button class="secondary" onclick="toggleEntityArchive('actions','${a.id}')">${isEntityArchived(a) ? "Réactiver" : "Archiver"}</button><button class="danger" onclick="deleteAction('${a.id}')">Supprimer</button></div></div>${actionReadableFields(a)}<div class="grid two"><div class="card"><h2>Dossiers liés</h2>${linkedFolders.map(f => `<div class="item clickable" onclick="openFolder('${f.id}')"><strong>${esc(f.name)}</strong><span class="muted">${esc(f.category || "")}</span></div>`).join("") || `<div class="empty">Aucun dossier lié.</div>`}</div><div class="card"><h2>Projets liés</h2>${linkedProjects.map(p => `<div class="item clickable" onclick="openProject('${p.id}')"><strong>${esc(p.name)}</strong><span class="muted">${esc(p.next || "")}</span></div>`).join("") || `<div class="empty">Aucun projet lié.</div>`}</div><div class="card"><h2>Décisions liées</h2>${linkedDecisions.map(d => `<div class="item clickable" onclick="openDecision('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(decisionStatusLabel(d.status))}</span></div>`).join("") || `<div class="empty">Aucune décision liée.</div>`}</div><div class="card"><h2>Documents liés</h2>${linkedDocuments.map(d => `<div class="item clickable" onclick="editDocument('${d.id}')"><strong>${esc(d.title)}</strong><span class="muted">${esc(d.type || "")}</span></div>`).join("") || `<div class="empty">Aucun document lié.</div>`}</div><div class="card full-span"><h2>Rendez-vous liés</h2>${actionAgendaList(a)}</div></div>`);
 }
 
 function openActionModal(id) {
@@ -20970,7 +21069,7 @@ function linksSyncCanUseRemote() {
 }
 
 function linksSyncCanInspectRemote() {
-  if (window.DeosTest) return false;
+  if (!directionCanSync()) return false;
   return Boolean(
     navigator.onLine !== false
     && !deosRemoteRuntime.temporaryLocal
@@ -21895,6 +21994,7 @@ function deactivateActionsHybridSync() {
   return deosActionsSyncRuntime;
 }
 async function syncActionsHybridNow(options = {}) {
+  if(actionEditDialog.open)return deosActionsSyncRuntime;
   if (deosActionsSyncRuntime.syncing) return deosActionsSyncRuntime;
   if (!actionsSyncIsEnabled()) { refreshActionsSyncRuntimeState({ state: DEOS_LINKS_SYNC_STATUS.LOCAL_ONLY, lastError: "" }); return deosActionsSyncRuntime; }
   if (!actionsSyncCanUseRemote()) {
@@ -21989,6 +22089,9 @@ async function syncActionsHybridNow(options = {}) {
         continue;
       }
       const localFp = actionFingerprint(local), remoteFp = actionFingerprint(row.action);
+      if(meta.syncStatus===DEOS_LINKS_SYNC_STATUS.CONFLICT && localFp!==remoteFp){
+        setActionSyncMeta(clientId,{conflictRemote:row,lastSyncError:"CONFLICT — arbitrage requis"});continue;
+      }
       if (!meta.lastLocalFingerprint) {
         if (localFp !== remoteFp) {
           setActionSyncMeta(clientId, { remoteId: row.remoteId, remoteVersion: Number(row.version || 0), remoteUpdatedAt: row.updatedAt || "", syncStatus: DEOS_LINKS_SYNC_STATUS.CONFLICT, lastSyncError: "CONFLICT", conflictRemote: row, conflictFields: actionConflictFields(local, row.action) });
@@ -25525,7 +25628,7 @@ let deosMultiDeviceSyncRuntime = {
 };
 
 function multiDeviceConnected() {
-  if (window.DeosTest) return false;
+  if (!directionCanSync()) return false;
   return Boolean(
     navigator.onLine !== false
     && !deosRemoteRuntime.temporaryLocal
@@ -25570,6 +25673,7 @@ function multiDeviceEntityRuntime(entity) {
 }
 
 async function syncAllMultiDeviceNow(options = {}) {
+  if(actionEditDialog.open)return deosMultiDeviceSyncRuntime;
   const silent = Boolean(options.silent);
   if (deosMultiDeviceSyncRuntime.syncing) return deosMultiDeviceSyncRuntime;
   if (!multiDeviceConnected()) {
@@ -25656,7 +25760,8 @@ function bindMultiDeviceSyncListeners() {
 }
 
 function initializeMultiDeviceSyncForAuthenticatedSession(options = {}) {
-  if (window.DeosTest) { prepareCodirTestCopy().catch(reportCodirTestError); return; }
+  if(window.DeosTest){prepareCodirTestCopy().catch(reportCodirTestError);return;}
+  if (window.DeosDirectionRelease && !deosDirectionReleaseReady) { runDirectionReleaseUpgrade(); return; }
   bindMultiDeviceSyncListeners();
   if (!multiDeviceConnected()) return;
   enableAllMultiDevicePilots();
@@ -25678,7 +25783,7 @@ function multiDeviceSyncSummary() {
 }
 
 function renderMultiDeviceSyncSettingsCardHtml() {
-  if (window.DeosTest) return `<div class="card"><h2>Copie TEST indépendante</h2><p>Les modifications sont enregistrées dans ce navigateur. La base PROD reste en lecture seule. Cette copie TEST ne se synchronise pas entre PC et iPad.</p></div>`;
+  if(window.DeosTest)return `<div class="card"><h2>Copie TEST indépendante</h2><p>Les fonctions sont au même niveau que PROD. Cette copie TEST ne se synchronise pas entre PC et iPad. Les modifications restent locales.</p></div>`;
   const connected = multiDeviceConnected();
   const summary = multiDeviceSyncSummary();
   const labelMap = { links:"Liens", actions:"Actions", projects:"Projets", folders:"Dossiers", managers:"Managers", decisions:"Décisions", documents:"Documents" };
@@ -25969,7 +26074,7 @@ function bindRemoteUserContextNetworkListeners() {
 }
 
 function remoteCanInspectLinks() {
-  if (window.DeosTest) return false;
+  if (!directionCanSync()) return false;
   return Boolean(
     navigator.onLine !== false
     && !deosRemoteRuntime.temporaryLocal
@@ -26475,7 +26580,6 @@ async function submitStartupPasswordSignIn() {
     deosRemoteRuntime.lastErrorCode = "";
     updateRemoteStartupDialog({ linksPromptDismissed: false, busy: false, error: "", message: "" });
     closeRemoteStartupOverlay();
-    if (window.DeosTest) await prepareCodirTestCopy();
     renderRemoteUserContext();
     if (currentView === "settings") renderSettings("Connexion distante réussie."); else setView(currentView || "cockpit");
   } catch (error) {
@@ -29053,6 +29157,90 @@ function updateGoogleSyncUi() {
   return { lastSync, nextSync, eventCount };
 }
 
+let deosDirectionReleaseReady=false;
+let deosDirectionReleasePreflight=false;
+let deosDirectionReleasePromise=null;
+function directionCanSync(){if(window.DeosTest)return false;return !window.DeosDirectionRelease||deosDirectionReleaseReady||deosDirectionReleasePreflight;}
+function createDirectionReleaseTransport(){
+ const config=resolvedRemoteConfig(),auth=deosRemoteAuthService;
+ const session=auth?.session;
+ if(!session?.access_token||!session?.user?.id||!deosRemoteRuntime.workspace?.id)throw Error('Session connectée et espace DEOS requis.');
+ const workspaceId=deosRemoteRuntime.workspace.id,ownerId=session.user.id;
+ const bases={folders:'folder',projects:'project',actions:'action',managers:'manager',decisions:'decision',documents:'document',links:'link'};
+ async function request(path,method='GET',body,headers={}){
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),20000);
+  try{
+   const response=await fetch(config.supabaseUrl.replace(/\/$/,'')+'/rest/v1/'+path,{method,headers:{apikey:config.supabasePublishableKey,Authorization:'Bearer '+session.access_token,'Content-Type':'application/json',...headers},body:body===undefined?undefined:JSON.stringify(body),signal:controller.signal});
+   const value=await response.json();if(!response.ok){const e=Error(value.message||'Écriture/lecture distante refusée ('+response.status+').');e.code=response.status===409?'CONFLICT':value.code;throw e;}return value;
+  }finally{clearTimeout(timer);}
+ }
+ const normalize=row=>({version:Number(row.version),item:{...row.data,id:row.client_id||row.data?.id}});
+ const payload=item=>Object.fromEntries(Object.entries(item).filter(([k])=>!['id','clientId'].includes(k)&&!k.startsWith('__')&&!k.startsWith('_sync')));
+ return {
+  workspaceId,
+  async list(entity){const result=[];let offset=0;while(true){const page=await request('deos_'+entity+'?select=*&workspace_id=eq.'+encodeURIComponent(workspaceId)+'&deleted_at=is.null&order=client_id.asc&limit=1000&offset='+offset);if(!Array.isArray(page))throw Error('Lecture incomplète : '+entity);result.push(...page.map(normalize));if(page.length<1000)break;offset+=page.length;}return result;},
+  async create(entity,item){const rows=await request('deos_'+entity,'POST',{workspace_id:workspaceId,owner_id:ownerId,client_id:item.id,data:payload(item)},{Prefer:'return=representation'});return normalize(rows[0]);},
+  async update(entity,id,item,version){const rows=await request('rpc/deos_update_'+bases[entity],'POST',{p_client_id:id,p_expected_version:version,p_data:payload(item)});const row=Array.isArray(rows)?rows[0]:rows;if(!row)throw Error('Version distante non confirmée : '+id);return normalize(row);},
+  async backup(value,suffix='d27'){await new Promise((resolve,reject)=>{const r=indexedDB.open('deos-production-release-backups',1);r.onupgradeneeded=()=>r.result.createObjectStore('backups');r.onerror=()=>reject(r.error);r.onsuccess=()=>{const db=r.result,tx=db.transaction('backups','readwrite');tx.objectStore('backups').put(value,workspaceId+'-'+suffix);tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>{db.close();reject(tx.error)};};});}
+ };
+}
+async function runDirectionReleaseUpgrade(){
+ if(deosDirectionReleaseReady||!window.DeosDirectionRelease)return;
+ if(deosDirectionReleasePromise)return deosDirectionReleasePromise;
+ if(!deosRemoteAuthService?.isAuthenticated?.()||!deosRemoteRuntime.workspace)return;
+ deosDirectionReleasePromise=(async()=>{
+  const app=document.getElementById('app');app.inert=true;let recovery=null;
+  try{
+   // Reconcile existing edits using the established engines before changing any relationships.
+   const transport=createDirectionReleaseTransport();
+   const markerRow=(await transport.list('documents')).find(r=>r.item.id===window.DeosDirectionRelease.MARKER);
+   const markerStatus=markerRow?JSON.parse(markerRow.item.content).status:'';
+
+   if(!['running','paused'].includes(markerStatus)){
+    deosDirectionReleasePreflight=true;
+    const sync=await syncAllMultiDeviceNow({silent:true,source:'d27-preflight'});
+    deosDirectionReleasePreflight=false;
+    if(sync.lastError)throw Error('Synchronisation préalable : '+sync.lastError);
+   }
+   let legacy=[];try{legacy=JSON.parse(localStorage.getItem('deos_test_engagements_direction_v1')||'[]');}catch{}
+   let owner=sessionStorage.getItem('deos_direction_release_device');if(!owner){owner=crypto.randomUUID();sessionStorage.setItem('deos_direction_release_device',owner);}
+   const result=markerStatus==='completed'?{data:JSON.parse(JSON.stringify(state))}:await window.DeosDirectionRelease.run(transport,JSON.parse(JSON.stringify(state)),legacy,owner,message=>setDeosStartupStatus(message));
+   if(window.DeosTestRecovery){
+    const keys={...Object.fromEntries(entities.map(name=>[name,DEOS_STORAGE_KEYS[name]])),externalEventEnrichments:DEOS_STORAGE_KEYS.external_event_enrichments};
+    recovery=await window.DeosTestRecovery.run(transport,result.data,keys,snapshot=>{
+     for(const name of entities)if(Array.isArray(snapshot[name]))snapshot[name]=normalizeCollection(name,snapshot[name]);return snapshot;
+    },message=>setDeosStartupStatus(message));
+    if(recovery)result.data=recovery.data;
+   }
+   // Persist only after cloud verification. Clear obsolete shadows/queues before re-enabling sync.
+   deosDirectionReleaseReady=true;
+   for(const name of entities)if(result.data[name])state[name]=normalizeCollection(name,result.data[name]);
+   // Populate all collections before persisting: Journal/To-Do stage their cloud transport in Documents.
+   for(const name of entities)if(result.data[name])persist(name);
+   if(recovery?.data.externalEventEnrichments){state.externalEventEnrichments=recovery.data.externalEventEnrichments;externalEventEnrichmentsRepository.save(state.externalEventEnrichments);}
+   if(markerStatus!=='completed'||recovery)for(const name of ['folders','projects','actions','managers','decisions','documents']){
+    const singular=name;deosDataService.remove('sync_queue_'+singular);deosDataService.remove('sync_meta_'+singular);deosDataService.remove('sync_shadow_'+singular);
+   }
+   enableAllMultiDevicePilots();
+   if(recovery){
+    const sync=await syncAllMultiDeviceNow({silent:true,source:'test-recovery'});
+    if(sync.lastError)throw Error('Saisies TEST conservées ; synchronisation à terminer : '+sync.lastError);
+    await recovery.checkpoint();
+    showDeosToast(recovery.report.conflicts?'Saisies TEST reprises. Des variantes sont conservées dans Documents pour arbitrage.':'Saisies TEST récupérées dans PROD.','success',5000);
+   }
+   setDeosStartupStatus('');setView(currentView||'cockpit');
+   scheduleMultiDeviceAutoSync('d27-completed');
+  }catch(error){recovery?.close();deosDirectionReleasePreflight=false;console.error('[DEOS D27]',error);setDeosStartupStatus('Préparation PROD interrompue : '+error.message+' La sauvegarde est conservée ; la mise à jour reprendra au prochain chargement.',true);}
+  finally{app.inert=false;}
+ })();
+ try{return await deosDirectionReleasePromise;}finally{deosDirectionReleasePromise=null;}
+}
+function renderDirectionCommitments(){
+ const rows=window.DeosDirectionPlan.objectives.map(o=>({objective:o,action:state.actions.find(a=>(a.directionCommitments||[]).some(c=>c.id==='soumia-20261104-'+String(o.n).padStart(2,'0')))}));
+ const done=rows.filter(r=>r.action?.done).length;
+ appHtml(`<section class="card"><h2>Engagements Direction</h2><p>Entretien avec Soumia du 4 novembre 2026 · ${done} / ${rows.length} objectifs réalisés</p><p>Ce suivi reprend directement les actions et projets DEOS. ${window.DeosTest?'Copie TEST locale : les modifications restent sur cet appareil.':'Les modifications sont synchronisées avec les autres appareils.'}</p></section>${rows.map(({objective:o,action:a})=>`<section class="card"><h3>${o.n}. ${esc(o.title)}</h3>${a?`<p>${a.done?'✓ Terminé':a.status==='blocked'?'Bloqué':'À mener'} · Pilote : ${esc(a.owner||'À définir')} · Échéance : ${esc(a.due||'À définir')}</p><p>${esc(a.description||o.detail)}</p><p>Interlocuteurs : ${esc(o.contacts)}</p><div class="row-actions"><button class="action" onclick="openAction('${a.id}')">Ouvrir l’action</button><button class="secondary" onclick="editAction('${a.id}')">Modifier</button>${(a.linkedProjects||[]).map(id=>state.projects.find(p=>p.id===id)).filter(Boolean).map(p=>`<button class="secondary" onclick="openProject('${p.id}')">${esc(p.name)}</button>`).join('')}</div>`:'<p>Intégration en cours : connectez votre espace DEOS pour reprendre les actions synchronisées.</p>'}</section>`).join('')}`);
+}
+
 init().catch(error => {
   console.error("[DEOS STARTUP]", error);
   setDeosStartupStatus("Démarrage interrompu : " + (error?.message || "erreur inattendue") + ". Conservez les données de ce navigateur.", true);
@@ -29800,7 +29988,7 @@ function readPerformanceImportedSources() {
 
   appendImports(state.performance_imports);
   try {
-    const raw = (window.DeosTest?.storage || localStorage).getItem("deos_performance_imports");
+    const raw = localStorage.getItem("deos_performance_imports");
     appendImports(raw ? JSON.parse(raw) : []);
   } catch (error) {
     console.warn("[DEOS] Lecture deos_performance_imports impossible", error);
